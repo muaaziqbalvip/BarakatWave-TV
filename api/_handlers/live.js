@@ -12,12 +12,13 @@ import {
   getSettings,
   verifyXtreamCredentials
 } from "../_lib/rtdb.js";
+import { classifyChannelDelivery } from "../_lib/hls.js";
 
 /**
  * Universal Live, Movie (VOD) & Series Stream Entrypoint:
  *  - Xtream Live streams:   /live/:user/:pass/:file   (Televizo, IPTV Smarters, TiviMate, XCIPTV, VLC)
- *  - Xtream VOD Movies:     /movie/:user/:pass/:file  (IMDb Movies — plays Coming Soon or custom URL!)
- *  - Xtream TV Series:      /series/:user/:pass/:file (IMDb Series — plays Coming Soon or custom URL!)
+ *  - Xtream VOD Movies:     /movie/:user/:pass/:file  (2000–2026 IMDb Movies — Coming Soon or custom URL!)
+ *  - Xtream TV Series:      /series/:user/:pass/:file (2000–2026 IMDb Series — Coming Soon or custom URL!)
  *  - Clean Channel M3U8s:   /ch/:slug.m3u8
  */
 export default async function handler(req, res) {
@@ -80,7 +81,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // PRO VIP Movie/Series accessed by Free user -> play PRO Unlock Broadcast!
     if (itemTier === "pro" && effectivePlan !== "pro") {
       if (ext === "m3u8") {
         return sendMasterPlaylist(res, `${baseUrl}/api/stream?mode=pro_lock`, "Unlock PRO VIP: 0306-2015326");
@@ -89,13 +89,11 @@ export default async function handler(req, res) {
       return redirect302(res, proMp4);
     }
 
-    // Custom movie/episode URL configured by Admin -> stream it directly!
     if (customStreamUrl) {
       const absUrl = customStreamUrl.startsWith("/") ? `${baseUrl}${customStreamUrl}` : customStreamUrl;
       return redirect302(res, absUrl);
     }
 
-    // Default while Movies & Series service is building -> play "Service is Building — Coming Soon" HD video!
     if (ext === "m3u8") {
       return sendMasterPlaylist(
         res,
@@ -112,14 +110,6 @@ export default async function handler(req, res) {
   }
 
   // ==================== LIVE TV PLAYBACK ====================
-  // If an IPTV client explicitly requested .ts, 302-redirect to .m3u8 so ExoPlayer/Televizo/VLC activates HLS!
-  if (ext === "ts" && username && password) {
-    return redirect302(
-      res,
-      `${baseUrl}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${encodeURIComponent(cleanTarget)}.m3u8`
-    );
-  }
-
   const channels = await getChannels();
   const channel = cleanTarget
     ? channels.find((c) => String(c.streamId) === cleanTarget) ||
@@ -127,18 +117,51 @@ export default async function handler(req, res) {
     : channels[0];
 
   if (!channel) {
+    if (ext === "ts" && username && password) {
+      return redirect302(
+        res,
+        `${baseUrl}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${encodeURIComponent(cleanTarget)}.m3u8`
+      );
+    }
     const offlineMediaUrl = `${baseUrl}/api/stream?mode=offline`;
     return sendMasterPlaylist(res, offlineMediaUrl, "Channel Offline — BarakatWave TV");
   }
 
   // Case 1: PRO VIP Channel accessed by Free viewer -> Play Continuous Premium Unlock Video!
   if (channel.tier === "pro" && effectivePlan !== "pro") {
+    if (ext === "ts" && username && password) {
+      return redirect302(
+        res,
+        `${baseUrl}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${encodeURIComponent(cleanTarget)}.m3u8`
+      );
+    }
     const proLockMediaUrl = `${baseUrl}/api/stream?mode=pro_lock&id=${encodeURIComponent(channel.streamId)}`;
     return sendMasterPlaylist(res, proLockMediaUrl, `${channel.name} - Unlock PRO: 0306-2015326`);
   }
 
-  // Case 2: Instant 0ms Session-Stamped Master Playlist (no blocking upstream call!)
-  // so Televizo enters Phase 1 immediately at elapsed=0s and plays the full Intro Video first!
+  // Case 2: Smart Delivery Classification (cached 45s for <2ms speed!):
+  //  - Direct 302 Handoff for custom-port IPTV panels (e.g. https://live.nowiretv.com:5789/live/auto/3383.m3u8),
+  //    Flussonic /live/auto/, per-IP tokenized streams, or residential-only ISP streams so Televizo plays 100%!
+  //  - Channel Offline Standby Video when all candidate URLs are genuinely 404 / 5xx / dead!
+  //  - 3-Phase Televizo Intro -> Live Channel Stitched HLS for public CDN & local broadcast streams!
+  const delivery = await classifyChannelDelivery(channel, settings, { skipIntro });
+
+  if (delivery.mode === "direct" && delivery.url) {
+    return redirect302(res, delivery.url);
+  }
+
+  if (ext === "ts" && username && password) {
+    return redirect302(
+      res,
+      `${baseUrl}/live/${encodeURIComponent(username)}/${encodeURIComponent(password)}/${encodeURIComponent(cleanTarget)}.m3u8`
+    );
+  }
+
+  if (delivery.mode === "offline") {
+    const offlineMediaUrl = `${baseUrl}/api/stream?mode=offline&id=${encodeURIComponent(channel.streamId)}`;
+    return sendMasterPlaylist(res, offlineMediaUrl, `${channel.name} — Signal Restoring`);
+  }
+
   const sessionStartSec = Math.floor(Date.now() / 1000);
   const mediaParams = new URLSearchParams({
     mode: "live",
@@ -164,12 +187,12 @@ function redirect302(res, targetUrl) {
   setCorsHeaders(res);
   res.statusCode = 302;
   res.setHeader("Location", targetUrl);
+  res.setHeader("Cache-Control", "no-store");
   res.end();
 }
 
 function sendMasterPlaylist(res, variantUrl, streamName) {
   const safeName = String(streamName || "BarakatWave HD").replace(/"/g, "'");
-  // Omit restrictive CODECS lock so ExoPlayer/Televizo dynamically adapts across #EXT-X-DISCONTINUITY!
   const body = [
     "#EXTM3U",
     "#EXT-X-VERSION:3",

@@ -5,9 +5,13 @@ import {
   parseQuery,
   sendJson
 } from "../_lib/origin.js";
+import { checkRateLimit } from "../_lib/security.js";
+import { isClientDirectIptvUrl, upstreamFetch } from "../_lib/upstream.js";
 
 const KNOWN_LOCAL_STREAMS = new Set([
   "/media/welcome/index.m3u8",
+  "/media/channel-offline/index.m3u8",
+  "/media/coming-soon/index.m3u8",
   "/media/pro-unlock/index.m3u8",
   "/media/demo-live/index.m3u8"
 ]);
@@ -30,56 +34,74 @@ async function probeSingleUrl(rawUrl, baseUrl) {
     };
   }
 
-  const effectiveUrl = url.startsWith("/") ? `${baseUrl}${url}` : url;
+  const isLocalOrigin = url.startsWith("/");
+  const effectiveUrl = isLocalOrigin ? `${baseUrl}${url}` : url;
   if (!/^https?:\/\//i.test(effectiveUrl)) {
     return { url, ok: false, status: 0, latencyMs: 0, error: "Must start with http://, https://, or /" };
   }
 
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 5000);
-  try {
-    const res = await fetch(effectiveUrl, {
-      method: "GET",
-      signal: ctrl.signal,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BarakatWaveProbe/2.0",
-        Accept: "*/*"
-      }
-    });
-    clearTimeout(timer);
-    const latencyMs = Date.now() - start;
-    if (!res.ok) {
-      return { url, ok: false, status: res.status, latencyMs, error: `HTTP ${res.status}` };
-    }
-    const ct = (res.headers.get("content-type") || "").toLowerCase();
-    let sample = "";
-    if (ct.includes("mpegurl") || ct.includes("text") || effectiveUrl.toLowerCase().includes(".m3u8")) {
-      sample = (await res.text()).slice(0, 1200);
-    }
-    const isHls = sample.includes("#EXTM3U") || ct.includes("mpegurl") || effectiveUrl.toLowerCase().includes(".m3u8");
+  const res = await upstreamFetch(effectiveUrl, {
+    timeoutMs: 5500,
+    maxBytes: 32_768,
+    allowLocalOrigin: isLocalOrigin
+  });
+  const latencyMs = Date.now() - start;
+
+  if (res.blocked) {
+    return { url, ok: false, status: 0, latencyMs, error: res.error || "Disallowed host" };
+  }
+
+  if (res.ok || res.isBinaryTs) {
+    const sample = String(res.text || "").slice(0, 2000);
+    const isHls =
+      sample.includes("#EXTM3U") ||
+      (res.contentType || "").includes("mpegurl") ||
+      effectiveUrl.toLowerCase().includes(".m3u8");
+    return {
+      url,
+      finalUrl: res.finalUrl || effectiveUrl,
+      ok: true,
+      status: res.status || 200,
+      latencyMs,
+      isHls,
+      isMpegTs: Boolean(res.isBinaryTs),
+      directPanelMode: isClientDirectIptvUrl(url),
+      hasVariants: sample.includes("#EXT-X-STREAM-INF"),
+      error: null
+    };
+  }
+
+  // If an IPTV panel on custom port (:5789/:8080) returns 401/403 to cloud datacenter IPs while DNS is alive,
+  // inform Admin that Direct Televizo/IPTV Client Handoff is active and ready!
+  if ((res.status === 401 || res.status === 403) && res.dnsAlive && isClientDirectIptvUrl(url)) {
     return {
       url,
       ok: true,
       status: res.status,
       latencyMs,
-      isHls,
-      hasVariants: sample.includes("#EXT-X-STREAM-INF"),
+      isHls: true,
+      directPanelMode: true,
+      note: "IP-locked panel detected — Direct Televizo/IPTV Client Mode enabled automatically",
       error: null
     };
-  } catch (err) {
-    clearTimeout(timer);
-    return {
-      url,
-      ok: false,
-      status: 0,
-      latencyMs: Date.now() - start,
-      error: err?.name === "AbortError" ? "Timeout (5s)" : err?.message || "Network unreachable"
-    };
   }
+
+  return {
+    url,
+    ok: false,
+    status: res.status || 0,
+    latencyMs,
+    error: res.status ? `HTTP ${res.status}` : res.error || "Network unreachable"
+  };
 }
 
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
+
+  const rl = checkRateLimit(req, "probe", 60, 60_000);
+  if (!rl.allowed) {
+    return sendJson(res, 429, { ok: false, error: "Too many probe requests — please wait a moment." });
+  }
 
   const q = parseQuery(req);
   const body = req.method === "POST" ? await parseBody(req) : {};
@@ -87,10 +109,10 @@ export default async function handler(req, res) {
   const urls = Array.isArray(body.urls)
     ? body.urls
     : q.url
-    ? [q.url]
-    : body.url
-    ? [body.url]
-    : [];
+      ? [q.url]
+      : body.url
+        ? [body.url]
+        : [];
 
   if (!urls.length) {
     return sendJson(res, 400, { ok: false, error: "Provide url or urls[]" });

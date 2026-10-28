@@ -15,6 +15,7 @@ import {
   verifyXtreamCredentials
 } from "../_lib/rtdb.js";
 import { BRAND } from "../../data/catalog.js";
+import { checkRateLimit } from "../_lib/security.js";
 
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
@@ -46,6 +47,13 @@ export default async function handler(req, res) {
 
   const acct = await verifyXtreamCredentials(username, password);
   if (!acct) {
+    const rl = checkRateLimit(req, "xtream_bad_auth", 30, 60_000);
+    if (!rl.allowed) {
+      return sendJson(res, 429, {
+        user_info: { auth: 0, status: "Disabled", message: "Too many failed login attempts. Try again in 1 minute." },
+        server_info: serverInfo
+      });
+    }
     return sendJson(res, 200, {
       user_info: {
         auth: 0,
@@ -75,18 +83,18 @@ export default async function handler(req, res) {
     active_cons: "0",
     created_at: String(createdSec),
     max_connections: String(acct.maxConnections || (acct.effectivePlan === "pro" ? 5 : 1)),
-    allowed_output_formats: ["m3u8"]
+    allowed_output_formats: ["m3u8", "ts"]
   };
 
   if (!action) {
-    return sendJson(res, 200, { user_info: userInfo, server_info: serverInfo });
+    return sendJson(res, 200, { user_info: userInfo, server_info: serverInfo }, "private, max-age=15", req);
   }
 
   // ==================== LIVE TV CATEGORIES & STREAMS ====================
   if (action === "get_live_categories") {
     const channels = await getChannels();
     const categories = await getCategoriesFromChannels(channels);
-    return sendJson(res, 200, categories);
+    return sendJson(res, 200, categories, "private, max-age=30", req);
   }
 
   if (action === "get_live_streams") {
@@ -126,13 +134,13 @@ export default async function handler(req, res) {
         tv_archive_duration: 0
       };
     });
-    return sendJson(res, 200, streams);
+    return sendJson(res, 200, streams, "private, max-age=15", req);
   }
 
   // ==================== IMDb VOD MOVIES CATEGORIES, STREAMS & INFO ====================
   if (action === "get_vod_categories") {
     const movies = await getMovies();
-    return sendJson(res, 200, getVodCategoriesList(movies));
+    return sendJson(res, 200, getVodCategoriesList(movies), "private, max-age=30", req);
   }
 
   if (action === "get_vod_streams") {
@@ -165,7 +173,7 @@ export default async function handler(req, res) {
         imdb_id: m.imdbId || ""
       };
     });
-    return sendJson(res, 200, vodList);
+    return sendJson(res, 200, vodList, "private, max-age=30", req);
   }
 
   if (action === "get_vod_info") {
@@ -174,7 +182,7 @@ export default async function handler(req, res) {
     const m =
       movies.find((item) => String(item.streamId) === vodId || item.imdbId === vodId) ||
       movies[0];
-    if (!m) return sendJson(res, 200, { info: {}, movie_data: {} });
+    if (!m) return sendJson(res, 200, { info: {}, movie_data: {} }, "private, max-age=30", req);
 
     const ratingNum = parseFloat(m.imdbRating) || 8.0;
     const ext = m.streamUrl && /\.m3u8($|\?)/i.test(m.streamUrl) ? "m3u8" : "mp4";
@@ -222,13 +230,13 @@ export default async function handler(req, res) {
         custom_sid: m.imdbId || "",
         direct_source: ""
       }
-    });
+    }, "private, max-age=30", req);
   }
 
   // ==================== IMDb TV SERIES CATEGORIES, SERIES LIST & EPISODE INFO ====================
   if (action === "get_series_categories") {
     const seriesList = await getSeries();
-    return sendJson(res, 200, getSeriesCategoriesList(seriesList));
+    return sendJson(res, 200, getSeriesCategoriesList(seriesList), "private, max-age=30", req);
   }
 
   if (action === "get_series") {
@@ -263,7 +271,7 @@ export default async function handler(req, res) {
         imdb_id: s.imdbId || ""
       };
     });
-    return sendJson(res, 200, out);
+    return sendJson(res, 200, out, "private, max-age=30", req);
   }
 
   if (action === "get_series_info") {
@@ -272,7 +280,7 @@ export default async function handler(req, res) {
     const s =
       seriesList.find((item) => String(item.seriesId) === seriesId || item.imdbId === seriesId) ||
       seriesList[0];
-    if (!s) return sendJson(res, 200, { seasons: [], info: {}, episodes: {} });
+    if (!s) return sendJson(res, 200, { seasons: [], info: {}, episodes: {} }, "private, max-age=30", req);
 
     const ratingNum = parseFloat(s.imdbRating) || 8.5;
     const genreStr = Array.isArray(s.genres) ? s.genres.join(", ") : String(s.genres || "Drama");
@@ -334,7 +342,7 @@ export default async function handler(req, res) {
         imdb_id: s.imdbId
       },
       episodes: episodesBySeason
-    });
+    }, "private, max-age=30", req);
   }
 
   // ==================== EPG ====================
@@ -367,8 +375,8 @@ export default async function handler(req, res) {
           stop_timestamp: String(endTs)
         }
       ]
-    });
+    }, "private, max-age=60", req);
   }
 
-  return sendJson(res, 200, { user_info: userInfo, server_info: serverInfo });
+  return sendJson(res, 200, { user_info: userInfo, server_info: serverInfo }, "private, max-age=15", req);
 }

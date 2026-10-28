@@ -4,6 +4,7 @@ import {
   parseQuery,
   sendText
 } from "../_lib/origin.js";
+import { checkRateLimit } from "../_lib/security.js";
 import { getChannels, getMovies, getSeries, verifyXtreamCredentials } from "../_lib/rtdb.js";
 import { BRAND } from "../../data/catalog.js";
 
@@ -17,11 +18,18 @@ export default async function handler(req, res) {
 
   const acct = await verifyXtreamCredentials(username, password);
   if (!acct) {
+    const rl = checkRateLimit(req, "xtream_get_fail", 25, 60_000);
+    if (!rl.allowed) {
+      res.setHeader("Retry-After", String(rl.retryAfterSec));
+      return sendText(res, 429, "#EXTM3U\n#EXTINF:-1,Too Many Attempts\n", "audio/x-mpegurl; charset=utf-8", "no-store", req);
+    }
     return sendText(
       res,
       401,
       `#EXTM3U\n#EXTINF:-1,Invalid Xtream Login - Visit ${BRAND.siteUrl}\n${baseUrl}/media/pro-unlock/index.m3u8\n`,
-      "audio/x-mpegurl; charset=utf-8"
+      "audio/x-mpegurl; charset=utf-8",
+      "no-store",
+      req
     );
   }
 
@@ -85,5 +93,5 @@ export default async function handler(req, res) {
     "Content-Disposition",
     `inline; filename="barakatwave-${acct.username}.m3u8"`
   );
-  return sendText(res, 200, lines.join("\n") + "\n", "audio/x-mpegurl; charset=utf-8");
+  return sendText(res, 200, lines.join("\n") + "\n", "audio/x-mpegurl; charset=utf-8", "private, max-age=30", req);
 }

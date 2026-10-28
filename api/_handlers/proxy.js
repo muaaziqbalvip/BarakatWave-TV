@@ -5,86 +5,102 @@ import {
   sendText,
   setCorsHeaders
 } from "../_lib/origin.js";
+import { checkRateLimit } from "../_lib/security.js";
+import { openUpstreamStream, upstreamFetch } from "../_lib/upstream.js";
 
-function isSafeExternalUrl(rawUrl) {
-  try {
-    const u = new URL(rawUrl);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-    const host = u.hostname.toLowerCase();
-    if (
-      host === "localhost" ||
-      host === "127.0.0.1" ||
-      host === "0.0.0.0" ||
-      host === "::1" ||
-      host.endsWith(".local") ||
-      host.startsWith("10.") ||
-      host.startsWith("192.168.") ||
-      host.startsWith("169.254.") ||
-      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
-    ) {
-      return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
+/**
+ * Secure, TLS-Tolerant HLS & MPEG-TS Relay Proxy (/api/proxy):
+ *  - Enforces DNS + IP SSRF protection against private/loopback/cloud-metadata addresses
+ *  - Supports custom IPTV ports (e.g. :5789, :8080, :25461, :8443) with self-signed TLS certs
+ *  - Tracks 301/302 `finalUrl` so relative .m3u8 / .ts URLs resolve against the true redirected host!
+ *  - Streams binary .ts / .m4s segments directly via Node stream piping (low memory, ultra-fast!)
+ */
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
 
+  const rl = checkRateLimit(req, "proxy", 450, 60_000);
+  if (!rl.allowed) {
+    return sendText(res, 429, "Rate limit exceeded");
+  }
+
   const q = parseQuery(req);
   const targetUrl = String(q.u || q.url || "").trim();
-  if (!isSafeExternalUrl(targetUrl)) {
-    return sendText(res, 400, "Invalid or disallowed stream URL");
+  if (!targetUrl) {
+    return sendText(res, 400, "Missing stream URL");
   }
 
   const baseUrl = getRequestBaseUrl(req);
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 12000);
+  const customHeaders = {};
+  if (q.ua) customHeaders["User-Agent"] = q.ua;
+  if (q.ref) customHeaders.Referer = q.ref;
+  if (req.headers.range) customHeaders.Range = req.headers.range;
 
-  try {
-    const headers = {
-      "User-Agent":
-        q.ua || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 BarakatWaveTV/2.0",
-      Accept: "*/*"
-    };
-    if (q.ref) headers.Referer = q.ref;
-    if (req.headers.range) headers.Range = req.headers.range;
+  const pathPart = targetUrl.split("?")[0].toLowerCase();
+  const likelyManifest =
+    pathPart.endsWith(".m3u8") ||
+    pathPart.endsWith(".m3u") ||
+    (!/\.(ts|m2ts|m4s|mp4|aac|key)$/i.test(pathPart) && q.seg !== "1");
 
-    const upstream = await fetch(targetUrl, { signal: ctrl.signal, headers });
-    clearTimeout(timer);
+  if (likelyManifest) {
+    const fetched = await upstreamFetch(targetUrl, {
+      timeoutMs: 9000,
+      maxBytes: 524_288,
+      headers: customHeaders
+    });
 
-    if (!upstream.ok && upstream.status !== 206) {
-      return sendText(res, upstream.status, `Upstream status ${upstream.status}`);
+    if (fetched.blocked) {
+      return sendText(res, 403, "Forbidden: disallowed private or internal URL");
+    }
+    if (!fetched.ok) {
+      return sendText(res, fetched.status || 502, `Upstream status ${fetched.status || "unreachable"}`);
     }
 
-    const ct = (upstream.headers.get("content-type") || "").toLowerCase();
-    const isManifest =
-      ct.includes("mpegurl") ||
-      targetUrl.split("?")[0].toLowerCase().endsWith(".m3u8");
-
-    if (isManifest) {
-      const text = await upstream.text();
-      const rewritten = rewriteManifestForProxy(text, targetUrl, baseUrl, q.ref || "");
+    if (!fetched.isBinaryTs && fetched.text && fetched.text.includes("#EXTM3U")) {
+      const effectiveBase = fetched.finalUrl || targetUrl;
+      const rewritten = rewriteManifestForProxy(fetched.text, effectiveBase, baseUrl, q.ref || "");
       return sendText(res, 200, rewritten, "application/vnd.apple.mpegurl; charset=utf-8", "no-store");
     }
 
+    // Upstream returned binary TS segment directly
     setCorsHeaders(res);
-    res.statusCode = upstream.status;
-    res.setHeader("Content-Type", ct || "video/mp2t");
-    res.setHeader("Cache-Control", "public, max-age=10");
-    const cl = upstream.headers.get("content-length");
-    if (cl) res.setHeader("Content-Length", cl);
-    const cr = upstream.headers.get("content-range");
-    if (cr) res.setHeader("Content-Range", cr);
-
-    const buf = Buffer.from(await upstream.arrayBuffer());
-    res.end(buf);
-  } catch (err) {
-    clearTimeout(timer);
-    return sendText(res, 502, `Stream relay error: ${err?.message || "timeout"}`);
+    res.statusCode = fetched.status || 200;
+    res.setHeader("Content-Type", fetched.contentType || "video/mp2t");
+    res.setHeader("Cache-Control", "public, max-age=6");
+    res.end(fetched.buffer);
+    return;
   }
+
+  // Binary segment streaming pipe (.ts, .m2ts, .m4s, .mp4, .key)
+  const opened = await openUpstreamStream(targetUrl, {
+    timeoutMs: 11000,
+    headers: customHeaders
+  });
+
+  if (!opened.ok) {
+    const errCode = opened.blocked ? 403 : opened.status || 502;
+    return sendText(res, errCode, opened.error || "Stream relay failed");
+  }
+
+  setCorsHeaders(res);
+  res.statusCode = opened.status;
+  res.setHeader("Content-Type", opened.headers["content-type"] || "video/mp2t");
+  res.setHeader("Cache-Control", "public, max-age=10");
+  if (opened.headers["content-length"]) {
+    res.setHeader("Content-Length", opened.headers["content-length"]);
+  }
+  if (opened.headers["content-range"]) {
+    res.setHeader("Content-Range", opened.headers["content-range"]);
+  }
+
+  res.on("close", () => {
+    try {
+      opened.req?.destroy();
+    } catch {
+      // ignore
+    }
+  });
+
+  opened.stream.pipe(res);
 }
 
 function rewriteManifestForProxy(text, manifestUrl, baseUrl, ref) {
@@ -102,7 +118,9 @@ function rewriteManifestForProxy(text, manifestUrl, baseUrl, ref) {
         });
       }
       const abs = new URL(trimmed, manifestUrl).toString();
-      return `${baseUrl}/api/proxy?u=${encodeURIComponent(abs)}${refParam}`;
+      const isSubManifest = abs.split("?")[0].toLowerCase().endsWith(".m3u8");
+      const segFlag = isSubManifest ? "" : "&seg=1";
+      return `${baseUrl}/api/proxy?u=${encodeURIComponent(abs)}${refParam}${segFlag}`;
     })
     .join("\n");
 }
