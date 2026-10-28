@@ -139,6 +139,85 @@ export class BarakatPlayer {
     await this.playLiveCandidates(channel, token);
   }
 
+  async loadVod(vodItem, { settings = {}, userPlan = "free" } = {}) {
+    if (!vodItem || !this.video) return;
+    const token = ++this.playToken;
+    this.currentChannel = vodItem;
+    this.settings = settings || {};
+    this.userPlan = userPlan || "free";
+
+    this.destroyHls();
+    this.hideOverlays();
+    this.resetSelectors();
+
+    if (vodItem.tier === "pro" && this.userPlan !== "pro") {
+      await this.playProLockedStream(vodItem, token);
+      return;
+    }
+
+    const customStream = String(vodItem.streamUrl || "").trim();
+    if (customStream) {
+      this.setStatus(`🎬 PLAYING • ${vodItem.title}`, "live");
+      this.attachSource(customStream, {
+        loop: false,
+        isLive: /\.m3u8($|\?)/i.test(customStream),
+        onPlaying: () => {
+          this.setStatus(`🎬 HD • ${vodItem.title}`, "live");
+          this.onStateChange({ mode: "vod_playing", item: vodItem });
+        },
+        onError: () => {
+          if (token === this.playToken) this.playComingSoonVod(vodItem, token);
+        }
+      });
+      return;
+    }
+
+    this.playComingSoonVod(vodItem, token);
+  }
+
+  playComingSoonVod(vodItem, token) {
+    if (token !== this.playToken) return;
+    const csUrl = (this.settings.comingSoonVideoUrl || "/media/coming-soon/video.mp4").trim();
+    const playTarget =
+      csUrl === "/media/coming-soon/index.m3u8" ? "/media/coming-soon/video.mp4" : csUrl;
+    this.setStatus("🎬 SERVICE BUILDING • COMING SOON", "intro");
+    this.onStateChange({ mode: "coming_soon", item: vodItem });
+    this.attachSource(playTarget, {
+      loop: true,
+      isLive: false,
+      onError: () => {
+        if (token === this.playToken) {
+          this.attachSource("/media/coming-soon/index.m3u8", { loop: true, isLive: false });
+        }
+      }
+    });
+  }
+
+  playOfflineStandby(channel, token) {
+    if (token !== this.playToken) return;
+    const offlineUrl = (
+      channel.offlineVideoUrl ||
+      this.settings.channelOfflineVideoUrl ||
+      "/media/channel-offline/index.m3u8"
+    ).trim();
+    const isDirect = /\.(mp4|m4v|webm|ogg|mov)(\?|$)/i.test(offlineUrl);
+    const playTarget = isDirect
+      ? offlineUrl
+      : `/api/stream?mode=offline&id=${encodeURIComponent(channel.streamId || channel.id || "1001")}`;
+
+    this.setStatus("📡 STREAM OFFLINE • AUTO-RECOVERING", "error");
+    this.onStateChange({ mode: "offline_standby", channel });
+    this.attachSource(playTarget, {
+      loop: true,
+      isLive: !isDirect,
+      onError: () => {
+        if (token === this.playToken) {
+          this.attachSource("/media/channel-offline/video.mp4", { loop: true, isLive: false });
+        }
+      }
+    });
+  }
+
   playWelcomeBumper(welcomeUrl, token) {
     return new Promise((resolve) => {
       if (token !== this.playToken) return resolve();
@@ -253,15 +332,12 @@ export class BarakatPlayer {
         });
       }
     }
-    if (!expanded.some((x) => x.url.includes("/media/demo-live/"))) {
-      expanded.push({ url: `/api/stream?mode=live&id=1001&nointro=1`, label: "Network Feed" });
-    }
-
     let idx = 0;
     const tryNext = () => {
       if (token !== this.playToken) return;
       if (idx >= expanded.length) {
-        this.setStatus("STREAM OFFLINE", "error");
+        // All upstream URLs for this channel failed -> Play Channel Offline Standby Video!
+        this.playOfflineStandby(channel, token);
         return;
       }
       const candidate = expanded[idx++];

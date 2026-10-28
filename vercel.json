@@ -8,16 +8,17 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
+    { "source": "/media/:folder/:seg.ts", "destination": "/media/:folder/:seg.m2ts" },
     { "source": "/player_api.php", "destination": "/api/xtream?ep=player" },
     { "source": "/panel_api.php", "destination": "/api/xtream?ep=player" },
     { "source": "/get.php", "destination": "/api/xtream?ep=get" },
     { "source": "/xmltv.php", "destination": "/api/xtream?ep=xmltv" },
-    { "source": "/live/:user/:pass/:file", "destination": "/api/media?ep=live&user=:user&pass=:pass&file=:file" },
-    { "source": "/movie/:user/:pass/:file", "destination": "/api/media?ep=live&user=:user&pass=:pass&file=:file" },
-    { "source": "/series/:user/:pass/:file", "destination": "/api/media?ep=live&user=:user&pass=:pass&file=:file" },
-    { "source": "/:user/:pass/:id(\\d+)", "destination": "/api/media?ep=live&user=:user&pass=:pass&file=:id.m3u8" },
-    { "source": "/:user/:pass/:id(\\d+).:ext(m3u8|ts)", "destination": "/api/media?ep=live&user=:user&pass=:pass&file=:id.:ext" },
-    { "source": "/ch/:slug", "destination": "/api/media?ep=live&slug=:slug" },
+    { "source": "/live/:user/:pass/:file", "destination": "/api/media?ep=live&kind=live&user=:user&pass=:pass&file=:file" },
+    { "source": "/movie/:user/:pass/:file", "destination": "/api/media?ep=live&kind=movie&user=:user&pass=:pass&file=:file" },
+    { "source": "/series/:user/:pass/:file", "destination": "/api/media?ep=live&kind=series&user=:user&pass=:pass&file=:file" },
+    { "source": "/:user/:pass/:id(\\d+)", "destination": "/api/media?ep=live&kind=live&user=:user&pass=:pass&file=:id.m3u8" },
+    { "source": "/:user/:pass/:id(\\d+).:ext(m3u8|ts)", "destination": "/api/media?ep=live&kind=live&user=:user&pass=:pass&file=:id.:ext" },
+    { "source": "/ch/:slug", "destination": "/api/media?ep=live&kind=live&slug=:slug" },
     { "source": "/playlist/:id", "destination": "/api/media?ep=playlist&id=:id" },
     { "source": "/api/stream", "destination": "/api/media?ep=stream" },
     { "source": "/api/proxy", "destination": "/api/media?ep=proxy" },
@@ -35,13 +36,22 @@
     { "source": "/api/probe", "destination": "/api/admin?ep=probe" },
     { "source": "/api/sync", "destination": "/api/admin?ep=sync" },
     { "source": "/api/github/push", "destination": "/api/admin?ep=github_push" },
+    { "source": "/api/imdb", "destination": "/api/admin?ep=imdb" },
     { "source": "/admin", "destination": "/admin.html" }
   ],
   "headers": [
     {
-      "source": "/media/(.*)\\.m2ts",
+      "source": "/media/(.*)\\.(ts|m2ts)",
       "headers": [
         { "key": "Content-Type", "value": "video/mp2t" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
+      ]
+    },
+    {
+      "source": "/media/(.*)\\.mp4",
+      "headers": [
+        { "key": "Content-Type", "value": "video/mp4" },
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Cache-Control", "value": "public, max-age=86400" }
       ]

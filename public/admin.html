@@ -95,9 +95,10 @@
       <aside class="admin-sidebar glass-card">
         <button class="admin-nav-btn active" data-adm-tab="overview">📊 Overview</button>
         <button class="admin-nav-btn" data-adm-tab="channels">📺 Channels &amp; M3U8</button>
+        <button class="admin-nav-btn" data-adm-tab="imdb">🎬 IMDb Movies &amp; Series</button>
         <button class="admin-nav-btn" data-adm-tab="import">📥 Bulk M3U Import/Export</button>
         <button class="admin-nav-btn" data-adm-tab="github">🐙 GitHub M3U8 Push</button>
-        <button class="admin-nav-btn" data-adm-tab="defaults">🎬 Video Defaults &amp; PRO</button>
+        <button class="admin-nav-btn" data-adm-tab="defaults">🎥 Intro, Offline &amp; PRO Videos</button>
         <button class="admin-nav-btn" data-adm-tab="xtream">⚡ Xtream &amp; PRO Users</button>
         <button class="admin-nav-btn" data-adm-tab="seo">🚀 Blogs &amp; Search Console</button>
         <button class="admin-nav-btn" data-adm-tab="support">🎫 Tickets, Reviews &amp; Rules</button>
@@ -127,15 +128,21 @@
               <div class="kpi-num" id="kpiTickets">0</div>
               <div class="muted-sm" id="kpiReviewsSub">0 Reviews</div>
             </div>
+            <div class="kpi-card glass-card">
+              <div class="muted-sm">IMDb Cinema &amp; Series</div>
+              <div class="kpi-num" id="kpiImdb">0</div>
+              <div class="muted-sm" id="kpiImdbSub">0 Movies • 0 Series</div>
+            </div>
           </div>
 
           <div class="glass-card" style="padding:22px;">
             <h2 style="margin-top:0;">🚀 BarakatWave Broadcast Control Actions</h2>
-            <p class="muted-sm">Sync default catalog to Firebase Realtime Database, push `.m3u8` channel files to GitHub, or ping Google/IndexNow search engines.</p>
+            <p class="muted-sm">Sync default Live Channels, IMDb Movies/Series &amp; 16 SEO Blogs to Firebase Realtime Database, push `.m3u8` channel files to GitHub, or ping Google/IndexNow search engines.</p>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
-              <button class="btn btn-primary" id="seedRtdbBtn">🔄 Sync Seed Channels &amp; Blogs to Firebase RTDB</button>
-              <button class="btn btn-gold" data-jump-adm="github">🐙 Push Channel M3U8s to GitHub</button>
-              <button class="btn btn-outline" data-jump-adm="defaults">🎬 Configure Intro &amp; PRO Videos</button>
+              <button class="btn btn-primary" id="seedRtdbBtn">🔄 Sync Channels, IMDb VOD &amp; 16 Blogs to RTDB</button>
+              <button class="btn btn-gold" data-jump-adm="imdb">🎬 Add Movies/Series by IMDb ID</button>
+              <button class="btn btn-outline" data-jump-adm="defaults">🎥 Intro, Offline &amp; Coming Soon Videos</button>
+              <button class="btn btn-outline" data-jump-adm="github">🐙 Push Channel M3U8s to GitHub</button>
               <button class="btn btn-outline" id="quickPingSeoBtn">🌐 Ping IndexNow Search Engines</button>
             </div>
           </div>
@@ -221,6 +228,10 @@
                   <label>Per-Channel PRO Unlock Video Override (optional)</label>
                   <input type="text" id="chProUnlockOverride" class="input-field" placeholder="Blank = Global PRO Unlock Video from Tab 5" />
                 </div>
+                <div class="form-group">
+                  <label>Per-Channel Offline Standby Video Override (optional)</label>
+                  <input type="text" id="chOfflineOverride" class="input-field" placeholder="Blank = Global Channel Offline Video from Tab 5" />
+                </div>
               </div>
 
               <div style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -294,6 +305,148 @@
                   </tr>
                 </thead>
                 <tbody id="admChannelsTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB 2B: IMDb MOVIES & SERIES AUTO-LOADER STUDIO -->
+        <section data-adm-panel="imdb" hidden>
+          <div class="glass-card" style="padding:22px;margin-bottom:18px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+              <div>
+                <span class="badge badge-gold">⭐ 1-CLICK IMDb ID AUTO-LOADER</span>
+                <h2 style="margin:6px 0 3px;" id="imdbFormHeading">🎬 Add / Edit Movie or TV Series via IMDb ID</h2>
+                <p class="muted-sm" style="margin:0;">Paste any IMDb ID (e.g. <code>tt1375666</code>, <code>tt4139928</code>, <code>tt4320258</code>) — Title, Official IMDb Rating, Poster, Backdrop, Cast, Plot &amp; Episodes load automatically for Web + Xtream VOD/Series!</p>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1.4fr auto auto;gap:8px;align-items:end;margin-bottom:14px;">
+              <div class="form-group">
+                <label>IMDb ID or IMDb Title URL *</label>
+                <input type="text" id="admImdbIdInput" class="input-field" placeholder="e.g. tt1375666 or https://www.imdb.com/title/tt4320258/" />
+              </div>
+              <select id="admImdbTypeSelect" class="input-field" style="width:165px;">
+                <option value="auto">✨ Auto-Detect Type</option>
+                <option value="movie">🎬 Movie (VOD)</option>
+                <option value="series">📺 TV Series</option>
+              </select>
+              <button type="button" class="btn btn-gold" id="admFetchImdbBtn">⚡ Fetch IMDb Rating &amp; Info</button>
+            </div>
+
+            <form id="imdbForm" class="form-stack">
+              <input type="hidden" id="imdbEditKey" />
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:10px;">
+                <div class="form-group">
+                  <label>Title *</label>
+                  <input type="text" id="imdbTitleInput" class="input-field" placeholder="Auto-filled from IMDb" required />
+                </div>
+                <div class="form-group">
+                  <label>Media Kind *</label>
+                  <select id="imdbKindSelect" class="input-field">
+                    <option value="movie">🎬 Movie (Xtream VOD)</option>
+                    <option value="series">📺 TV Series (Xtream Series)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>IMDb Rating (out of 10) *</label>
+                  <input type="text" id="imdbRatingInput" class="input-field" placeholder="e.g. 8.8" value="8.5" required />
+                </div>
+                <div class="form-group">
+                  <label>Release Year</label>
+                  <input type="text" id="imdbYearInput" class="input-field" placeholder="2024" />
+                </div>
+                <div class="form-group">
+                  <label>Category (Xtream Folder)</label>
+                  <select id="imdbCategorySelect" class="input-field"></select>
+                </div>
+                <div class="form-group">
+                  <label>Access Tier</label>
+                  <select id="imdbTierSelect" class="input-field">
+                    <option value="free">🟢 FREE Access</option>
+                    <option value="pro">👑 PRO VIP</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
+                <div class="form-group">
+                  <label>Poster URL (Auto-loaded from IMDb)</label>
+                  <input type="text" id="imdbPosterInput" class="input-field" placeholder="https://..." />
+                </div>
+                <div class="form-group">
+                  <label>Backdrop URL (Auto-loaded from IMDb)</label>
+                  <input type="text" id="imdbBackdropInput" class="input-field" placeholder="https://..." />
+                </div>
+                <div class="form-group">
+                  <label>Optional Direct Stream URL (.mp4 / .m3u8) — Leave Blank for "Coming Soon" Video</label>
+                  <input type="text" id="imdbStreamUrlInput" class="input-field" placeholder="Blank = Plays 'Service is Building — Coming Soon' Video!" />
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
+                <div class="form-group">
+                  <label>Genres (comma separated)</label>
+                  <input type="text" id="imdbGenresInput" class="input-field" placeholder="Action, Drama, Sci-Fi" />
+                </div>
+                <div class="form-group">
+                  <label>Director</label>
+                  <input type="text" id="imdbDirectorInput" class="input-field" placeholder="Christopher Nolan" />
+                </div>
+                <div class="form-group">
+                  <label>Cast / Stars</label>
+                  <input type="text" id="imdbCastInput" class="input-field" placeholder="Lead Actors" />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Synopsis / Plot</label>
+                <textarea id="imdbPlotInput" rows="2" class="input-field" placeholder="Auto-filled plot summary from IMDb..."></textarea>
+              </div>
+
+              <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button type="submit" class="btn btn-primary">💾 Save to RTDB &amp; Xtream VOD/Series</button>
+                <button type="button" class="btn btn-outline" id="imdbResetBtn">Reset Form</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Bulk IMDb ID Importer -->
+          <div class="glass-card" style="padding:20px;margin-bottom:18px;">
+            <h3 style="margin:0 0 6px;">⚡ Bulk IMDb ID Importer (Movies &amp; Series)</h3>
+            <p class="muted-sm" style="margin:0 0 10px;">Paste multiple <code>tt...</code> IMDb IDs separated by commas, spaces, or newlines — BarakatWave fetches every title, rating, poster &amp; episode automatically!</p>
+            <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;">
+              <textarea id="admBulkImdbIds" rows="2" class="input-field" placeholder="tt4139928, tt1375666, tt0816692, tt4320258, tt15135108"></textarea>
+              <button type="button" class="btn btn-gold" id="admBulkImdbImportBtn">🚀 Auto-Load &amp; Save All IMDb IDs</button>
+            </div>
+          </div>
+
+          <!-- Active Movies & Series Table -->
+          <div class="glass-card" style="padding:22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+              <h3 style="margin:0;">🎬 Active IMDb Movies &amp; Series (<span id="admImdbCount">0</span>)</h3>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <select id="admImdbFilterKind" class="select-compact">
+                  <option value="all">🌐 All (Movies + Series)</option>
+                  <option value="movie">🎬 Movies Only</option>
+                  <option value="series">📺 Series Only</option>
+                </select>
+                <input type="search" id="admImdbFilterSearch" class="input-field" placeholder="🔍 Search title or tt..." style="max-width:240px;" />
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>IMDb &amp; Rating</th>
+                    <th>Title &amp; Poster</th>
+                    <th>Kind &amp; Xtream Category</th>
+                    <th>Playback Status</th>
+                    <th>Tier</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="admImdbTbody"></tbody>
               </table>
             </div>
           </div>
@@ -388,37 +541,39 @@
               <span class="badge badge-cyan">UNIVERSAL XTREAM + HLS M3U8 + WEB STITCHING ENGINE</span>
               <span class="badge badge-free" id="rtdbIptvHealthBadge">Checking IPTV Cloud Sync...</span>
             </div>
-            <h2 style="margin:8px 0 6px;">🎬 Channel Intro Video &amp; Premium PRO Unlock Video Studio</h2>
+            <h2 style="margin:8px 0 6px;">🎥 Broadcast Videos Studio: Intro, Channel Offline, Coming Soon &amp; PRO Unlock</h2>
             <p class="muted-sm" style="margin-top:0;">
-              Configure your network Intro video (plays first, then automatically switches directly to the Live Channel) and your Premium Unlock video (plays continuously when a Free user opens any <code>👑 PRO VIP</code> channel — visible across Web, IPTV Smarters Pro, TiviMate, XCIPTV &amp; VLC!).
+              Configure all 4 automated broadcast videos engineered for <strong>Televizo, TiviMate, IPTV Smarters Pro, XCIPTV, VLC &amp; Web</strong>: (1) Intro Pre-Roll ➔ Live TV, (2) Channel Offline Standby, (3) Movies/Series Coming Soon, and (4) PRO VIP Unlock (<code>0306-2015326</code>).
             </p>
 
             <div class="flow-grid">
               <div class="flow-card">
-                <span class="badge badge-cyan">FLOW 1 • EVERY ALLOWED CHANNEL</span>
-                <h4 style="margin-top:8px;">Intro Video ➔ Auto-Direct to Live Channel</h4>
+                <span class="badge badge-cyan">FLOW 1 • TELEVIZO + WEB INTRO</span>
+                <h4 style="margin-top:8px;">Pure Intro ➔ Auto-Direct to Live TV</h4>
                 <div class="flow-steps">
-                  <span class="flow-pill">1️⃣ Intro Plays First</span>
+                  <span class="flow-pill">1️⃣ Pure Intro (0.0s)</span>
                   <span>➔</span>
                   <span class="flow-pill">2️⃣ #EXT-X-DISCONTINUITY</span>
                   <span>➔</span>
-                  <span class="flow-pill">3️⃣ Live Channel Plays!</span>
+                  <span class="flow-pill">3️⃣ Live Channel!</span>
                 </div>
-                <div style="margin-top:10px;">
-                  <button type="button" class="btn btn-sm btn-primary" id="simIntroToLiveBtn">▶ Test Full Flow (Intro ➔ Live Channel)</button>
+                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+                  <button type="button" class="btn btn-sm btn-primary" id="simIntroToLiveBtn">▶ Test Intro ➔ Live</button>
+                  <button type="button" class="btn btn-sm btn-outline" id="simOfflineVideoBtn">📡 Test Channel Offline Video</button>
                 </div>
               </div>
 
               <div class="flow-card" style="border-color:var(--border-strong);">
-                <span class="badge badge-gold">FLOW 2 • FREE USER ON PRO CHANNEL</span>
-                <h4 style="margin-top:8px;">PRO Channel Visible ➔ Plays Unlock Video</h4>
+                <span class="badge badge-gold">FLOW 2 • PRO VIP &amp; IMDb COMING SOON</span>
+                <h4 style="margin-top:8px;">PRO Unlock &amp; VOD Service Building</h4>
                 <div class="flow-steps">
-                  <span class="flow-pill">👁 Visible in Channel List</span>
-                  <span>➔</span>
-                  <span class="flow-pill">🔒 Loops PRO Unlock Video (0306-2015326)</span>
+                  <span class="flow-pill">🔒 PRO Unlock (0306-2015326)</span>
+                  <span>&bull;</span>
+                  <span class="flow-pill">🎬 Movies/Series Coming Soon</span>
                 </div>
-                <div style="margin-top:10px;">
-                  <button type="button" class="btn btn-sm btn-gold" id="simProLockedBtn">🔒 Test Free User Opening PRO Channel</button>
+                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+                  <button type="button" class="btn btn-sm btn-gold" id="simProLockedBtn">🔒 Test PRO Unlock</button>
+                  <button type="button" class="btn btn-sm btn-outline" id="simComingSoonBtn">🎬 Test Coming Soon VOD</button>
                 </div>
               </div>
             </div>
@@ -476,6 +631,34 @@
                     <label>Top Site Announcement Ticker</label>
                     <input type="text" id="defAnnouncement" class="input-field" />
                   </div>
+                </div>
+              </div>
+
+              <!-- Channel Offline Standby Video Card -->
+              <div class="cred-box" style="padding:18px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+                  <strong>3. Channel Offline / Stream Broken Standby Video (Auto-Failover)</strong>
+                  <span class="badge badge-cyan">AUTO-PLAYS WHEN CHANNEL LINK FAILS</span>
+                </div>
+                <p class="muted-sm" style="margin:0 0 8px;">Whenever any channel's primary &amp; backup <code>.m3u8</code> links go offline or fail, BarakatWave automatically streams this video across Televizo, Smarters, TiviMate &amp; Web!</p>
+                <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;">
+                  <input type="text" id="defOfflineVideoUrl" class="input-field" placeholder="/media/channel-offline/index.m3u8" />
+                  <button type="button" class="btn btn-sm btn-outline" id="previewOfflineVidBtn">▶ Preview Clip</button>
+                  <button type="button" class="btn btn-sm btn-outline" id="resetOfflineVidBtn">Built-in Offline Video</button>
+                </div>
+              </div>
+
+              <!-- Movies & Series Coming Soon Video Card -->
+              <div class="cred-box" style="padding:18px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+                  <strong>4. IMDb Movies &amp; Series "Service is Building — Coming Soon" Video</strong>
+                  <span class="badge badge-gold">PLAYS ON ALL IMDb VOD &amp; SERIES</span>
+                </div>
+                <p class="muted-sm" style="margin:0 0 8px;">Plays automatically on all IMDb Movies &amp; TV Series (Web + Xtream <code>/movie/</code> &amp; <code>/series/</code>) until a direct movie/episode URL is added.</p>
+                <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;">
+                  <input type="text" id="defComingSoonVideoUrl" class="input-field" placeholder="/media/coming-soon/index.m3u8" />
+                  <button type="button" class="btn btn-sm btn-outline" id="previewComingSoonVidBtn">▶ Preview Clip</button>
+                  <button type="button" class="btn btn-sm btn-outline" id="resetComingSoonVidBtn">Built-in Coming Soon Video</button>
                 </div>
               </div>
 

@@ -1632,7 +1632,7 @@ select.input-field {
     bottom: 0;
     z-index: 65;
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     background: var(--header-bg);
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
@@ -1816,4 +1816,173 @@ tr.drag-over-row td {
   color: var(--gold-text);
   border-color: var(--border-strong);
 }
+
+/* ==========================================================================
+   IMDb Cinema & TV Series Hub + Executive Founder Profile (Muaaz Iqbal)
+   ========================================================================== */
+
+.cinema-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+  gap: 18px;
+}
+
+.cinema-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cinema-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--primary);
+}
+
+.cinema-poster-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  background: linear-gradient(145deg, #0b1830 0%, #1d1542 100%);
+  overflow: hidden;
+}
+
+.cinema-poster-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.imdb-rating-pill {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(12, 16, 26, 0.88);
+  color: #f5c518;
+  font-size: 0.75rem;
+  font-weight: 800;
+  border: 1px solid rgba(245, 197, 24, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.cinema-type-pill {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  background: rgba(12, 16, 26, 0.84);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.cinema-coming-ribbon {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 10px;
+  font-size: 0.69rem;
+  font-weight: 800;
+  text-align: center;
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.92), rgba(124, 58, 237, 0.92));
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+
+.cinema-card-body {
+  padding: 12px 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+}
+
+.cinema-card-title {
+  font-weight: 800;
+  font-size: 0.93rem;
+  line-height: 1.3;
+}
+
+.cinema-modal-box {
+  width: min(860px, 95vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 0;
+  border-radius: 22px;
+}
+
+.cinema-modal-hero {
+  position: relative;
+  padding: 28px 26px 22px;
+  background-size: cover;
+  background-position: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.cinema-modal-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(7, 13, 25, 0.76) 0%, rgba(7, 13, 25, 0.94) 100%);
+}
+
+.cinema-modal-hero-inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 155px 1fr;
+  gap: 20px;
+  align-items: start;
+  color: #f8fafc;
+}
+
+@media (max-width: 640px) {
+  .cinema-modal-hero-inner {
+    grid-template-columns: 1fr;
+  }
+}
+
+.founder-spotlight {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 22px;
+  padding: 26px;
+  margin-top: 28px;
+}
+
+@media (max-width: 860px) {
+  .founder-spotlight {
+    grid-template-columns: 1fr;
+  }
+}
+
+.founder-pillar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.founder-pillar-card {
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+}
+
 

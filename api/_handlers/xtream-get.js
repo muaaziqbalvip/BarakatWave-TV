@@ -4,7 +4,7 @@ import {
   parseQuery,
   sendText
 } from "../_lib/origin.js";
-import { getChannels, verifyXtreamCredentials } from "../_lib/rtdb.js";
+import { getChannels, getMovies, getSeries, verifyXtreamCredentials } from "../_lib/rtdb.js";
 import { BRAND } from "../../data/catalog.js";
 
 export default async function handler(req, res) {
@@ -25,7 +25,11 @@ export default async function handler(req, res) {
     );
   }
 
-  const channels = await getChannels();
+  const [channels, movies, seriesList] = await Promise.all([
+    getChannels(),
+    getMovies(),
+    getSeries()
+  ]);
   const epgUrl = `${baseUrl}/xmltv.php?username=${encodeURIComponent(acct.username)}&password=${encodeURIComponent(acct.password)}`;
 
   const lines = [`#EXTM3U x-tvg-url="${epgUrl}" url-tvg="${epgUrl}"`];
@@ -52,6 +56,28 @@ export default async function handler(req, res) {
     );
     lines.push(
       `${baseUrl}/live/${encodeURIComponent(acct.username)}/${encodeURIComponent(acct.password)}/${ch.streamId}.m3u8`
+    );
+  }
+
+  // Append IMDb VOD Movies & Series into M3U Plus playlist as well
+  for (const m of movies) {
+    const title = `🎬 ${m.title} (${m.year}) ⭐ ${m.imdbRating} [${m.streamUrl ? "HD" : "Coming Soon"}]`.replace(/"/g, "'");
+    const grp = (m.category || "🎬 🍿 IMDb MOVIES").replace(/"/g, "'");
+    const logo = (m.poster || BRAND.logoPrimary).replace(/"/g, "");
+    lines.push(`#EXTINF:-1 tvg-id="${m.imdbId}" tvg-name="${title}" tvg-logo="${logo}" group-title="${grp}",${title}`);
+    lines.push(
+      `${baseUrl}/movie/${encodeURIComponent(acct.username)}/${encodeURIComponent(acct.password)}/${m.streamId}.mp4`
+    );
+  }
+
+  for (const s of seriesList) {
+    const firstEp = (s.episodes && s.episodes[0]) || { id: `${s.seriesId}0101`, title: `${s.title} S01E01` };
+    const title = `📺 ${s.title} ⭐ ${s.imdbRating} — S01E01 [${firstEp.streamUrl || s.streamUrl ? "HD" : "Coming Soon"}]`.replace(/"/g, "'");
+    const grp = (s.category || "📺 ⭐ IMDb SERIES").replace(/"/g, "'");
+    const logo = (s.poster || BRAND.logoPrimary).replace(/"/g, "");
+    lines.push(`#EXTINF:-1 tvg-id="${s.imdbId}" tvg-name="${title}" tvg-logo="${logo}" group-title="${grp}",${title}`);
+    lines.push(
+      `${baseUrl}/series/${encodeURIComponent(acct.username)}/${encodeURIComponent(acct.password)}/${firstEp.id}.mp4`
     );
   }
 

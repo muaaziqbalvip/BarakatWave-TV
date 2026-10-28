@@ -8,6 +8,10 @@ import {
 import {
   getCategoriesFromChannels,
   getChannels,
+  getMovies,
+  getSeries,
+  getVodCategoriesList,
+  getSeriesCategoriesList,
   verifyXtreamCredentials
 } from "../_lib/rtdb.js";
 import { BRAND } from "../../data/catalog.js";
@@ -78,15 +82,15 @@ export default async function handler(req, res) {
     return sendJson(res, 200, { user_info: userInfo, server_info: serverInfo });
   }
 
-  const channels = await getChannels();
-
+  // ==================== LIVE TV CATEGORIES & STREAMS ====================
   if (action === "get_live_categories") {
+    const channels = await getChannels();
     const categories = await getCategoriesFromChannels(channels);
     return sendJson(res, 200, categories);
   }
 
   if (action === "get_live_streams") {
-    // Ensure custom category_ids are resolved consistently with get_live_categories
+    const channels = await getChannels();
     await getCategoriesFromChannels(channels);
     const filterCat = params.category_id ? String(params.category_id) : "";
     const filtered = filterCat
@@ -125,16 +129,217 @@ export default async function handler(req, res) {
     return sendJson(res, 200, streams);
   }
 
-  if (
-    action === "get_vod_categories" ||
-    action === "get_vod_streams" ||
-    action === "get_series_categories" ||
-    action === "get_series"
-  ) {
-    return sendJson(res, 200, []);
+  // ==================== IMDb VOD MOVIES CATEGORIES, STREAMS & INFO ====================
+  if (action === "get_vod_categories") {
+    const movies = await getMovies();
+    return sendJson(res, 200, getVodCategoriesList(movies));
   }
 
+  if (action === "get_vod_streams") {
+    const movies = await getMovies();
+    const filterCat = params.category_id ? String(params.category_id) : "";
+    const filtered = filterCat
+      ? movies.filter((m) => String(m.categoryId) === filterCat)
+      : movies;
+
+    const vodList = filtered.map((m, idx) => {
+      const ratingNum = parseFloat(m.imdbRating) || 8.0;
+      const ext = m.streamUrl && /\.m3u8($|\?)/i.test(m.streamUrl) ? "m3u8" : "mp4";
+      const statusTag = m.streamUrl ? "HD" : "Coming Soon";
+      const lockPrefix = m.tier === "pro" && acct.effectivePlan !== "pro" ? "🔒 👑 " : "🎬 ";
+      return {
+        num: idx + 1,
+        name: `${lockPrefix}${m.title} (${m.year}) ⭐ ${ratingNum.toFixed(1)} [${statusTag}]`,
+        stream_type: "movie",
+        stream_id: Number(m.streamId),
+        stream_icon: m.poster || BRAND.logoPrimary,
+        rating: ratingNum.toFixed(1),
+        rating_5based: Number((ratingNum / 2).toFixed(1)),
+        added: String(createdSec),
+        is_adult: "0",
+        category_id: String(m.categoryId || "101"),
+        category_ids: [Number(m.categoryId || 101)],
+        container_extension: ext,
+        custom_sid: m.imdbId || "",
+        direct_source: "",
+        imdb_id: m.imdbId || ""
+      };
+    });
+    return sendJson(res, 200, vodList);
+  }
+
+  if (action === "get_vod_info") {
+    const vodId = String(params.vod_id || params.stream_id || "").trim();
+    const movies = await getMovies();
+    const m =
+      movies.find((item) => String(item.streamId) === vodId || item.imdbId === vodId) ||
+      movies[0];
+    if (!m) return sendJson(res, 200, { info: {}, movie_data: {} });
+
+    const ratingNum = parseFloat(m.imdbRating) || 8.0;
+    const ext = m.streamUrl && /\.m3u8($|\?)/i.test(m.streamUrl) ? "m3u8" : "mp4";
+    const durMin = parseInt(String(m.runtime || "130"), 10) || 130;
+    const genreStr = Array.isArray(m.genres) ? m.genres.join(", ") : String(m.genres || "Cinema");
+    const statusNote = m.streamUrl
+      ? "Streaming in Full HD on BarakatWave Cinema."
+      : "🚧 BarakatWave Cinema VOD Service is Building — Coming Soon! Press Play to preview official status.";
+
+    return sendJson(res, 200, {
+      info: {
+        imdb_id: m.imdbId,
+        tmdb_id: m.imdbId,
+        name: `${m.title} (${m.year})`,
+        o_name: m.title,
+        cover_big: m.poster || BRAND.logoPrimary,
+        movie_image: m.poster || BRAND.logoPrimary,
+        releasedate: `${m.year}-01-01`,
+        episode_run_time: String(durMin),
+        youtube_trailer: "",
+        director: m.director || "IMDb Official Selection",
+        actors: m.cast || "",
+        cast: m.cast || "",
+        description: `${m.plot || ""}\n\n[IMDb: ${m.imdbId} • ⭐ ${ratingNum.toFixed(1)}/10] ${statusNote}`,
+        plot: `${m.plot || ""} • [IMDb ${m.imdbId} ⭐ ${ratingNum.toFixed(1)}/10] ${statusNote}`,
+        age: "Family / PG-13",
+        mpaa_rating: "PG-13",
+        rating_count_kinopoisk: 1000,
+        country: m.country || "INT",
+        genre: genreStr,
+        backdrop_path: m.backdrop ? [m.backdrop] : [BRAND.logoPrimary],
+        duration_secs: durMin * 60,
+        duration: `${String(Math.floor(durMin / 60)).padStart(2, "0")}:${String(durMin % 60).padStart(2, "0")}:00`,
+        video: {},
+        audio: {},
+        bitrate: 2500,
+        rating: ratingNum.toFixed(1)
+      },
+      movie_data: {
+        stream_id: Number(m.streamId),
+        name: `${m.title} (${m.year}) ⭐ ${ratingNum.toFixed(1)}`,
+        added: String(createdSec),
+        category_id: String(m.categoryId || "101"),
+        container_extension: ext,
+        custom_sid: m.imdbId || "",
+        direct_source: ""
+      }
+    });
+  }
+
+  // ==================== IMDb TV SERIES CATEGORIES, SERIES LIST & EPISODE INFO ====================
+  if (action === "get_series_categories") {
+    const seriesList = await getSeries();
+    return sendJson(res, 200, getSeriesCategoriesList(seriesList));
+  }
+
+  if (action === "get_series") {
+    const seriesList = await getSeries();
+    const filterCat = params.category_id ? String(params.category_id) : "";
+    const filtered = filterCat
+      ? seriesList.filter((s) => String(s.categoryId) === filterCat)
+      : seriesList;
+
+    const out = filtered.map((s, idx) => {
+      const ratingNum = parseFloat(s.imdbRating) || 8.5;
+      const genreStr = Array.isArray(s.genres) ? s.genres.join(", ") : String(s.genres || "Drama");
+      const lockPrefix = s.tier === "pro" && acct.effectivePlan !== "pro" ? "🔒 👑 " : "📺 ";
+      return {
+        num: idx + 1,
+        name: `${lockPrefix}${s.title} ⭐ ${ratingNum.toFixed(1)} [IMDb]`,
+        series_id: Number(s.seriesId),
+        cover: s.poster || BRAND.logoPrimary,
+        plot: `${s.plot || ""} [IMDb: ${s.imdbId} • ⭐ ${ratingNum.toFixed(1)}/10 • Service Building — Coming Soon]`,
+        cast: s.cast || "",
+        director: s.director || "",
+        genre: genreStr,
+        releaseDate: String(s.year || "2024"),
+        last_modified: String(nowSec),
+        rating: ratingNum.toFixed(1),
+        rating_5based: Number((ratingNum / 2).toFixed(1)),
+        backdrop_path: s.backdrop ? [s.backdrop] : [BRAND.logoPrimary],
+        youtube_trailer: "",
+        episode_run_time: String(parseInt(String(s.runtime || "45"), 10) || 45),
+        category_id: String(s.categoryId || "201"),
+        category_ids: [Number(s.categoryId || 201)],
+        imdb_id: s.imdbId || ""
+      };
+    });
+    return sendJson(res, 200, out);
+  }
+
+  if (action === "get_series_info") {
+    const seriesId = String(params.series_id || "").trim();
+    const seriesList = await getSeries();
+    const s =
+      seriesList.find((item) => String(item.seriesId) === seriesId || item.imdbId === seriesId) ||
+      seriesList[0];
+    if (!s) return sendJson(res, 200, { seasons: [], info: {}, episodes: {} });
+
+    const ratingNum = parseFloat(s.imdbRating) || 8.5;
+    const genreStr = Array.isArray(s.genres) ? s.genres.join(", ") : String(s.genres || "Drama");
+    const episodesBySeason = {};
+    const seasonsMap = new Map();
+
+    for (const ep of s.episodes || []) {
+      const sNum = String(Number(ep.season) || 1);
+      if (!episodesBySeason[sNum]) episodesBySeason[sNum] = [];
+      const epExt = (ep.streamUrl || s.streamUrl) && /\.m3u8($|\?)/i.test(ep.streamUrl || s.streamUrl) ? "m3u8" : "mp4";
+      episodesBySeason[sNum].push({
+        id: String(ep.id),
+        episode_num: Number(ep.episode) || episodesBySeason[sNum].length + 1,
+        title: `${ep.title} ${ep.streamUrl || s.streamUrl ? "[HD]" : "[Coming Soon]"}`,
+        container_extension: epExt,
+        info: {
+          imdb_id: s.imdbId,
+          movie_image: ep.thumbnail || s.backdrop || s.poster || BRAND.logoPrimary,
+          plot: ep.plot || s.plot || "Service is building — Coming Soon on BarakatWave TV!",
+          releasedate: String(s.year || "2024"),
+          rating: ratingNum,
+          duration_secs: 2700,
+          duration: "00:45:00"
+        },
+        custom_sid: s.imdbId || "",
+        added: String(createdSec),
+        season: Number(sNum),
+        direct_source: ""
+      });
+      seasonsMap.set(Number(sNum), {
+        air_date: `${String(s.year || "2024").slice(0, 4)}-01-01`,
+        episode_count: episodesBySeason[sNum].length,
+        id: Number(sNum),
+        name: `Season ${sNum}`,
+        overview: `${s.title} — Season ${sNum} (IMDb ${s.imdbId})`,
+        season_number: Number(sNum),
+        cover: s.poster || BRAND.logoPrimary,
+        cover_big: s.poster || BRAND.logoPrimary
+      });
+    }
+
+    return sendJson(res, 200, {
+      seasons: [...seasonsMap.values()],
+      info: {
+        name: `${s.title} ⭐ ${ratingNum.toFixed(1)}`,
+        cover: s.poster || BRAND.logoPrimary,
+        plot: `${s.plot || ""} [IMDb: ${s.imdbId} • ⭐ ${ratingNum.toFixed(1)}/10]`,
+        cast: s.cast || "",
+        director: s.director || "",
+        genre: genreStr,
+        releaseDate: String(s.year || "2024"),
+        last_modified: String(nowSec),
+        rating: ratingNum.toFixed(1),
+        rating_5based: Number((ratingNum / 2).toFixed(1)),
+        backdrop_path: s.backdrop ? [s.backdrop] : [BRAND.logoPrimary],
+        youtube_trailer: "",
+        episode_run_time: String(parseInt(String(s.runtime || "45"), 10) || 45),
+        category_id: String(s.categoryId || "201"),
+        imdb_id: s.imdbId
+      },
+      episodes: episodesBySeason
+    });
+  }
+
+  // ==================== EPG ====================
   if (action === "get_short_epg" || action === "get_simple_data_table") {
+    const channels = await getChannels();
     const streamId = Number(params.stream_id || 0);
     const ch = channels.find((c) => Number(c.streamId) === streamId);
     const title = ch

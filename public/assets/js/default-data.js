@@ -3,6 +3,8 @@
  * (3 Luxury Light Themes + 3 Studio Dark Themes).
  */
 import * as catalog from "./catalog-browser.js";
+import * as imdbSeed from "./imdb-seed.js";
+
 export const {
   BRAND,
   DEFAULT_SETTINGS,
@@ -18,6 +20,18 @@ export const {
   moveChannelToPosition,
   insertOrUpdateChannelSmart
 } = catalog;
+
+export const {
+  VOD_CATEGORIES,
+  SERIES_CATEGORIES,
+  DEFAULT_MOVIES,
+  DEFAULT_SERIES,
+  extractImdbId,
+  inferVodCategory,
+  inferSeriesCategory,
+  metahubPoster,
+  metahubBackdrop
+} = imdbSeed;
 
 export const THEMES = [
   {
