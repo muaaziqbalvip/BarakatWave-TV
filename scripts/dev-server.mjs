@@ -26,6 +26,7 @@ const MIME_TYPES = {
   ".m3u8": "application/vnd.apple.mpegurl; charset=utf-8",
   ".m3u": "audio/x-mpegurl; charset=utf-8",
   ".ts": "video/mp2t",
+  ".m2ts": "video/mp2t",
   ".mp4": "video/mp4"
 };
 

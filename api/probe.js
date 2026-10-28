@@ -1,39 +1,44 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { handleOptions, parseBody, parseQuery, sendJson } from "./_lib/origin.js";
+import {
+  getRequestBaseUrl,
+  handleOptions,
+  parseBody,
+  parseQuery,
+  sendJson
+} from "./_lib/origin.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PUBLIC_DIR = path.resolve(__dirname, "../public");
+const KNOWN_LOCAL_STREAMS = new Set([
+  "/media/welcome/index.m3u8",
+  "/media/pro-unlock/index.m3u8",
+  "/media/demo-live/index.m3u8"
+]);
 
-async function probeSingleUrl(rawUrl) {
+async function probeSingleUrl(rawUrl, baseUrl) {
   const url = String(rawUrl || "").trim();
   const start = Date.now();
   if (!url) return { url, ok: false, status: 0, latencyMs: 0, error: "Empty URL" };
 
-  if (url.startsWith("/")) {
-    const cleanRel = url.split("?")[0].replace(/^\/+/, "");
-    const disk = path.join(PUBLIC_DIR, cleanRel);
-    const exists = fs.existsSync(disk);
+  const cleanLocal = url.split("?")[0];
+  if (KNOWN_LOCAL_STREAMS.has(cleanLocal)) {
     return {
       url,
-      ok: exists,
-      status: exists ? 200 : 404,
-      latencyMs: Date.now() - start + 1,
-      isHls: cleanRel.endsWith(".m3u8"),
+      ok: true,
+      status: 200,
+      latencyMs: 1,
+      isHls: true,
       local: true,
-      error: exists ? null : "Local media file missing"
+      error: null
     };
   }
 
-  if (!/^https?:\/\//i.test(url)) {
+  const effectiveUrl = url.startsWith("/") ? `${baseUrl}${url}` : url;
+  if (!/^https?:\/\//i.test(effectiveUrl)) {
     return { url, ok: false, status: 0, latencyMs: 0, error: "Must start with http://, https://, or /" };
   }
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 5000);
   try {
-    const res = await fetch(url, {
+    const res = await fetch(effectiveUrl, {
       method: "GET",
       signal: ctrl.signal,
       headers: {
@@ -48,10 +53,10 @@ async function probeSingleUrl(rawUrl) {
     }
     const ct = (res.headers.get("content-type") || "").toLowerCase();
     let sample = "";
-    if (ct.includes("mpegurl") || ct.includes("text") || url.toLowerCase().includes(".m3u8")) {
+    if (ct.includes("mpegurl") || ct.includes("text") || effectiveUrl.toLowerCase().includes(".m3u8")) {
       sample = (await res.text()).slice(0, 1200);
     }
-    const isHls = sample.includes("#EXTM3U") || ct.includes("mpegurl") || url.toLowerCase().includes(".m3u8");
+    const isHls = sample.includes("#EXTM3U") || ct.includes("mpegurl") || effectiveUrl.toLowerCase().includes(".m3u8");
     return {
       url,
       ok: true,
@@ -78,6 +83,7 @@ export default async function handler(req, res) {
 
   const q = parseQuery(req);
   const body = req.method === "POST" ? await parseBody(req) : {};
+  const baseUrl = getRequestBaseUrl(req);
   const urls = Array.isArray(body.urls)
     ? body.urls
     : q.url
@@ -91,6 +97,6 @@ export default async function handler(req, res) {
   }
 
   const capped = urls.slice(0, 40);
-  const results = await Promise.all(capped.map((u) => probeSingleUrl(u)));
+  const results = await Promise.all(capped.map((u) => probeSingleUrl(u, baseUrl)));
   return sendJson(res, 200, { ok: true, count: results.length, results });
 }

@@ -86,10 +86,16 @@ async function run() {
     const variantLine = liveFreeMaster.split("\n").find((l) => l.startsWith("http"));
     const liveFreeMedia = await (await fetch(variantLine)).text();
     check(
-      "Live Free media manifest stitches Welcome Intro .ts + #EXT-X-DISCONTINUITY + Live segments",
-      liveFreeMedia.includes("/media/welcome/seg0.ts") &&
+      "Live Free media manifest stitches Welcome Intro .m2ts + #EXT-X-DISCONTINUITY + Live segments",
+      liveFreeMedia.includes("/media/welcome/seg0.m2ts") &&
         liveFreeMedia.includes("#EXT-X-DISCONTINUITY") &&
-        liveFreeMedia.includes("/media/demo-live/seg0.ts")
+        liveFreeMedia.includes("/media/demo-live/seg0.m2ts")
+    );
+
+    const welcomeSegRes = await fetch(`${base}/media/welcome/seg0.m2ts`);
+    check(
+      "MPEG-TS .m2ts segment serves HTTP 200 with video/mp2t Content-Type",
+      welcomeSegRes.status === 200 && (welcomeSegRes.headers.get("content-type") || "").includes("video/mp2t")
     );
 
     // 3e. Locked PRO Channel (2001) serves Continuous Live PRO Unlock Video Loop for Free User!

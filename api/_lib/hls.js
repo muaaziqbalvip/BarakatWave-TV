@@ -1,9 +1,37 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+/**
+ * BarakatWave Live TV — Stateless HLS Manifest Parser, Rewriter & Stitcher
+ * Zero filesystem tracing of public/ so Vercel @vercel/node builds cleanly with zero bloat.
+ */
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PUBLIC_DIR = path.resolve(__dirname, "../../public");
+const BUILTIN_LOCAL_CLIPS = {
+  "/media/welcome/index.m3u8": [
+    { duration: 2.0, rel: "/media/welcome/seg0.m2ts" },
+    { duration: 2.0, rel: "/media/welcome/seg1.m2ts" },
+    { duration: 2.0, rel: "/media/welcome/seg2.m2ts" }
+  ],
+  "/media/pro-unlock/index.m3u8": [
+    { duration: 2.0, rel: "/media/pro-unlock/seg0.m2ts" },
+    { duration: 2.0, rel: "/media/pro-unlock/seg1.m2ts" },
+    { duration: 2.0, rel: "/media/pro-unlock/seg2.m2ts" },
+    { duration: 2.0, rel: "/media/pro-unlock/seg3.m2ts" }
+  ],
+  "/media/demo-live/index.m3u8": [
+    { duration: 2.0, rel: "/media/demo-live/seg0.m2ts" },
+    { duration: 2.0, rel: "/media/demo-live/seg1.m2ts" },
+    { duration: 2.0, rel: "/media/demo-live/seg2.m2ts" },
+    { duration: 2.0, rel: "/media/demo-live/seg3.m2ts" }
+  ]
+};
+
+function getBuiltinClipSegments(cleanPath, baseUrl) {
+  const list = BUILTIN_LOCAL_CLIPS[cleanPath];
+  if (!list) return null;
+  return list.map((s) => ({
+    duration: s.duration,
+    infLine: `#EXTINF:${s.duration.toFixed(3)},`,
+    url: `${baseUrl}${s.rel}`
+  }));
+}
 
 /**
  * Parse an HLS media playlist text into structured segments + targetDuration + mediaSequence.
@@ -92,29 +120,34 @@ function rewriteAttributeUri(line, sourcePlaylistUrl, baseUrl, useProxy) {
 }
 
 /**
- * Load a local public/media/*.m3u8 or remote .m3u8/.ts clip into HLS segment descriptors.
+ * Load a built-in /media/*.m3u8 or remote .m3u8/.ts/.mts clip into HLS segment descriptors.
  */
 export async function loadClipSegments(videoUrl, baseUrl, fallbackLocalPath = "/media/welcome/index.m3u8") {
   const target = String(videoUrl || fallbackLocalPath).trim() || fallbackLocalPath;
 
-  // Case 1: Local public path (e.g. /media/welcome/index.m3u8) — instant zero-latency disk read
+  // Case 1: Built-in local broadcast bumper (zero disk / network latency)
   if (target.startsWith("/")) {
-    const cleanRel = target.split("?")[0].replace(/^\/+/, "");
-    const diskPath = path.join(PUBLIC_DIR, cleanRel);
-    if (cleanRel.endsWith(".ts") && fs.existsSync(diskPath)) {
-      return [{ duration: 4.0, infLine: "#EXTINF:4.000,", url: `${baseUrl}/${cleanRel}` }];
+    const cleanRelPath = "/" + target.split("?")[0].replace(/^\/+/, "");
+    const builtin = getBuiltinClipSegments(cleanRelPath, baseUrl);
+    if (builtin) return builtin;
+
+    if (/\.(ts|mts|m2ts)$/i.test(cleanRelPath)) {
+      return [{ duration: 4.0, infLine: "#EXTINF:4.000,", url: `${baseUrl}${cleanRelPath}` }];
     }
-    if (cleanRel.endsWith(".m3u8") && fs.existsSync(diskPath)) {
-      const txt = fs.readFileSync(diskPath, "utf8");
-      const parsed = parseMediaPlaylist(txt, `${baseUrl}/${cleanRel}`, baseUrl, false);
-      if (parsed.segments.length) return parsed.segments;
+    if (cleanRelPath.endsWith(".m3u8")) {
+      const fullLocalUrl = `${baseUrl}${cleanRelPath}`;
+      const txt = await fetchTextWithTimeout(fullLocalUrl, 2500);
+      if (txt) {
+        const parsed = parseMediaPlaylist(txt, fullLocalUrl, baseUrl, false);
+        if (parsed.segments.length) return parsed.segments;
+      }
     }
   }
 
-  // Case 2: Remote URL (.ts or .m3u8)
+  // Case 2: Remote URL (.ts, .mts, or .m3u8)
   if (/^https?:\/\//i.test(target)) {
     const cleanPath = target.split("?")[0].toLowerCase();
-    if (cleanPath.endsWith(".ts")) {
+    if (/\.(ts|mts|m2ts)$/.test(cleanPath)) {
       return [{ duration: 6.0, infLine: "#EXTINF:6.000,", url: `${baseUrl}/api/proxy?u=${encodeURIComponent(target)}` }];
     }
     if (cleanPath.endsWith(".m3u8")) {
@@ -136,20 +169,11 @@ export async function loadClipSegments(videoUrl, baseUrl, fallbackLocalPath = "/
     }
   }
 
-  // Fallback to guaranteed built-in HD bumper so Live M3U8 never breaks
-  const fbClean = fallbackLocalPath.replace(/^\/+/, "");
-  const fbDisk = path.join(PUBLIC_DIR, fbClean);
-  if (fs.existsSync(fbDisk)) {
-    const txt = fs.readFileSync(fbDisk, "utf8");
-    const parsed = parseMediaPlaylist(txt, `${baseUrl}/${fbClean}`, baseUrl, false);
-    if (parsed.segments.length) return parsed.segments;
-  }
-  return [];
+  return getBuiltinClipSegments(fallbackLocalPath, baseUrl) || [];
 }
 
 /**
- * Synthesize an infinite 24/7 sliding-window LIVE HLS Media Playlist from a short looping segment set
- * (Used for Locked PRO Unlock Broadcast Video & built-in 24/7 BarakatWave Promo HD channel).
+ * Synthesize an infinite 24/7 sliding-window LIVE HLS Media Playlist from a short looping segment set.
  * Fully RFC 8216 compliant with #EXT-X-MEDIA-SEQUENCE & #EXT-X-DISCONTINUITY-SEQUENCE!
  */
 export function buildLoopingLiveM3u8(segments, windowSize = 6) {
@@ -161,7 +185,6 @@ export function buildLoopingLiveM3u8(segments, windowSize = 6) {
   const maxDur = Math.max(2, Math.ceil(Math.max(...segments.map((s) => s.duration || 2))));
   const nowSec = Date.now() / 1000;
   const mediaSeq = Math.floor(nowSec / avgDur);
-  // Count how many loop boundaries (idx % N === 0 for idx > 0) occurred before mediaSeq
   const discSeq = Math.floor(mediaSeq / N);
 
   const out = [
@@ -202,7 +225,6 @@ export async function buildChannelLiveMediaM3u8({
 }) {
   const candidates = [channel.url, ...(channel.backupUrls || [])].filter(Boolean);
 
-  // Determine if we are inside the initial Welcome Pre-Roll window
   const introUrl = channel.introVideoUrl || settings.welcomeVideoUrl || "/media/welcome/index.m3u8";
   const introEnabled = !skipIntro && Boolean(settings.welcomeVideoEnabled && introUrl);
   let introSegments = [];
@@ -216,7 +238,6 @@ export async function buildChannelLiveMediaM3u8({
   const elapsed = sessionStartSec > 0 ? Math.max(0, nowSec - sessionStartSec) : 999999;
   const showPreRollNow = introEnabled && introSegments.length > 0 && elapsed < Math.ceil(introTotalSec);
 
-  // Resolve live segments from first healthy candidate
   let liveSegments = [];
   let liveTargetDur = 4;
   let liveMediaSeq = 0;
@@ -229,7 +250,6 @@ export async function buildChannelLiveMediaM3u8({
         if (!showPreRollNow) {
           return buildLoopingLiveM3u8(localSegs, 6);
         }
-        // Build 4 live segments right after pre-roll
         const N = localSegs.length;
         for (let i = 0; i < 4; i++) {
           liveSegments.push(localSegs[i % N]);
@@ -248,7 +268,6 @@ export async function buildChannelLiveMediaM3u8({
     }
   }
 
-  // Fallback to local 24/7 promo broadcast if all external candidates are unreachable in current network
   if (!liveSegments.length) {
     const fbSegs = await loadClipSegments("/media/demo-live/index.m3u8", baseUrl, "/media/demo-live/index.m3u8");
     if (!showPreRollNow) {
@@ -287,7 +306,6 @@ export async function buildChannelLiveMediaM3u8({
     return out.join("\n") + "\n";
   }
 
-  // Pure live window (after intro window has passed)
   const hadIntro = introEnabled && sessionStartSec > 0 ? 1 : 0;
   const out = [
     "#EXTM3U",
@@ -312,7 +330,6 @@ async function fetchLiveMediaSegments(url, baseUrl, customHeaders = {}) {
     if (!text || !text.includes("#EXTM3U")) return null;
     let parsed = parseMediaPlaylist(text, url, baseUrl, true);
     if (parsed.isMaster && parsed.variants.length) {
-      // Pick middle/high quality variant
       const chosen = parsed.variants[Math.min(parsed.variants.length - 1, 1)] || parsed.variants[0];
       const subText = await fetchTextWithTimeout(chosen.url, 4000, customHeaders);
       if (subText && subText.includes("#EXTM3U")) {

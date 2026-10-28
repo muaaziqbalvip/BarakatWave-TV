@@ -8,8 +8,7 @@
   "trailingSlash": false,
   "functions": {
     "api/**/*.js": {
-      "maxDuration": 60,
-      "memory": 512
+      "maxDuration": 60
     }
   },
   "rewrites": [
@@ -35,10 +34,19 @@
   ],
   "headers": [
     {
-      "source": "/media/(.*)",
+      "source": "/media/(.*)\\.m2ts",
       "headers": [
+        { "key": "Content-Type", "value": "video/mp2t" },
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Cache-Control", "value": "public, max-age=86400" }
+      ]
+    },
+    {
+      "source": "/media/(.*)\\.m3u8",
+      "headers": [
+        { "key": "Content-Type", "value": "application/vnd.apple.mpegurl; charset=utf-8" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
       ]
     },
     {
