@@ -1,10 +1,13 @@
 /**
- * BarakatWave Live TV — Broadcast HLS / MP4 Player Engine
- * Supports:
- *  - Admin-configured Pre-Roll Welcome Animation Video (.m3u8 or .mp4)
- *  - Live Channel Playback with Direct -> Same-Origin Proxy -> Backup Server Failover
- *  - Continuous Live-Stitched Premium PRO Unlock Video (0306-2015326) for Free/Guest viewers
- *  - Quality Selector, Multi-Audio Tracks, Picture-in-Picture, Theater & Fullscreen
+ * BarakatWave Live TV — Broadcast HLS / MP4 Player Engine v2.1
+ * Engineered under Mizanora Projects by Muaaz Iqbal
+ *
+ * Guarantees:
+ *  1) Plays Admin's Welcome / Intro Video FIRST (supporting .m3u8, .m2ts/.ts, or .mp4),
+ *     and the instant Intro ends, switches DIRECTLY to the Live Channel!
+ *  2) PRO VIP Channels remain visible to Free/Guest users and play Admin's Premium Unlock Video
+ *     continuously (0306-2015326) until upgraded to PRO VIP!
+ *  3) Automatic Direct HD -> Same-Origin Relay Proxy -> Backup Server failover!
  */
 
 export class BarakatPlayer {
@@ -35,6 +38,7 @@ export class BarakatPlayer {
     this.userPlan = "free";
     this.playToken = 0;
     this.introTimer = null;
+    this.introGuardTimer = null;
 
     if (this.skipIntroBtn) {
       this.skipIntroBtn.addEventListener("click", () => {
@@ -64,6 +68,10 @@ export class BarakatPlayer {
       clearInterval(this.introTimer);
       this.introTimer = null;
     }
+    if (this.introGuardTimer) {
+      clearTimeout(this.introGuardTimer);
+      this.introGuardTimer = null;
+    }
     this._finishIntroNow = null;
     if (this.hls) {
       try {
@@ -74,8 +82,10 @@ export class BarakatPlayer {
       this.hls = null;
     }
     if (this.video) {
+      this.video.onplaying = null;
       this.video.onended = null;
       this.video.onerror = null;
+      this.video.onloadedmetadata = null;
       this.video.loop = false;
     }
   }
@@ -104,26 +114,28 @@ export class BarakatPlayer {
 
     const isLockedPro = channel.tier === "pro" && this.userPlan !== "pro";
 
-    // Step 1: Play Default Welcome Animation Video first if enabled (and not skipped)
-    const welcomeUrl = (channel.introVideoUrl || this.settings.welcomeVideoUrl || "").trim();
+    // Case A: PRO VIP Channel opened by Free/Guest user -> Play Continuous Premium Unlock Video!
+    if (isLockedPro) {
+      await this.playProLockedStream(channel, token);
+      return;
+    }
+
+    // Case B: Allowed Channel -> Step 1: Play Admin Intro Video first, Step 2: Switch directly to Live Channel!
+    const welcomeUrl = (
+      channel.introVideoUrl ||
+      this.settings.welcomeVideoUrl ||
+      "/media/welcome/index.m3u8"
+    ).trim();
     const shouldPlayWelcome =
       !skipWelcome &&
       this.settings.welcomeVideoEnabled !== false &&
-      Boolean(welcomeUrl) &&
-      !isLockedPro;
+      Boolean(welcomeUrl);
 
     if (shouldPlayWelcome) {
       await this.playWelcomeBumper(welcomeUrl, token);
       if (token !== this.playToken) return;
     }
 
-    // Step 2: If channel is PRO VIP and viewer is Free/Guest -> Play Continuous PRO Unlock Video!
-    if (isLockedPro) {
-      await this.playProLockedStream(channel, token);
-      return;
-    }
-
-    // Step 3: Play Live Channel with multi-candidate + proxy failover
     await this.playLiveCandidates(channel, token);
   }
 
@@ -131,16 +143,17 @@ export class BarakatPlayer {
     return new Promise((resolve) => {
       if (token !== this.playToken) return resolve();
 
-      const maxDur = Math.max(3, Math.min(30, Number(this.settings.welcomeDurationSec) || 6));
+      const configuredDur = Math.max(3, Math.min(45, Number(this.settings.welcomeDurationSec) || 6));
       const skippable = this.settings.welcomeSkippable !== false;
-      let remaining = maxDur;
+      let remaining = configuredDur;
+      let startedPlayback = false;
+      let done = false;
 
       if (this.introOverlay) this.introOverlay.hidden = false;
       if (this.skipIntroBtn) this.skipIntroBtn.hidden = !skippable;
       if (this.introCountdown) this.introCountdown.textContent = `${remaining}s`;
-      this.setStatus("WELCOME INTRO", "intro");
+      this.setStatus("🎬 INTRO • STARTING CHANNEL...", "intro");
 
-      let done = false;
       const finish = () => {
         if (done) return;
         done = true;
@@ -148,23 +161,48 @@ export class BarakatPlayer {
           clearInterval(this.introTimer);
           this.introTimer = null;
         }
+        if (this.introGuardTimer) {
+          clearTimeout(this.introGuardTimer);
+          this.introGuardTimer = null;
+        }
         if (this.introOverlay) this.introOverlay.hidden = true;
         this.destroyHls();
         resolve();
       };
       this._finishIntroNow = finish;
 
-      this.introTimer = setInterval(() => {
-        remaining -= 1;
-        if (this.introCountdown && remaining >= 0) {
-          this.introCountdown.textContent = `${remaining}s`;
+      // Safety guard: if a custom remote intro takes > 4.5s to start buffering, jump straight to live channel!
+      this.introGuardTimer = setTimeout(() => {
+        if (!startedPlayback && !done) finish();
+      }, 4500);
+
+      const startCountdownOncePlaying = () => {
+        if (startedPlayback || done) return;
+        startedPlayback = true;
+        if (this.introGuardTimer) {
+          clearTimeout(this.introGuardTimer);
+          this.introGuardTimer = null;
         }
-        if (remaining <= 0) finish();
-      }, 1000);
+        // Respect natural clip duration if shorter/known (up to configuredDur + 15s)
+        const natDur = Number(this.video?.duration);
+        if (Number.isFinite(natDur) && natDur > 1.5 && natDur <= 45) {
+          remaining = Math.min(Math.ceil(natDur), Math.max(configuredDur, Math.ceil(natDur)));
+        }
+        if (this.introCountdown) this.introCountdown.textContent = `${remaining}s`;
+
+        this.introTimer = setInterval(() => {
+          remaining -= 1;
+          if (this.introCountdown && remaining >= 0) {
+            this.introCountdown.textContent = `${remaining}s`;
+          }
+          if (remaining <= 0) finish();
+        }, 1000);
+      };
 
       this.attachSource(welcomeUrl, {
         loop: false,
         isLive: false,
+        onPlaying: startCountdownOncePlaying,
         onEnded: finish,
         onError: finish
       });
@@ -174,20 +212,23 @@ export class BarakatPlayer {
   async playProLockedStream(channel, token) {
     if (token !== this.playToken) return;
     if (this.proOverlay) this.proOverlay.hidden = false;
-    this.setStatus("PRO VIP PREVIEW • 0306-2015326", "pro");
+    this.setStatus("👑 PRO VIP UNLOCK • 0306-2015326", "pro");
     this.onStateChange({ mode: "pro_locked", channel });
 
-    const customProUrl = (this.settings.proUnlockVideoUrl || "/media/pro-unlock/index.m3u8").trim();
-    const isDirectMp4 = /\.(mp4|webm|ogg)(\?|$)/i.test(customProUrl);
+    const customProUrl = (
+      channel.proUnlockVideoUrl ||
+      this.settings.proUnlockVideoUrl ||
+      "/media/pro-unlock/index.m3u8"
+    ).trim();
+    const isDirectVideo = /\.(mp4|m4v|webm|ogg|mov)(\?|$)/i.test(customProUrl);
 
-    // Use live-stitched HLS endpoint for .m3u8 so it plays continuously as a 24/7 Live Stream!
-    const streamToPlay = isDirectMp4
+    const streamToPlay = isDirectVideo
       ? customProUrl
       : `/api/stream?mode=pro_lock&id=${encodeURIComponent(channel.streamId || channel.id)}`;
 
     this.attachSource(streamToPlay, {
       loop: true,
-      isLive: !isDirectMp4,
+      isLive: !isDirectVideo,
       onError: () => {
         if (token !== this.playToken) return;
         this.attachSource("/media/pro-unlock/index.m3u8", { loop: true, isLive: false });
@@ -212,7 +253,6 @@ export class BarakatPlayer {
         });
       }
     }
-    // Always keep local 24/7 broadcast stream as ultimate zero-black-screen safety net
     if (!expanded.some((x) => x.url.includes("/media/demo-live/"))) {
       expanded.push({ url: `/api/stream?mode=live&id=1001&nointro=1`, label: "Network Feed" });
     }
@@ -242,7 +282,7 @@ export class BarakatPlayer {
           if (settled) return;
           settled = true;
           clearTimeout(failTimer);
-          this.setStatus(`LIVE • ${candidate.label}`, "live");
+          this.setStatus(`● LIVE • ${candidate.label}`, "live");
           this.onStateChange({ mode: "playing", channel, source: candidate.label });
         },
         onError: () => {
@@ -258,13 +298,21 @@ export class BarakatPlayer {
   }
 
   attachSource(url, { loop = false, isLive = true, onPlaying, onEnded, onError } = {}) {
-    this.destroyHls();
+    if (this.hls) {
+      try {
+        this.hls.destroy();
+      } catch {
+        // ignore
+      }
+      this.hls = null;
+    }
+
     const video = this.video;
     video.loop = Boolean(loop);
     video.playsInline = true;
 
     const cleanPath = String(url || "").split("?")[0].toLowerCase();
-    const isDirectVideoFile = /\.(mp4|webm|ogg|mov)$/.test(cleanPath);
+    const isDirectVideoFile = /\.(mp4|m4v|webm|ogg|mov)$/.test(cleanPath);
     const HlsLib = window.Hls;
 
     if (!isDirectVideoFile && HlsLib && HlsLib.isSupported()) {
@@ -339,7 +387,6 @@ export class BarakatPlayer {
     const p = video.play();
     if (p && typeof p.catch === "function") {
       p.catch(() => {
-        // Browsers require muted autoplay before first user gesture
         video.muted = true;
         video.play().catch(() => {});
       });

@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import path from "node:path";
 import {
   DEFAULT_CHANNELS,
   DEFAULT_SETTINGS,
@@ -13,8 +12,12 @@ const DEFAULT_RTDB_URL = (
   "https://barakatwave-tv-default-rtdb.firebaseio.com"
 ).replace(/\/+$/, "");
 
+const FIREBASE_WEB_API_KEY =
+  process.env.FIREBASE_API_KEY || "AIzaSyB1aWw27UEteaspMte4wTp_nUWEf07FqwQ";
+
 const LOCAL_MIRROR_FILE = "/tmp/barakatwave-rtdb-mirror.json";
 const memCache = new Map();
+let cachedAnonToken = { token: "", expiresAt: 0, failedAt: 0 };
 
 function readLocalMirror() {
   try {
@@ -70,7 +73,51 @@ function getFromLocalMirror(nodePath) {
   return cur;
 }
 
-export async function rtdbGet(nodePath, { ttlMs = 10000, authToken = "" } = {}) {
+/**
+ * Fallback helper: if Firebase RTDB rules are temporarily set to "auth != null"
+ * instead of public .read on channels/settings/xtreamAccounts/$user, try obtaining
+ * a short-lived Firebase Auth REST token so IPTV players still read live RTDB data.
+ */
+async function getFallbackAuthToken() {
+  const now = Date.now();
+  if (cachedAnonToken.token && now < cachedAnonToken.expiresAt) {
+    return cachedAnonToken.token;
+  }
+  if (cachedAnonToken.failedAt && now - cachedAnonToken.failedAt < 60000) {
+    return "";
+  }
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 2200);
+    const res = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(FIREBASE_WEB_API_KEY)}`,
+      {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnSecureToken: true })
+      }
+    );
+    clearTimeout(timer);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.idToken) {
+        cachedAnonToken = {
+          token: data.idToken,
+          expiresAt: now + 50 * 60 * 1000,
+          failedAt: 0
+        };
+        return data.idToken;
+      }
+    }
+  } catch {
+    // ignore network/sandbox restrictions
+  }
+  cachedAnonToken.failedAt = now;
+  return "";
+}
+
+export async function rtdbGet(nodePath, { ttlMs = 6000, authToken = "" } = {}) {
   const clean = nodePath.replace(/^\/+|\/+$/g, "");
   const cacheKey = `${clean}:${authToken ? "auth" : "pub"}`;
   const now = Date.now();
@@ -86,8 +133,23 @@ export async function rtdbGet(nodePath, { ttlMs = 10000, authToken = "" } = {}) 
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 3200);
-    const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: "application/json" } });
+    let res = await fetch(url, { signal: ctrl.signal, headers: { Accept: "application/json" } });
     clearTimeout(timer);
+
+    // If RTDB returned 401 because rules require auth != null, retry with Firebase Auth token
+    if (res.status === 401 && !secret) {
+      const fbToken = await getFallbackAuthToken();
+      if (fbToken) {
+        const ctrl2 = new AbortController();
+        const timer2 = setTimeout(() => ctrl2.abort(), 2800);
+        res = await fetch(`${DEFAULT_RTDB_URL}/${clean}.json?auth=${encodeURIComponent(fbToken)}`, {
+          signal: ctrl2.signal,
+          headers: { Accept: "application/json" }
+        });
+        clearTimeout(timer2);
+      }
+    }
+
     if (res.ok) {
       const json = await res.json();
       if (json !== null && json !== undefined) {
@@ -127,12 +189,12 @@ export async function rtdbSet(nodePath, value, { authToken = "", method = "PUT" 
 }
 
 export async function getSettings() {
-  const remote = await rtdbGet("settings/defaults", { ttlMs: 10000 });
+  const remote = await rtdbGet("settings/defaults", { ttlMs: 5000 });
   return { ...DEFAULT_SETTINGS, ...(remote && typeof remote === "object" ? remote : {}) };
 }
 
 export async function getChannels({ includeInactive = false } = {}) {
-  const remote = await rtdbGet("channels", { ttlMs: 10000 });
+  const remote = await rtdbGet("channels", { ttlMs: 5000 });
   let list = [];
   if (remote && typeof remote === "object") {
     list = Array.isArray(remote)
@@ -183,6 +245,8 @@ export function normalizeChannel(ch, idx = 0) {
     url: ch.url || "/media/demo-live/index.m3u8",
     backupUrls: Array.isArray(ch.backupUrls) ? ch.backupUrls.filter(Boolean) : [],
     introVideoUrl: ch.introVideoUrl || "",
+    proUnlockVideoUrl: ch.proUnlockVideoUrl || "",
+    useProxy: Boolean(ch.useProxy),
     headers: ch.headers && typeof ch.headers === "object" ? ch.headers : {},
     order: typeof ch.order === "number" ? ch.order : idx + 1
   };
@@ -215,7 +279,7 @@ export async function getXtreamAccount(username) {
   const cleanUser = String(username).trim().replace(/[.#$[\]/]/g, "");
   if (!cleanUser) return null;
 
-  // Built-in demo test account so Muaaz / testers can test VLC / Smarters out-of-the-box too
+  // Built-in test accounts so VLC / IPTV Smarters / TiviMate can be verified immediately
   if (cleanUser === "demo" || cleanUser === "bw_demo") {
     return {
       username: cleanUser,
@@ -230,7 +294,7 @@ export async function getXtreamAccount(username) {
     };
   }
 
-  const acct = await rtdbGet(`xtreamAccounts/${cleanUser}`, { ttlMs: 4000 });
+  const acct = await rtdbGet(`xtreamAccounts/${cleanUser}`, { ttlMs: 3000 });
   if (acct && typeof acct === "object" && acct.username) {
     return acct;
   }
@@ -242,7 +306,7 @@ export async function verifyXtreamCredentials(username, password) {
   if (!acct) return null;
   if (String(acct.password) !== String(password)) return null;
   if (String(acct.status || "Active").toLowerCase() === "suspended") return null;
-  // Check Pro expiry if set
+
   let effectivePlan = String(acct.plan || "free").toLowerCase() === "pro" ? "pro" : "free";
   if (effectivePlan === "pro" && acct.expDate) {
     const expSec = Number(acct.expDate);

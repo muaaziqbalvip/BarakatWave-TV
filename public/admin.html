@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="barakat">
+<html lang="en" data-theme="daylight">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -65,7 +65,7 @@
         <form id="adminLoginForm" class="form-stack">
           <input type="email" id="admEmail" class="input-field" placeholder="muaaziqbal.vip@gmail.com" required />
           <input type="password" id="admPass" class="input-field" placeholder="Admin Password" required />
-          <div id="admAuthErr" style="color:#fca5a5;font-size:0.82rem;" hidden></div>
+          <div id="admAuthErr" class="text-danger" style="font-size:0.82rem;font-weight:700;" hidden></div>
           <div style="display:flex;gap:8px;">
             <button type="submit" class="btn btn-primary" style="flex:1;">Sign In</button>
             <button type="button" class="btn btn-outline" id="admRegisterBtn" title="Create owner login if first time">Register Owner</button>
@@ -199,7 +199,11 @@
                 </div>
                 <div class="form-group">
                   <label>Per-Channel Custom Intro Video Override (optional)</label>
-                  <input type="text" id="chIntroOverride" class="input-field" placeholder="Leave blank to use Default Welcome Video" />
+                  <input type="text" id="chIntroOverride" class="input-field" placeholder="Blank = Global Intro Video from Tab 5" />
+                </div>
+                <div class="form-group">
+                  <label>Per-Channel PRO Unlock Video Override (optional)</label>
+                  <input type="text" id="chProUnlockOverride" class="input-field" placeholder="Blank = Global PRO Unlock Video from Tab 5" />
                 </div>
               </div>
 
@@ -317,31 +321,65 @@
         <!-- TAB 5: STREAM DEFAULTS (WELCOME INTRO VIDEO & PRO UNLOCK VIDEO) -->
         <section data-adm-panel="defaults" hidden>
           <div class="glass-card" style="padding:24px;">
-            <span class="badge badge-cyan">LIVE M3U8 STITCHING &amp; WEB PLAYER DEFAULTS</span>
-            <h2 style="margin:8px 0 6px;">🎬 Default Welcome Intro Video &amp; Premium PRO Unlock Video</h2>
-            <p class="muted-sm">
-              Set the default Welcome Animation video that plays before channels start, and the Premium Unlock video that loops inside Live <code>.m3u8</code> &amp; Web Player whenever a Free user opens a <code>PRO VIP</code> channel!
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+              <span class="badge badge-cyan">UNIVERSAL XTREAM + HLS M3U8 + WEB STITCHING ENGINE</span>
+              <span class="badge badge-free" id="rtdbIptvHealthBadge">Checking IPTV Cloud Sync...</span>
+            </div>
+            <h2 style="margin:8px 0 6px;">🎬 Channel Intro Video &amp; Premium PRO Unlock Video Studio</h2>
+            <p class="muted-sm" style="margin-top:0;">
+              Configure your network Intro video (plays first, then automatically switches directly to the Live Channel) and your Premium Unlock video (plays continuously when a Free user opens any <code>👑 PRO VIP</code> channel — visible across Web, IPTV Smarters Pro, TiviMate, XCIPTV &amp; VLC!).
             </p>
+
+            <div class="flow-grid">
+              <div class="flow-card">
+                <span class="badge badge-cyan">FLOW 1 • EVERY ALLOWED CHANNEL</span>
+                <h4 style="margin-top:8px;">Intro Video ➔ Auto-Direct to Live Channel</h4>
+                <div class="flow-steps">
+                  <span class="flow-pill">1️⃣ Intro Plays First</span>
+                  <span>➔</span>
+                  <span class="flow-pill">2️⃣ #EXT-X-DISCONTINUITY</span>
+                  <span>➔</span>
+                  <span class="flow-pill">3️⃣ Live Channel Plays!</span>
+                </div>
+                <div style="margin-top:10px;">
+                  <button type="button" class="btn btn-sm btn-primary" id="simIntroToLiveBtn">▶ Test Full Flow (Intro ➔ Live Channel)</button>
+                </div>
+              </div>
+
+              <div class="flow-card" style="border-color:var(--border-strong);">
+                <span class="badge badge-gold">FLOW 2 • FREE USER ON PRO CHANNEL</span>
+                <h4 style="margin-top:8px;">PRO Channel Visible ➔ Plays Unlock Video</h4>
+                <div class="flow-steps">
+                  <span class="flow-pill">👁 Visible in Channel List</span>
+                  <span>➔</span>
+                  <span class="flow-pill">🔒 Loops PRO Unlock Video (0306-2015326)</span>
+                </div>
+                <div style="margin-top:10px;">
+                  <button type="button" class="btn btn-sm btn-gold" id="simProLockedBtn">🔒 Test Free User Opening PRO Channel</button>
+                </div>
+              </div>
+            </div>
 
             <form id="defaultsForm" class="form-stack" style="margin-top:14px;">
               <!-- Welcome Pre-Roll Card -->
               <div class="cred-box" style="padding:18px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-                  <strong>1. Default Welcome / Intro Animation Video (Pre-Roll)</strong>
-                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                  <strong>1. Default Channel Intro / Welcome Animation Video (Pre-Roll)</strong>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;">
                     <input type="checkbox" id="defWelcomeEnabled" checked />
-                    <span>Enable Welcome Video Before Channels</span>
+                    <span>Enable Intro Before Channels Start</span>
                   </label>
                 </div>
+                <p class="muted-sm" style="margin:0 0 8px;">Supports HLS <code>.m3u8</code> (recommended for 100% Smart TV + Xtream + Web compatibility), <code>.m2ts/.ts</code>, or <code>.mp4</code> video URLs.</p>
                 <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;">
-                  <input type="text" id="defWelcomeUrl" class="input-field" placeholder="/media/welcome/index.m3u8 or https://.../intro.mp4" />
-                  <button type="button" class="btn btn-sm btn-outline" id="previewWelcomeBtn">▶ Preview</button>
-                  <button type="button" class="btn btn-sm btn-outline" id="resetWelcomeBtn">Reset Default</button>
+                  <input type="text" id="defWelcomeUrl" class="input-field" placeholder="/media/welcome/index.m3u8 or https://.../intro.m3u8" />
+                  <button type="button" class="btn btn-sm btn-outline" id="previewWelcomeBtn">▶ Preview Clip</button>
+                  <button type="button" class="btn btn-sm btn-outline" id="resetWelcomeBtn">Built-in HD Intro</button>
                 </div>
                 <div style="display:grid;grid-template-columns:180px 1fr;gap:12px;margin-top:10px;align-items:center;">
                   <div class="form-group">
                     <label>Intro Duration (sec)</label>
-                    <input type="number" id="defWelcomeDur" class="input-field" min="3" max="30" value="6" />
+                    <input type="number" id="defWelcomeDur" class="input-field" min="3" max="45" value="6" />
                   </div>
                   <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:18px;">
                     <input type="checkbox" id="defWelcomeSkip" checked />
@@ -353,17 +391,17 @@
               <!-- Premium PRO Unlock Video Card -->
               <div class="cred-box" style="padding:18px;border-color:var(--border-strong);">
                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-                  <strong>2. Premium Channel Locked / Buy PRO Video (Live M3U8 + Web Loop)</strong>
-                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                  <strong>2. Premium Channel Unlock Video (Plays for Free Users on PRO Channels)</strong>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;">
                     <input type="checkbox" id="defProVideoEnabled" checked />
                     <span>Enable PRO Unlock Video Stream</span>
                   </label>
                 </div>
-                <p class="muted-sm" style="margin:0 0 8px;">When any channel is set to <code>PRO VIP</code>, Free users on Web, TiviMate, IPTV Smarters, or VLC see this continuous live video instructing them to unlock PRO!</p>
+                <p class="muted-sm" style="margin:0 0 8px;">Free users see all <code>👑 PRO VIP</code> channels in their list (Web, IPTV Smarters, TiviMate, XCIPTV, VLC), and opening a PRO channel plays this video continuously!</p>
                 <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;">
                   <input type="text" id="defProVideoUrl" class="input-field" placeholder="/media/pro-unlock/index.m3u8 or https://.../unlock.m3u8" />
-                  <button type="button" class="btn btn-sm btn-outline" id="previewProVidBtn">▶ Preview</button>
-                  <button type="button" class="btn btn-sm btn-outline" id="resetProVidBtn">Reset Default</button>
+                  <button type="button" class="btn btn-sm btn-outline" id="previewProVidBtn">▶ Preview Clip</button>
+                  <button type="button" class="btn btn-sm btn-outline" id="resetProVidBtn">Built-in HD PRO Video</button>
                 </div>
 
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px;">
@@ -379,10 +417,14 @@
               </div>
 
               <div id="defaultsPreviewBox" class="cred-box" hidden>
-                <video id="defaultsVideoEl" controls playsinline style="width:100%;max-height:260px;background:#000;border-radius:10px;"></video>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap;">
+                  <strong id="defaultsPreviewLabel">🎬 Live Broadcast Preview</strong>
+                  <button type="button" class="btn btn-sm btn-outline" id="closeDefaultsPreviewBtn">Close Preview</button>
+                </div>
+                <video id="defaultsVideoEl" controls playsinline style="width:100%;max-height:300px;background:#000;border-radius:12px;"></video>
               </div>
 
-              <button type="submit" class="btn btn-lg btn-primary">💾 Save Default Video &amp; PRO Settings</button>
+              <button type="submit" class="btn btn-lg btn-primary">💾 Save Intro Video &amp; PRO Unlock Settings</button>
             </form>
           </div>
         </section>

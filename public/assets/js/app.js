@@ -143,20 +143,41 @@ function init() {
 function renderThemeSwitcher() {
   const wrap = document.getElementById("themeSwitcher");
   if (!wrap) return;
-  const activeTheme = document.documentElement.getAttribute("data-theme") || "barakat";
-  wrap.innerHTML = THEMES.map(
-    (t) =>
-      `<button type="button" class="theme-dot ${t.id === activeTheme ? "active" : ""}" data-theme-id="${t.id}" style="background:${t.swatch}" title="${t.name}: ${t.desc}" aria-label="${t.name}"></button>`
-  ).join("");
+
+  const paint = () => {
+    const activeTheme = document.documentElement.getAttribute("data-theme") || "daylight";
+    const curObj = THEMES.find((t) => t.id === activeTheme) || THEMES[0];
+    const isLight = curObj.mode === "light";
+    wrap.innerHTML =
+      `<button type="button" class="theme-mode-btn" data-toggle-mode="1" title="Switch Light / Dark Mode">${
+        isLight ? "☀️ Light" : "🌙 Dark"
+      }</button>` +
+      THEMES.map(
+        (t) =>
+          `<button type="button" class="theme-dot ${t.id === activeTheme ? "active" : ""}" data-theme-id="${t.id}" style="background:${t.swatch}" title="${t.name} — ${t.desc}" aria-label="${t.name}"></button>`
+      ).join("");
+  };
+
+  paint();
 
   wrap.addEventListener("click", (e) => {
+    if (e.target.closest("[data-toggle-mode]")) {
+      const cur = document.documentElement.getAttribute("data-theme") || "daylight";
+      const curObj = THEMES.find((t) => t.id === cur) || THEMES[0];
+      const nextId = curObj.mode === "light" ? "barakat" : "daylight";
+      document.documentElement.setAttribute("data-theme", nextId);
+      localStorage.setItem("bw_theme", nextId);
+      paint();
+      showToast(`Switched to ${THEMES.find((x) => x.id === nextId)?.name || nextId}`);
+      return;
+    }
     const btn = e.target.closest("[data-theme-id]");
     if (!btn) return;
     const id = btn.dataset.themeId;
     document.documentElement.setAttribute("data-theme", id);
     localStorage.setItem("bw_theme", id);
-    wrap.querySelectorAll(".theme-dot").forEach((d) => d.classList.toggle("active", d.dataset.themeId === id));
-    showToast(`Theme switched to ${THEMES.find((x) => x.id === id)?.name || id}`);
+    paint();
+    showToast(`Theme: ${THEMES.find((x) => x.id === id)?.name || id}`);
   });
 }
 
@@ -277,7 +298,7 @@ function getEffectiveUserPlan() {
 
 /* ==================== NAVIGATION ==================== */
 function bindNavigation() {
-  document.querySelectorAll(".nav-tab[data-view]").forEach((btn) => {
+  document.querySelectorAll(".nav-tab[data-view], .mob-nav-btn[data-view]").forEach((btn) => {
     btn.addEventListener("click", () => switchView(btn.dataset.view));
   });
   document.querySelectorAll("[data-jump]").forEach((btn) => {
@@ -292,7 +313,7 @@ function switchView(viewName) {
     const sec = document.getElementById(`view-${v}`);
     if (sec) sec.hidden = v !== target;
   });
-  document.querySelectorAll(".nav-tab[data-view]").forEach((btn) => {
+  document.querySelectorAll(".nav-tab[data-view], .mob-nav-btn[data-view]").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.view === target);
   });
   if (target !== "live") {
@@ -398,6 +419,13 @@ function renderChannelGuide() {
 
   const filtered = getFilteredChannels();
   if (countEl) countEl.textContent = `${filtered.length} Channels`;
+
+  const freeTotal = state.channels.filter((c) => c.tier !== "pro").length;
+  const proTotal = state.channels.filter((c) => c.tier === "pro").length;
+  const freeBadge = document.getElementById("heroFreeCountBadge");
+  const proBadge = document.getElementById("heroProCountBadge");
+  if (freeBadge) freeBadge.textContent = `🟢 ${freeTotal} FREE HD`;
+  if (proBadge) proBadge.textContent = `👑 ${proTotal} PRO VIP`;
 
   if (!filtered.length) {
     listEl.innerHTML = `<div class="muted-sm" style="padding:20px;text-align:center;">No channels match this filter. Try clicking "All".</div>`;
@@ -849,15 +877,15 @@ async function testLiveXtreamEndpoint() {
     const data = await res.json();
     if (data?.user_info?.auth === 1) {
       box.innerHTML = `
-        <div style="color:var(--success);font-weight:700;">✅ Xtream Server Verified &amp; Responding!</div>
+        <div class="text-success" style="font-weight:700;">✅ Xtream Server Verified &amp; Responding!</div>
         <div class="muted-sm" style="margin-top:4px;">Status: <strong>${escHtml(data.user_info.status)}</strong> &bull; Max Connections: <strong>${escHtml(data.user_info.max_connections)}</strong> &bull; Timezone: <strong>${escHtml(data.server_info.timezone)}</strong></div>
       `;
     } else {
-      box.innerHTML = `<div style="color:#fca5a5;">⚠ Auth check returned auth=0. Syncing your account now...</div>`;
+      box.innerHTML = `<div class="text-danger" style="font-weight:700;">⚠ Auth check returned auth=0. Syncing your account now...</div>`;
       await dbWrite(`xtreamAccounts/${xt.username}`, xt);
     }
   } catch (err) {
-    box.innerHTML = `<div style="color:#fca5a5;">Error testing API: ${escHtml(err?.message || "Failed")}</div>`;
+    box.innerHTML = `<div class="text-danger" style="font-weight:700;">Error testing API: ${escHtml(err?.message || "Failed")}</div>`;
   }
 }
 

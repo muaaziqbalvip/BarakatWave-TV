@@ -1,5 +1,6 @@
 /**
- * Browser ES Module re-exporting shared BarakatWave Catalog & Theme Presets.
+ * Browser ES Module re-exporting shared BarakatWave Catalog & 6 Mastercrafted Themes
+ * (3 Luxury Light Themes + 3 Studio Dark Themes).
  */
 import * as catalog from "./catalog-browser.js";
 export const {
@@ -14,33 +15,45 @@ export const {
 
 export const THEMES = [
   {
+    id: "daylight",
+    mode: "light",
+    name: "☀️ Pearl Daylight",
+    desc: "Crisp Porcelain White, Sapphire Ocean & Crown Gold (Light)",
+    swatch: "linear-gradient(135deg, #ffffff 35%, #0284c7 100%)"
+  },
+  {
+    id: "ivory",
+    mode: "light",
+    name: "🌤️ Ivory Royal Gold",
+    desc: "Warm Alabaster Silk, Champagne Gold & Espresso Ink (Light)",
+    swatch: "linear-gradient(135deg, #fffdf7 35%, #d97706 100%)"
+  },
+  {
+    id: "breeze",
+    mode: "light",
+    name: "🌿 Emerald Breeze",
+    desc: "Mint Snow Daylight, Emerald Jade & Warm Amber (Light)",
+    swatch: "linear-gradient(135deg, #f2fbf7 35%, #059669 100%)"
+  },
+  {
     id: "barakat",
-    name: "Barakat Wave",
-    desc: "Ocean Midnight, Cyan Wave & Warm Gold",
-    swatch: "#00d4ff"
+    mode: "dark",
+    name: "🌊 Barakat Midnight",
+    desc: "Deep Broadcast Navy, Electric Cyan & Gold (Dark)",
+    swatch: "linear-gradient(135deg, #071324 35%, #00d4ff 100%)"
   },
   {
     id: "mizanora",
-    name: "Mizanora Gold",
-    desc: "Signature Obsidian Black & Metallic Gold",
-    swatch: "#d4af37"
-  },
-  {
-    id: "emerald",
-    name: "Emerald Noor",
-    desc: "Deep Islamic Emerald & Amber Glow",
-    swatch: "#10b981"
+    mode: "dark",
+    name: "👑 Mizanora Noir",
+    desc: "Signature Obsidian Velvet & 24K Metallic Gold (Dark)",
+    swatch: "linear-gradient(135deg, #09090d 35%, #eab308 100%)"
   },
   {
     id: "amethyst",
-    name: "Royal Cinema",
-    desc: "Velvet Plum & Neon Violet Broadcast",
-    swatch: "#a855f7"
-  },
-  {
-    id: "daylight",
-    name: "Daylight Pearl",
-    desc: "Clean Bright Studio Light Mode",
-    swatch: "#0284c7"
+    mode: "dark",
+    name: "💜 Royal Cinema",
+    desc: "Velvet Cosmos, Neon Violet & Rose Gold (Dark)",
+    swatch: "linear-gradient(135deg, #120924 35%, #a855f7 100%)"
   }
 ];

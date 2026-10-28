@@ -87,9 +87,30 @@ async function run() {
     const liveFreeMedia = await (await fetch(variantLine)).text();
     check(
       "Live Free media manifest stitches Welcome Intro .m2ts + #EXT-X-DISCONTINUITY + Live segments",
-      liveFreeMedia.includes("/media/welcome/seg0.m2ts") &&
+      liveFreeMedia.includes("#EXT-X-START:TIME-OFFSET=0,PRECISE=YES") &&
+        liveFreeMedia.includes("/media/welcome/seg0.m2ts") &&
         liveFreeMedia.includes("#EXT-X-DISCONTINUITY") &&
         liveFreeMedia.includes("/media/demo-live/seg0.m2ts")
+    );
+
+    // Verify Phase 3 automatic handoff after Intro completes (st = now - 16s) -> Pure Live Channel!
+    const pastSt = Math.floor(Date.now() / 1000) - 16;
+    const phase3Media = await (await fetch(`${base}/api/stream?mode=live&id=1001&st=${pastSt}`)).text();
+    const seqMatch = phase3Media.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/);
+    const discMatch = phase3Media.match(/#EXT-X-DISCONTINUITY-SEQUENCE:(\d+)/);
+    check(
+      "After Intro duration expires, HLS stream transitions directly to pure Live Channel (monotonic sequence)",
+      !phase3Media.includes("/media/welcome/") &&
+        phase3Media.includes("/media/demo-live/seg") &&
+        Number(seqMatch?.[1] || 0) >= 3 &&
+        Number(discMatch?.[1] || 0) >= 1
+    );
+
+    // Verify .ts Xtream request redirects 302 to .m3u8 so ExoPlayer/VLC uses HLS demuxer
+    const tsRedir = await fetch(`${base}/live/demo/demo/1001.ts`, { redirect: "manual" });
+    check(
+      "Xtream .ts request 302-redirects to .m3u8 for universal IPTV player compatibility",
+      tsRedir.status === 302 && (tsRedir.headers.get("location") || "").endsWith("/live/demo/demo/1001.m3u8")
     );
 
     const welcomeSegRes = await fetch(`${base}/media/welcome/seg0.m2ts`);
@@ -128,6 +149,43 @@ async function run() {
     });
     const unlockedMaster = await (await fetch(`${base}/live/bw_vip_test/VIPPassword1/2001.m3u8`)).text();
     check("Upgraded PRO VIP Xtream user unlocks PRO channel (mode=live)", unlockedMaster.includes("mode=live"));
+
+    // Verify Admin Custom Intro & Custom PRO Unlock Video URLs take effect immediately across Xtream/HLS!
+    await fetch(`${base}/api/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "settings/defaults",
+        value: {
+          welcomeVideoEnabled: true,
+          welcomeVideoUrl: "https://cdn.barakatwave.test/custom-intro.mp4",
+          welcomeDurationSec: 5,
+          proUnlockVideoEnabled: true,
+          proUnlockVideoUrl: "https://cdn.barakatwave.test/custom-pro-unlock.mp4"
+        }
+      })
+    });
+    const customIntroM3u8 = await (
+      await fetch(`${base}/api/stream?mode=live&id=1001&st=${Math.floor(Date.now() / 1000)}`)
+    ).text();
+    const customProM3u8 = await (await fetch(`${base}/api/stream?mode=pro_lock&id=2001`)).text();
+    check(
+      "Admin custom Intro Video URL stitches first and transitions directly to Live Channel",
+      customIntroM3u8.includes("https://cdn.barakatwave.test/custom-intro.mp4") &&
+        customIntroM3u8.includes("#EXT-X-DISCONTINUITY") &&
+        customIntroM3u8.includes("/media/demo-live/seg0.m2ts")
+    );
+    check(
+      "Admin custom PRO Unlock Video URL plays continuously for Free users on PRO channels",
+      customProM3u8.includes("https://cdn.barakatwave.test/custom-pro-unlock.mp4") &&
+        !customProM3u8.includes("#EXT-X-ENDLIST")
+    );
+    // Restore default settings in local mirror after custom video test
+    await fetch(`${base}/api/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "settings/defaults", value: null })
+    });
 
     // 3g. SEO Sitemap, RSS, LLMs.txt & SSR Blog Pages
     const sitemap = await (await fetch(`${base}/sitemap.xml`)).text();

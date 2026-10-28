@@ -71,7 +71,7 @@ export default async function handler(req, res) {
     active_cons: "0",
     created_at: String(createdSec),
     max_connections: String(acct.maxConnections || (acct.effectivePlan === "pro" ? 5 : 1)),
-    allowed_output_formats: ["m3u8", "ts", "rtmp"]
+    allowed_output_formats: ["m3u8"]
   };
 
   if (!action) {
