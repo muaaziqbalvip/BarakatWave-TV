@@ -1,6 +1,15 @@
+<div align="center">
+
 # 🌊 BarakatWave-TV 📺
 
-> *A modern live TV streaming web application connecting viewers across the Subcontinent (Pakistan & India) with seamless performance, built for real-time broadcasting and hosted on Vercel.* 🚀✨
+[![Vercel Deployment](https://img.shields.io/badge/Hosted%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+[![Status: Active](https://img.shields.io/badge/Status-Active%20%2F%20Live-success?style=for-the-badge)]()
+[![Region: PK & IND](https://img.shields.io/badge/Region-Pakistan%20%26%20India-blueviolet?style=for-the-badge)]()
+
+*A modern live TV streaming web application connecting viewers across the Subcontinent (Pakistan & India) with seamless performance, built for real-time broadcasting.* 🚀✨
+
+</div>
 
 ---
 
