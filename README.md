@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" alt="Barakat Wave Streaming Network Logo" width="220px" />
+
 # 🌊 BarakatWave-TV 📺
 
 [![Vercel Deployment](https://img.shields.io/badge/Hosted%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com)
