@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="barakat">
+<html lang="en" data-theme="daylight">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -112,7 +112,7 @@
   }
   </script>
 </head>
-<body>
+<body class="has-mobile-dock">
   <!-- Live Announcement Ticker -->
   <div class="top-ticker" id="siteTicker">
     🌊 <strong>BarakatWave Live TV</strong> — Under <strong>Mizanora Projects by Muaaz Iqbal</strong> &bull; Sign in with Google or Gmail for your <strong>FREE Xtream Server</strong>! For <strong>PRO VIP Unlock</strong> WhatsApp: <strong>0306-2015326</strong>
@@ -159,6 +159,19 @@
   <main class="container">
     <!-- ==================== VIEW 1: LIVE TV STUDIO ==================== -->
     <section class="app-section" id="view-live">
+      <div class="studio-welcome-bar">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span class="live-dot" aria-hidden="true"></span>
+          <strong style="font-size:0.9rem;">BarakatWave Cloud Broadcast Engine</strong>
+          <span class="badge badge-free" id="heroFreeCountBadge">FREE HD</span>
+          <span class="badge badge-gold" id="heroProCountBadge">👑 PRO VIP</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span class="muted-sm">Xtream Codes + HLS Auto-Intro Active</span>
+          <button type="button" class="btn btn-sm btn-primary" data-jump="xtream">⚡ Claim Free Xtream Key</button>
+        </div>
+      </div>
+
       <div class="studio-grid">
         <!-- Broadcast HLS Video Player -->
         <div class="player-shell glass-card">
@@ -183,13 +196,13 @@
               <button class="btn btn-sm btn-primary" id="skipIntroBtn">Skip Intro ⏭</button>
             </div>
 
-            <!-- Locked PRO Channel Interactive Banner (Plays alongside Live PRO Video!) -->
+            <!-- Locked PRO Channel Interactive Banner (Compact Glass Pill Alongside Live PRO Video!) -->
             <div class="pro-unlock-overlay" id="proUnlockOverlay" hidden>
               <div>
-                <h4>👑 BarakatWave TV PRO VIP Channel</h4>
-                <p>Unlock all Premium Sports, Pakistani &amp; Indian 4K Channels on Web &amp; Xtream Apps! Contact WhatsApp: <strong>0306-2015326</strong></p>
+                <h4>👑 PRO VIP Channel — Unlock All Premium Feeds</h4>
+                <p>Playing PRO Preview &bull; Activate on WhatsApp: <strong>0306-2015326</strong></p>
               </div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
                 <a
                   id="proOverlayWhatsappBtn"
                   href="https://wa.me/923062015326?text=Assalam%20o%20Alaikum!%20I%20want%20to%20unlock%20BarakatWave%20TV%20PRO%20VIP%20channels."
@@ -197,7 +210,7 @@
                   rel="noopener"
                   class="btn btn-sm btn-whatsapp"
                 >💬 WhatsApp 0306-2015326</a>
-                <button class="btn btn-sm btn-gold" id="copyProPhoneBtn">📋 Copy Number</button>
+                <button class="btn btn-sm btn-gold" id="copyProPhoneBtn">📋 Copy</button>
               </div>
             </div>
           </div>
@@ -677,6 +690,30 @@
     💬 PRO VIP: 0306-2015326
   </a>
 
+  <!-- Mobile App Bottom Navigation Dock -->
+  <nav class="mobile-bottom-nav" aria-label="Mobile Navigation">
+    <button type="button" class="mob-nav-btn active" data-view="live">
+      <span class="mob-ico">📺</span>
+      <span>Live TV</span>
+    </button>
+    <button type="button" class="mob-nav-btn" data-view="xtream">
+      <span class="mob-ico">⚡</span>
+      <span>Xtream</span>
+    </button>
+    <button type="button" class="mob-nav-btn" data-view="playlist">
+      <span class="mob-ico">📋</span>
+      <span>Playlist</span>
+    </button>
+    <button type="button" class="mob-nav-btn" data-view="pro">
+      <span class="mob-ico">👑</span>
+      <span>PRO VIP</span>
+    </button>
+    <button type="button" class="mob-nav-btn" data-view="support">
+      <span class="mob-ico">⭐</span>
+      <span>Support</span>
+    </button>
+  </nav>
+
   <!-- ==================== DUAL AUTH MODAL (GOOGLE + GMAIL/PASSWORD) ==================== -->
   <div class="modal-backdrop" id="authModal" hidden>
     <div class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
@@ -718,7 +755,7 @@
           <label for="authPassInput">Password</label>
           <input type="password" id="authPassInput" class="input-field" placeholder="Minimum 6 characters" minlength="6" />
         </div>
-        <div id="authErrorMsg" style="font-size:0.82rem;color:#fca5a5;" hidden></div>
+        <div id="authErrorMsg" class="text-danger" style="font-size:0.82rem;font-weight:600;" hidden></div>
         <button type="submit" class="btn btn-primary" id="emailAuthSubmitBtn">Sign In with Email</button>
       </form>
 

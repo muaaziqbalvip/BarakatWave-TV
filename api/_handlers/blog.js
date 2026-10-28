@@ -45,10 +45,11 @@ function renderSharedHead({ title, description, canonicalUrl, settings, jsonLd }
   const gsc = settings.gscVerification || process.env.GOOGLE_SITE_VERIFICATION || "";
   const bing = settings.bingVerification || process.env.BING_SITE_VERIFICATION || "";
   return `<!DOCTYPE html>
-<html lang="en" data-theme="barakat">
+<html lang="en" data-theme="daylight">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script>(function(){try{var s=localStorage.getItem("bw_theme");if(s)document.documentElement.setAttribute("data-theme",s);}catch(e){}})();</script>
   <title>${escHtml(title)}</title>
   <meta name="description" content="${escHtml(description)}" />
   <meta name="author" content="${escHtml(BRAND.founder)} — ${escHtml(BRAND.parentProject)}" />

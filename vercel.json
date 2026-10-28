@@ -15,6 +15,8 @@
     { "source": "/live/:user/:pass/:file", "destination": "/api/media?ep=live&user=:user&pass=:pass&file=:file" },
     { "source": "/movie/:user/:pass/:file", "destination": "/api/media?ep=live&user=:user&pass=:pass&file=:file" },
     { "source": "/series/:user/:pass/:file", "destination": "/api/media?ep=live&user=:user&pass=:pass&file=:file" },
+    { "source": "/:user/:pass/:id(\\d+)", "destination": "/api/media?ep=live&user=:user&pass=:pass&file=:id.m3u8" },
+    { "source": "/:user/:pass/:id(\\d+).:ext(m3u8|ts)", "destination": "/api/media?ep=live&user=:user&pass=:pass&file=:id.:ext" },
     { "source": "/ch/:slug", "destination": "/api/media?ep=live&slug=:slug" },
     { "source": "/playlist/:id", "destination": "/api/media?ep=playlist&id=:id" },
     { "source": "/api/stream", "destination": "/api/media?ep=stream" },

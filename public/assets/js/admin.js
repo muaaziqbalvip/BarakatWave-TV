@@ -61,17 +61,38 @@ function initAdmin() {
 function renderAdminThemes() {
   const wrap = document.getElementById("adminThemeSwitcher");
   if (!wrap) return;
-  const active = document.documentElement.getAttribute("data-theme") || "barakat";
-  wrap.innerHTML = THEMES.map(
-    (t) =>
-      `<button type="button" class="theme-dot ${t.id === active ? "active" : ""}" data-theme-id="${t.id}" style="background:${t.swatch}" title="${t.name}"></button>`
-  ).join("");
+
+  const paint = () => {
+    const active = document.documentElement.getAttribute("data-theme") || "daylight";
+    const curObj = THEMES.find((t) => t.id === active) || THEMES[0];
+    const isLight = curObj.mode === "light";
+    wrap.innerHTML =
+      `<button type="button" class="theme-mode-btn" data-toggle-mode="1" title="Switch Light / Dark Mode">${
+        isLight ? "☀️ Light" : "🌙 Dark"
+      }</button>` +
+      THEMES.map(
+        (t) =>
+          `<button type="button" class="theme-dot ${t.id === active ? "active" : ""}" data-theme-id="${t.id}" style="background:${t.swatch}" title="${t.name}"></button>`
+      ).join("");
+  };
+
+  paint();
+
   wrap.addEventListener("click", (e) => {
+    if (e.target.closest("[data-toggle-mode]")) {
+      const cur = document.documentElement.getAttribute("data-theme") || "daylight";
+      const curObj = THEMES.find((t) => t.id === cur) || THEMES[0];
+      const nextId = curObj.mode === "light" ? "barakat" : "daylight";
+      document.documentElement.setAttribute("data-theme", nextId);
+      localStorage.setItem("bw_theme", nextId);
+      paint();
+      return;
+    }
     const b = e.target.closest("[data-theme-id]");
     if (!b) return;
     document.documentElement.setAttribute("data-theme", b.dataset.themeId);
     localStorage.setItem("bw_theme", b.dataset.themeId);
-    wrap.querySelectorAll(".theme-dot").forEach((d) => d.classList.toggle("active", d.dataset.themeId === b.dataset.themeId));
+    paint();
   });
 }
 
@@ -309,9 +330,9 @@ function bindChannelManager() {
       const data = await res.json();
       const item = data?.results?.[0];
       if (item?.ok) {
-        box.innerHTML = `<div style="color:var(--success);font-weight:700;">✅ Stream Working! HTTP ${item.status} • Latency: ${item.latencyMs}ms ${item.isHls ? "• Valid HLS (.m3u8)" : ""}</div>`;
+        box.innerHTML = `<div class="text-success" style="font-weight:700;">✅ Stream Working! HTTP ${item.status} • Latency: ${item.latencyMs}ms ${item.isHls ? "• Valid HLS (.m3u8)" : ""}</div>`;
       } else {
-        box.innerHTML = `<div style="color:#fca5a5;">⚠ Server probe note: ${esc(item?.error || "Check browser preview below (stream may require browser/CORS playback)")}</div>`;
+        box.innerHTML = `<div class="text-danger" style="font-weight:700;">⚠ Server probe note: ${esc(item?.error || "Check browser preview below (stream may require browser/CORS playback)")}</div>`;
       }
     } catch {
       box.innerHTML = `<span class="muted-sm">Opening browser HLS preview...</span>`;
@@ -339,6 +360,7 @@ function bindChannelManager() {
       .map((s) => s.trim())
       .filter(Boolean);
     const introVideoUrl = document.getElementById("chIntroOverride").value.trim();
+    const proUnlockVideoUrl = document.getElementById("chProUnlockOverride")?.value.trim() || "";
 
     const slug = slugify(name) || `channel-${Date.now()}`;
     const existingIdx = admState.channels.findIndex((c) => c.id === editId);
@@ -359,6 +381,7 @@ function bindChannelManager() {
       url,
       backupUrls: backups,
       introVideoUrl,
+      proUnlockVideoUrl,
       order: existingIdx >= 0 ? admState.channels[existingIdx].order : admState.channels.length + 1
     };
 
@@ -428,8 +451,9 @@ function renderAdminChannelsTable() {
         </td>
         <td>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button type="button" class="btn btn-sm btn-outline" data-copy-ch="${escAttr(ch.slug)}" title="Copy Clean BarakatWave M3U8 URL">🔗 Link</button>
-            <button type="button" class="btn btn-sm btn-outline" data-dl-ch="${escAttr(ch.id)}" title="Download Channel .M3U8 File">⬇ .M3U8</button>
+            <button type="button" class="btn btn-sm btn-outline" data-copy-ch="${escAttr(ch.slug)}" title="Copy Clean BarakatWave M3U8 URL">🔗 M3U8</button>
+            <button type="button" class="btn btn-sm btn-outline" data-copy-xt="${escAttr(ch.streamId || 1001)}" title="Copy Xtream Test Stream Link (/live/demo/demo/...)">📺 Xtream</button>
+            <button type="button" class="btn btn-sm btn-outline" data-dl-ch="${escAttr(ch.id)}" title="Download Channel .M3U8 File">⬇</button>
             <button type="button" class="btn btn-sm btn-outline" data-edit-ch="${escAttr(ch.id)}">Edit</button>
             <button type="button" class="btn btn-sm btn-danger" data-del-ch="${escAttr(ch.id)}">✕</button>
           </div>
@@ -455,6 +479,14 @@ function renderAdminChannelsTable() {
       const link = `${window.location.origin}/ch/${btn.dataset.copyCh}.m3u8`;
       navigator.clipboard?.writeText(link);
       toast(`Copied Channel M3U8: ${link}`);
+    });
+  });
+
+  tbody.querySelectorAll("[data-copy-xt]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const link = `${window.location.origin}/live/demo/demo/${btn.dataset.copyXt}.m3u8`;
+      navigator.clipboard?.writeText(link);
+      toast(`Copied Xtream Stream Link: ${link}`);
     });
   });
 
@@ -484,6 +516,8 @@ function renderAdminChannelsTable() {
       document.getElementById("chLogo").value = ch.logo || "";
       document.getElementById("chBackups").value = (ch.backupUrls || []).join(", ");
       document.getElementById("chIntroOverride").value = ch.introVideoUrl || "";
+      const proOv = document.getElementById("chProUnlockOverride");
+      if (proOv) proOv.value = ch.proUnlockVideoUrl || "";
       setTxt("chFormHeading", `✏️ Editing Channel: ${ch.name}`);
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
@@ -681,20 +715,20 @@ async function runGitHubPublish(previewOnly) {
     });
     const data = await res.json();
     if (!data.ok) {
-      out.innerHTML = `<div style="color:#fca5a5;">❌ ${esc(data.error || "GitHub operation failed")}</div>`;
+      out.innerHTML = `<div class="text-danger" style="font-weight:700;">❌ ${esc(data.error || "GitHub operation failed")}</div>`;
       return;
     }
 
     if (previewOnly) {
       out.innerHTML = `
-        <div style="color:var(--success);font-weight:700;">✅ Ready to Push ${data.fileCount} .M3U8 Files:</div>
+        <div class="text-success" style="font-weight:700;">✅ Ready to Push ${data.fileCount} .M3U8 Files:</div>
         <ul class="muted-sm" style="max-height:180px;overflow:auto;">
           ${data.files.map((f) => `<li><code>${esc(f.path)}</code></li>`).join("")}
         </ul>
       `;
     } else {
       out.innerHTML = `
-        <div style="color:var(--success);font-weight:800;">🎉 Pushed ${data.fileCount} M3U8 Files to GitHub!</div>
+        <div class="text-success" style="font-weight:800;">🎉 Pushed ${data.fileCount} M3U8 Files to GitHub!</div>
         <div class="muted-sm" style="margin-top:6px;">
           Repo: <code>${esc(data.repo)}</code> (${esc(data.branch)}) &bull;
           <a href="${escAttr(data.commitUrl)}" target="_blank" rel="noopener">View Commit ${esc(data.commitSha.slice(0, 7))} &rarr;</a>
@@ -703,7 +737,7 @@ async function runGitHubPublish(previewOnly) {
       toast("🐙 All channel .m3u8 files committed to GitHub!");
     }
   } catch (err) {
-    out.innerHTML = `<div style="color:#fca5a5;">Error: ${esc(err?.message)}</div>`;
+    out.innerHTML = `<div class="text-danger" style="font-weight:700;">Error: ${esc(err?.message)}</div>`;
   }
 }
 
@@ -711,37 +745,101 @@ async function runGitHubPublish(previewOnly) {
 function bindDefaultsEditor() {
   document.getElementById("resetWelcomeBtn")?.addEventListener("click", () => {
     document.getElementById("defWelcomeUrl").value = "/media/welcome/index.m3u8";
+    toast("Reset to built-in HD Welcome Intro");
   });
   document.getElementById("resetProVidBtn")?.addEventListener("click", () => {
     document.getElementById("defProVideoUrl").value = "/media/pro-unlock/index.m3u8";
+    toast("Reset to built-in HD PRO Unlock Video");
   });
 
   document.getElementById("previewWelcomeBtn")?.addEventListener("click", () => {
     const u = document.getElementById("defWelcomeUrl").value.trim() || "/media/welcome/index.m3u8";
+    setTxt("defaultsPreviewLabel", "🎬 Previewing Welcome / Intro Video");
     openMiniVideoPreview("defaultsVideoEl", "defaultsPreviewBox", u);
   });
   document.getElementById("previewProVidBtn")?.addEventListener("click", () => {
     const u = document.getElementById("defProVideoUrl").value.trim() || "/media/pro-unlock/index.m3u8";
+    setTxt("defaultsPreviewLabel", "👑 Previewing Premium PRO Unlock Video");
     openMiniVideoPreview("defaultsVideoEl", "defaultsPreviewBox", u);
+  });
+
+  document.getElementById("closeDefaultsPreviewBtn")?.addEventListener("click", () => {
+    stopMiniPreview("defaultsVideoEl", "defaultsPreviewBox");
+  });
+
+  // Live Simulator 1: Watch Intro Video Play First -> Automatically Transition Directly to Live Channel!
+  document.getElementById("simIntroToLiveBtn")?.addEventListener("click", async () => {
+    await saveDefaultsQuietly();
+    const freeCh = admState.channels.find((c) => c.tier !== "pro") || admState.channels[0];
+    const sid = freeCh ? freeCh.streamId || 1001 : 1001;
+    const stitchedUrl = `/live/demo/demo/${sid}.m3u8?_t=${Date.now()}`;
+    setTxt(
+      "defaultsPreviewLabel",
+      `▶ Xtream / HLS Live Simulation (${freeCh ? freeCh.name : "Channel #1001"}): 1) Intro Plays First ➔ 2) Auto-Switches to Live Channel!`
+    );
+    openMiniVideoPreview("defaultsVideoEl", "defaultsPreviewBox", stitchedUrl);
+    document.getElementById("defaultsPreviewBox")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+
+  // Live Simulator 2: Watch what a Free Xtream / Web User sees when clicking a PRO VIP Channel!
+  document.getElementById("simProLockedBtn")?.addEventListener("click", async () => {
+    await saveDefaultsQuietly();
+    const proCh = admState.channels.find((c) => c.tier === "pro");
+    const url = proCh
+      ? `/live/demo/demo/${proCh.streamId}.m3u8?_t=${Date.now()}`
+      : `/api/stream?mode=pro_lock&id=1008&_t=${Date.now()}`;
+    setTxt(
+      "defaultsPreviewLabel",
+      `🔒 Free User Opening PRO Channel (${proCh ? proCh.name : "PRO VIP"}): Continuous Premium Unlock Video Stream!`
+    );
+    openMiniVideoPreview("defaultsVideoEl", "defaultsPreviewBox", url);
+    document.getElementById("defaultsPreviewBox")?.scrollIntoView({ behavior: "smooth", block: "center" });
   });
 
   document.getElementById("defaultsForm")?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const updated = {
-      ...admState.settings,
-      welcomeVideoEnabled: document.getElementById("defWelcomeEnabled").checked,
-      welcomeVideoUrl: document.getElementById("defWelcomeUrl").value.trim() || "/media/welcome/index.m3u8",
-      welcomeDurationSec: Number(document.getElementById("defWelcomeDur").value) || 6,
-      welcomeSkippable: document.getElementById("defWelcomeSkip").checked,
-      proUnlockVideoEnabled: document.getElementById("defProVideoEnabled").checked,
-      proUnlockVideoUrl: document.getElementById("defProVideoUrl").value.trim() || "/media/pro-unlock/index.m3u8",
-      proWhatsapp: document.getElementById("defProPhone").value.trim() || "03062015326",
-      siteAnnouncement: document.getElementById("defAnnouncement").value.trim()
-    };
-    admState.settings = updated;
-    await dbWrite("settings/defaults", updated);
-    toast("✅ Default Welcome Video & PRO Unlock Video Settings Saved!");
+    await saveDefaultsQuietly();
+    toast("✅ Intro Video & PRO Unlock Video Saved for Web + All Xtream Players!");
   });
+
+  checkRtdbPublicReadForIptv();
+}
+
+async function saveDefaultsQuietly() {
+  const updated = {
+    ...admState.settings,
+    welcomeVideoEnabled: document.getElementById("defWelcomeEnabled").checked,
+    welcomeVideoUrl: document.getElementById("defWelcomeUrl").value.trim() || "/media/welcome/index.m3u8",
+    welcomeDurationSec: Number(document.getElementById("defWelcomeDur").value) || 6,
+    welcomeSkippable: document.getElementById("defWelcomeSkip").checked,
+    proUnlockVideoEnabled: document.getElementById("defProVideoEnabled").checked,
+    proUnlockVideoUrl: document.getElementById("defProVideoUrl").value.trim() || "/media/pro-unlock/index.m3u8",
+    proWhatsapp: document.getElementById("defProPhone").value.trim() || "03062015326",
+    siteAnnouncement: document.getElementById("defAnnouncement").value.trim()
+  };
+  admState.settings = updated;
+  await dbWrite("settings/defaults", updated);
+}
+
+async function checkRtdbPublicReadForIptv() {
+  const badge = document.getElementById("rtdbIptvHealthBadge");
+  if (!badge) return;
+  try {
+    const res = await fetch("https://barakatwave-tv-default-rtdb.firebaseio.com/settings/defaults.json");
+    if (res.ok) {
+      badge.className = "badge badge-free";
+      badge.textContent = "✅ Firebase RTDB Connected for IPTV Apps";
+    } else if (res.status === 401) {
+      badge.className = "badge badge-gold";
+      badge.textContent = "⚠️ Publish RTDB Rules (Tab 8) for External IPTV Apps";
+    } else {
+      badge.className = "badge badge-cyan";
+      badge.textContent = "⚡ Cloud HLS Sync Active";
+    }
+  } catch {
+    badge.className = "badge badge-cyan";
+    badge.textContent = "⚡ Cloud HLS Sync Active";
+  }
 }
 
 function populateDefaultsForm() {

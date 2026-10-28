@@ -32,16 +32,17 @@ const MIME_TYPES = {
 
 function compilePattern(source) {
   const paramNames = [];
-  const regexStr =
-    "^" +
-    source
-      .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-      .replace(/:([A-Za-z0-9_]+)/g, (_, name) => {
-        paramNames.push(name);
-        return "([^/]+)";
-      }) +
-    "$";
-  return { regex: new RegExp(regexStr), paramNames };
+  const tokenMap = [];
+  const tokenized = source.replace(/:([A-Za-z0-9_]+)(\([^)]+\))?/g, (_, name, customGroup) => {
+    const idx = tokenMap.length;
+    paramNames.push(name);
+    tokenMap.push(customGroup || "([^/]+)");
+    return `__PARAM_${idx}__`;
+  });
+  const escaped = tokenized
+    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/__PARAM_(\d+)__/g, (_, i) => tokenMap[Number(i)]);
+  return { regex: new RegExp("^" + escaped + "$"), paramNames };
 }
 
 const compiledRewrites = (vercelConfig.rewrites || []).map((r) => ({
