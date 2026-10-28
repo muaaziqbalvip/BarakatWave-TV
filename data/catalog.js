@@ -29,16 +29,18 @@ export const BRAND = {
 export const DEFAULT_SETTINGS = {
   welcomeVideoUrl: "/media/welcome/index.m3u8",
   welcomeVideoEnabled: true,
-  welcomeDurationSec: 6,
+  welcomeDurationSec: 8,
   welcomeSkippable: true,
+  channelOfflineVideoUrl: "/media/channel-offline/index.m3u8",
+  comingSoonVideoUrl: "/media/coming-soon/index.m3u8",
   proUnlockVideoUrl: "/media/pro-unlock/index.m3u8",
   proUnlockVideoEnabled: true,
   proWhatsapp: "03062015326",
   proWhatsappIntl: "923062015326",
   proBannerTitle: "Unlock BarakatWave TV PRO VIP",
-  proBannerSubtitle: "Get 24/7 access to all Premium Sports, 4K Entertainment, Pakistani & Indian VIP Channels on Web + Xtream Apps!",
+  proBannerSubtitle: "Get 24/7 access to all Premium Sports, 4K Entertainment, Pakistani & Indian VIP Channels, plus IMDb Movies & Series on Web + Xtream Apps!",
   proPriceNote: "Instant VIP Activation on WhatsApp: 0306-2015326",
-  siteAnnouncement: "BarakatWave Live TV — A Mizanora Project by Muaaz Iqbal | Login with Google or Gmail to claim your FREE Personal Xtream Codes Server! For PRO VIP Channels contact 0306-2015326",
+  siteAnnouncement: "BarakatWave Live TV + IMDb Cinema — A Mizanora Project by Muaaz Iqbal | Login with Google or Gmail to claim your FREE Personal Xtream Codes Server! For PRO VIP contact 0306-2015326",
   githubRepo: "muaaziqbalvip/BarakatWave-TV",
   githubBranch: "main",
   githubFolder: "data/streams",
@@ -436,7 +438,7 @@ export const DEFAULT_CHANNELS = [
     epgId: "pk.super.pro",
     nowPlaying: "Pakistan Top Prime Shows, National Specials & Headlines",
     url: "https://tv-trtworld.medya.trt.com.tr/master.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
+    backupUrls: [],
     order: 2
   },
 
@@ -457,10 +459,7 @@ export const DEFAULT_CHANNELS = [
     epgId: "quran.makkah.sa",
     nowPlaying: "Live Masjid Al-Haram Recitation & Tawaf 24/7",
     url: "https://win.holol.com/live/quran/playlist.m3u8",
-    backupUrls: [
-      "https://media2.streambrothers.com:1936/8122/8122/playlist.m3u8",
-      "/media/demo-live/index.m3u8"
-    ],
+    backupUrls: ["https://media2.streambrothers.com:1936/8122/8122/playlist.m3u8"],
     order: 3
   },
   {
@@ -479,7 +478,7 @@ export const DEFAULT_CHANNELS = [
     epgId: "sunnah.madinah.sa",
     nowPlaying: "Live Masjid An-Nabawi Broadcast 24/7",
     url: "https://win.holol.com/live/sunnah/playlist.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
+    backupUrls: [],
     order: 4
   },
 
@@ -540,7 +539,7 @@ export const DEFAULT_CHANNELS = [
     epgId: "aljazeera.en",
     nowPlaying: "Global Breaking News & Live Coverage",
     url: "https://live-hls-web-aje.getaj.net/AJE/index.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
+    backupUrls: [],
     order: 7
   },
   {
@@ -559,7 +558,7 @@ export const DEFAULT_CHANNELS = [
     epgId: "trtworld.hd",
     nowPlaying: "International Headlines & South Asia Focus",
     url: "https://tv-trtworld.medya.trt.com.tr/master.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
+    backupUrls: [],
     order: 8
   },
   {
@@ -578,7 +577,7 @@ export const DEFAULT_CHANNELS = [
     epgId: "dw.english",
     nowPlaying: "World News, Tech & Documentaries",
     url: "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
+    backupUrls: [],
     order: 9
   },
   {
@@ -597,7 +596,7 @@ export const DEFAULT_CHANNELS = [
     epgId: "france24.en",
     nowPlaying: "24/7 International Live Bulletin",
     url: "https://live.france24.com/hls/live/2037218-b/F24_EN_HI_HLS/master_5000.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
+    backupUrls: [],
     order: 10
   },
 
@@ -637,7 +636,7 @@ export const DEFAULT_CHANNELS = [
     epgId: "in.cinema.pro",
     nowPlaying: "24/7 Blockbuster Premiers & Superhit Cinema",
     url: "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
+    backupUrls: [],
     order: 12
   },
 
@@ -658,7 +657,7 @@ export const DEFAULT_CHANNELS = [
     epgId: "barakat.cricket.pro",
     nowPlaying: "Pakistan Cricket Live, PSL & ICC 60fps Feed",
     url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
+    backupUrls: [],
     order: 13
   },
   {
@@ -677,7 +676,7 @@ export const DEFAULT_CHANNELS = [
     epgId: "redbull.tv",
     nowPlaying: "Motorsport, Rally & Global Live Championships",
     url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
+    backupUrls: [],
     order: 14
   },
   {
@@ -696,7 +695,7 @@ export const DEFAULT_CHANNELS = [
     epgId: "barakat.football.pro",
     nowPlaying: "European League Nights & Live Match Studio",
     url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
+    backupUrls: [],
     order: 15
   },
 
@@ -717,7 +716,7 @@ export const DEFAULT_CHANNELS = [
     epgId: "nasa.public",
     nowPlaying: "ISS Earth Views & Space Science Live",
     url: "https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
+    backupUrls: [],
     order: 16
   },
   {
@@ -736,7 +735,7 @@ export const DEFAULT_CHANNELS = [
     epgId: "nhk.world",
     nowPlaying: "Asian Culture, Science & Technology Documentaries",
     url: "https://nhkwlive-ojp.akamaized.net/hls/live/2003459/nhkwlive-ojp-en/index.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
+    backupUrls: [],
     order: 17
   }
 ];
@@ -1040,6 +1039,104 @@ export const DEFAULT_BLOGS = [
     faqs: [
       { q: "What is Mizanora Projects?", a: "Mizanora Projects is the innovation umbrella founded by developer Muaaz Iqbal, encompassing Mizanora Store, Mizanora AI, and BarakatWave Live TV." }
     ]
+  },
+  {
+    slug: "muaaz-iqbal-founder-architect-mizanora-projects-barakatwave-tv",
+    title: "Muaaz Iqbal: Founder, Full-Stack Cloud Architect & AI/Streaming Innovator Behind Mizanora Projects",
+    excerpt: "An executive profile on Muaaz Iqbal — the software architect, founder, and product visionary from Kasur, Punjab, Pakistan building BarakatWave Live TV, Mizanora Store, and autonomous AI systems.",
+    category: "Founder & Leadership",
+    author: "Muaaz Iqbal",
+    publishedAt: "2026-10-28T09:00:00Z",
+    readTime: "7 min read",
+    tags: ["Muaaz Iqbal", "Founder Muaaz Iqbal", "Mizanora Projects", "BarakatWave TV", "Software Architect Pakistan"],
+    content: `
+      <h2>Meet Muaaz Iqbal — Architecting Next-Generation Cloud &amp; Media Platforms</h2>
+      <p><strong>Muaaz Iqbal</strong> is a full-stack cloud architect, product designer, and AI/streaming engineer based in <strong>Kasur, Punjab, Pakistan</strong>. As the sole founder and lead innovator of <strong>Mizanora Projects</strong> (<a href="https://mizanora.vercel.app" target="_blank" rel="noopener">mizanora.vercel.app</a>), Muaaz Iqbal designs production software systems that combine high-speed serverless infrastructure with luxury user interfaces.</p>
+      <h3>Engineering Philosophy &amp; Technical Mastery</h3>
+      <ul>
+        <li><strong>Broadcast &amp; HLS Protocol Engineering:</strong> Designed BarakatWave Live TV's 3-Phase RFC 8216 HLS pre-roll stitcher, automatic Channel Offline standby failover, and Xtream Codes v2.9 server engine compatible with Televizo, TiviMate, IPTV Smarters Pro, and Smart TVs.</li>
+        <li><strong>IMDb-Connected Media Intelligence:</strong> Integrated instant IMDb ID (<code>tt...</code>) metadata resolution bringing live ratings, cast, plot synopses, posters, and multi-season episode trees into both Web Cinema and Xtream VOD panels.</li>
+        <li><strong>Serverless Edge Efficiency:</strong> Built zero-bloat Node.js router architectures on Vercel paired with real-time Firebase 13.1.0 synchronization and automated Git Tree atomic publishing.</li>
+        <li><strong>AI &amp; E-Commerce Ecosystems:</strong> Creator of <em>Mizanora Store</em> (halal luxury e-commerce with Noor AI) and <em>Mizanora Multi-Model WhatsApp AI Agent</em>.</li>
+      </ul>
+      <h3>Connect with Muaaz Iqbal &amp; Mizanora Projects</h3>
+      <p>Explore open-source and production innovations at <a href="https://github.com/muaaziqbalvip" target="_blank" rel="noopener">github.com/muaaziqbalvip</a>, visit <a href="https://barakatwave.vercel.app">barakatwave.vercel.app</a>, or reach official BarakatWave TV PRO VIP support directly via WhatsApp at <strong>0306-2015326</strong>.</p>
+    `,
+    faqs: [
+      { q: "Who is Muaaz Iqbal?", a: "Muaaz Iqbal is a Pakistani full-stack software architect, AI engineer, and founder of Mizanora Projects and BarakatWave Live TV, based in Kasur, Punjab, Pakistan." },
+      { q: "What platforms has Muaaz Iqbal created under Mizanora Projects?", a: "Muaaz Iqbal founded and engineered BarakatWave Live TV (barakatwave.vercel.app), Mizanora Store (mizanora.vercel.app), and the Mizanora Autonomous WhatsApp AI Agent." }
+    ]
+  },
+  {
+    slug: "televizo-iptv-player-setup-barakatwave-live-tv-imdb-movies-series",
+    title: "Official Televizo IPTV Setup Guide: Watch BarakatWave Live TV, Intro Bumpers & IMDb Movies/Series",
+    excerpt: "Step-by-step tutorial to configure BarakatWave TV's Xtream Codes server inside Televizo on Android phones, tablets, and Android TV — with priority Emoji groups and IMDb VOD.",
+    category: "Player Tutorials",
+    author: "Muaaz Iqbal",
+    publishedAt: "2026-10-28T09:15:00Z",
+    readTime: "6 min read",
+    tags: ["Televizo IPTV", "Xtream Codes Android", "BarakatWave TV", "IMDb VOD", "Muaaz Iqbal"],
+    content: `
+      <h2>Why Televizo + BarakatWave Live TV Is a Perfect Match</h2>
+      <p><strong>Televizo</strong> is one of the fastest ExoPlayer-powered Android IPTV apps. Founder <strong>Muaaz Iqbal</strong> tuned BarakatWave TV's 3-Phase HLS engine specifically for Televizo's live-edge media demuxer.</p>
+      <h3>How to Add Your BarakatWave Xtream Account in Televizo</h3>
+      <ol>
+        <li>Sign in at <a href="https://barakatwave.vercel.app">barakatwave.vercel.app</a> and claim your <strong>1-Time Free Personal Xtream Server</strong>.</li>
+        <li>Open <strong>Televizo</strong> &rarr; tap <strong>Create Playlist</strong> &rarr; choose <strong>New Xtream Codes playlist</strong>.</li>
+        <li>Enter Playlist Name <code>BarakatWave TV</code>, Server Address <code>https://barakatwave.vercel.app</code>, and your personal Username &amp; Password.</li>
+        <li>Tap the checkmark save icon — Televizo immediately loads Priority Emoji Live TV Groups (<strong>🇵🇰 Pakistan Top</strong>, <strong>🕌 Islamic HD</strong>, <strong>🎭 Drama</strong>, <strong>📰 News</strong>, <strong>🎬 Movies</strong>), XMLTV EPG, and full IMDb Movies &amp; Series!</li>
+      </ol>
+      <h3>Seamless Intro Video &amp; Offline Auto-Recovery in Televizo</h3>
+      <p>When you open any live channel in Televizo, BarakatWave's Phase-1 pure-intro window plays the official HD broadcast intro from <code>0.0s</code> and transitions via <code>#EXT-X-DISCONTINUITY</code> straight into the live broadcast. If an external channel link ever drops, Televizo automatically displays BarakatWave's HD Standby Recovery feed instead of an error screen.</p>
+    `,
+    faqs: [
+      { q: "Does Televizo show BarakatWave's IMDb Movies and Series?", a: "Yes! Televizo loads all Movie and Series categories with official IMDb ratings, posters, plots, cast, and episode lists automatically." }
+    ]
+  },
+  {
+    slug: "imdb-movies-and-web-series-xtream-vod-barakatwave-cinema",
+    title: "BarakatWave IMDb Cinema & Series Hub: Automatic IMDb ID Ratings, Posters & Xtream VOD Guide",
+    excerpt: "Explore how BarakatWave TV loads complete Movie and TV Series metadata, cast, plots, posters, and official ratings directly from IMDb IDs across Web and Xtream Codes.",
+    category: "IMDb Cinema & Series",
+    author: "Muaaz Iqbal",
+    publishedAt: "2026-10-28T09:30:00Z",
+    readTime: "6 min read",
+    tags: ["IMDb Movies", "IMDb Series", "Xtream VOD", "BarakatWave Cinema", "Mizanora Projects"],
+    content: `
+      <h2>Every Movie &amp; Series Powered by Official IMDb IDs</h2>
+      <p>Under <strong>Mizanora Projects</strong>, <strong>Muaaz Iqbal</strong> expanded BarakatWave Live TV beyond live channels into a unified <strong>IMDb Movies &amp; Series Hub</strong> synced across both the Web App and Xtream Codes VOD/Series APIs.</p>
+      <h3>One-Click IMDb ID Auto-Loading in Admin Studio</h3>
+      <ul>
+        <li>Paste any IMDb ID (such as <code>tt4139928</code> for <em>The Legend of Maula Jatt</em>, <code>tt1375666</code> for <em>Inception</em>, or <code>tt4320258</code> for <em>Diriliş: Ertuğrul</em>).</li>
+        <li>BarakatWave automatically resolves the official title, <strong>IMDb star rating</strong>, release year, genres, director, cast, full synopsis, high-resolution poster, widescreen backdrop, and multi-season episode lists.</li>
+        <li>While the VOD cloud storage cluster is expanding, clicking any Movie or Episode plays BarakatWave's official HD <strong>"Service is Building — Coming Soon"</strong> broadcast seamlessly across Web, Televizo, IPTV Smarters Pro, and TiviMate!</li>
+      </ul>
+    `,
+    faqs: [
+      { q: "Why does a Coming Soon video play on Movies & Series right now?", a: "BarakatWave's IMDb catalog and Xtream VOD architecture are live while the dedicated cinema media servers are being finalized — ensuring every title previews cleanly without broken links." }
+    ]
+  },
+  {
+    slug: "smart-channel-offline-failover-video-hls-recovery-system",
+    title: "Zero Dead Streams: How BarakatWave TV's Channel Offline Standby Video Protects Viewers",
+    excerpt: "Learn how Muaaz Iqbal engineered automatic upstream health detection and HD offline standby video injection so viewers never see ugly player errors when a broadcaster feed drops.",
+    category: "Mizanora Engineering",
+    author: "Muaaz Iqbal",
+    publishedAt: "2026-10-28T09:45:00Z",
+    readTime: "5 min read",
+    tags: ["HLS Failover", "Offline Channel Video", "Broadcast Reliability", "Muaaz Iqbal", "BarakatWave TV"],
+    content: `
+      <h2>Turning Upstream Outages into Graceful Television Broadcasts</h2>
+      <p>Live internet television sources occasionally change CDN tokens or undergo satellite maintenance. On ordinary IPTV lists, a dead link freezes the app or throws an unreadable HTTP 404/502 exception.</p>
+      <p>In <strong>BarakatWave Live TV</strong>, architect <strong>Muaaz Iqbal</strong> built multi-layer stream resilience:</p>
+      <ol>
+        <li><strong>Primary + Backup Server Cascade:</strong> Both the cloud HLS engine and Web Player automatically test backup <code>.m3u8</code> servers and same-origin proxy relays.</li>
+        <li><strong>Automatic Offline Standby Broadcast:</strong> If all upstream sources for a channel are unreachable, BarakatWave dynamically serves an HD 24/7 <em>"Stream Temporarily Offline — Auto-Recovering"</em> broadcast video — customizable by Admin at any time!</li>
+      </ol>
+    `,
+    faqs: [
+      { q: "Can Admin customize the Channel Offline fallback video?", a: "Yes! In Admin -> Broadcast Videos (Tab 5), Admin can set any custom .m3u8 or .mp4 URL for the Channel Offline standby broadcast." }
+    ]
   }
 ];
 
@@ -1090,7 +1187,15 @@ export const DEFAULT_FAQS = [
   },
   {
     q: "Which IPTV apps work with BarakatWave Xtream Codes?",
-    a: "IPTV Smarters Pro, TiviMate, XCIPTV, OTT Navigator, GSE Smart IPTV, Perfect Player, VLC Media Player, Kodi, and all Smart TV M3U/Xtream players."
+    a: "Televizo, IPTV Smarters Pro, TiviMate, XCIPTV, OTT Navigator, GSE Smart IPTV, Perfect Player, VLC Media Player, Kodi, and all Smart TV M3U/Xtream players — including Live TV, Intro Video, and IMDb Movies & Series!"
+  },
+  {
+    q: "How do IMDb Movies & Series work on BarakatWave TV?",
+    a: "All Movies and TV Series load official ratings, posters, cast, plots, and episodes directly via IMDb ID (tt...). While our dedicated VOD cinema storage is building, playing any Movie or Episode streams our official HD 'Service is Building — Coming Soon' broadcast across Web and Xtream apps."
+  },
+  {
+    q: "What happens if a live TV channel stream goes temporarily offline?",
+    a: "BarakatWave automatically checks backup servers first, and if an external broadcaster is down, smoothly plays our HD 'Stream Temporarily Offline — Auto-Recovering' broadcast instead of crashing your player."
   },
   {
     q: "Can I create my own custom M3U8 playlist?",

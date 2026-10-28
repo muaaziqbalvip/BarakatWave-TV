@@ -6,8 +6,12 @@
 import {
   BRAND,
   CATEGORIES,
+  VOD_CATEGORIES,
+  SERIES_CATEGORIES,
   DEFAULT_SETTINGS,
   DEFAULT_CHANNELS,
+  DEFAULT_MOVIES,
+  DEFAULT_SERIES,
   DEFAULT_BLOGS,
   DEFAULT_REVIEWS,
   THEMES,
@@ -16,8 +20,12 @@ import {
   getCategoryPriority,
   autoSortAndReindexChannels,
   moveChannelToPosition,
-  insertOrUpdateChannelSmart
+  insertOrUpdateChannelSmart,
+  extractImdbId,
+  metahubPoster,
+  metahubBackdrop
 } from "./default-data.js";
+import { fetchImdbTitle } from "./imdb-client.js";
 import {
   subscribeAuth,
   loginWithGoogle,
@@ -37,6 +45,9 @@ const admState = {
   user: null,
   isAdmin: false,
   channels: [...DEFAULT_CHANNELS],
+  movies: [...DEFAULT_MOVIES],
+  series: [...DEFAULT_SERIES],
+  pendingImdbEpisodes: null,
   settings: { ...DEFAULT_SETTINGS },
   xtreamAccounts: [],
   blogs: [...DEFAULT_BLOGS],
@@ -54,6 +65,7 @@ function initAdmin() {
   bindAdminAuth();
   bindOverviewActions();
   bindChannelManager();
+  bindImdbStudio();
   bindBulkImportExport();
   bindGitHubPublisher();
   bindDefaultsEditor();
@@ -239,8 +251,10 @@ async function evaluateAdminAccess(user) {
 }
 
 async function loadAllAdminData() {
-  const [chRaw, settingsRaw, xtRaw, blogsRaw, revRaw, tktRaw] = await Promise.all([
+  const [chRaw, movRaw, serRaw, settingsRaw, xtRaw, blogsRaw, revRaw, tktRaw] = await Promise.all([
     dbRead("channels", null),
+    dbRead("movies", null),
+    dbRead("series", null),
     dbRead("settings/defaults", null),
     dbRead("xtreamAccounts", null),
     dbRead("blogs", null),
@@ -272,6 +286,20 @@ async function loadAllAdminData() {
     }
   }
 
+  if (movRaw && typeof movRaw === "object") {
+    const mList = Array.isArray(movRaw)
+      ? movRaw.filter(Boolean)
+      : Object.entries(movRaw).map(([id, m]) => ({ id, ...m }));
+    if (mList.length) admState.movies = mList.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+  }
+
+  if (serRaw && typeof serRaw === "object") {
+    const sList = Array.isArray(serRaw)
+      ? serRaw.filter(Boolean)
+      : Object.entries(serRaw).map(([id, s]) => ({ id, ...s }));
+    if (sList.length) admState.series = sList.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+  }
+
   if (settingsRaw && typeof settingsRaw === "object") {
     admState.settings = { ...DEFAULT_SETTINGS, ...settingsRaw };
   }
@@ -298,6 +326,7 @@ async function loadAllAdminData() {
   renderKpis();
   populateEmojiGroupSelects();
   renderAdminChannelsTable();
+  renderAdminImdbTable();
   populateDefaultsForm();
   renderXtreamTable();
   renderAdminBlogsTable();
@@ -318,6 +347,8 @@ function renderKpis() {
   setTxt("kpiBlogs", admState.blogs.length);
   setTxt("kpiTickets", admState.tickets.filter((t) => t.status !== "Resolved").length);
   setTxt("kpiReviewsSub", `${admState.reviews.length} Community Reviews`);
+  setTxt("kpiImdb", admState.movies.length + admState.series.length);
+  setTxt("kpiImdbSub", `${admState.movies.length} Movies • ${admState.series.length} Series`);
 }
 
 function bindOverviewActions() {
@@ -327,14 +358,26 @@ function bindOverviewActions() {
       const id = c.id || `ch_${1001 + idx}`;
       chObj[id] = { ...c, id, order: idx + 1 };
     });
+    const movObj = {};
+    admState.movies.forEach((m, idx) => {
+      const id = m.id || `mov_${m.imdbId || 5001 + idx}`;
+      movObj[id] = { ...m, id, order: idx + 1 };
+    });
+    const serObj = {};
+    admState.series.forEach((s, idx) => {
+      const id = s.id || `ser_${s.imdbId || 7001 + idx}`;
+      serObj[id] = { ...s, id, order: idx + 1 };
+    });
     const blogObj = {};
     admState.blogs.forEach((b) => {
       blogObj[b.slug] = b;
     });
     await dbWrite("channels", chObj);
+    await dbWrite("movies", movObj);
+    await dbWrite("series", serObj);
     await dbWrite("settings/defaults", admState.settings);
     await dbWrite("blogs", blogObj);
-    toast("✅ Curated Channels, Defaults & 12 SEO Blogs synced to Firebase RTDB!");
+    toast(`✅ Synced ${admState.channels.length} Channels, ${admState.movies.length} IMDb Movies, ${admState.series.length} Series & ${admState.blogs.length} SEO Blogs to RTDB!`);
   });
 
   document.getElementById("quickPingSeoBtn")?.addEventListener("click", () => {
@@ -495,6 +538,7 @@ function bindChannelManager() {
       .filter(Boolean);
     const introVideoUrl = document.getElementById("chIntroOverride").value.trim();
     const proUnlockVideoUrl = document.getElementById("chProUnlockOverride")?.value.trim() || "";
+    const offlineVideoUrl = document.getElementById("chOfflineOverride")?.value.trim() || "";
 
     const catMeta = resolveCategoryMeta(rawCat, name, country, false);
     const slug = slugify(name) || `channel-${Date.now()}`;
@@ -519,7 +563,8 @@ function bindChannelManager() {
       url,
       backupUrls: backups,
       introVideoUrl,
-      proUnlockVideoUrl
+      proUnlockVideoUrl,
+      offlineVideoUrl
     };
 
     const parsedOrder = Number(orderRaw);
@@ -1000,6 +1045,8 @@ function renderAdminChannelsTable() {
       document.getElementById("chIntroOverride").value = ch.introVideoUrl || "";
       const proOv = document.getElementById("chProUnlockOverride");
       if (proOv) proOv.value = ch.proUnlockVideoUrl || "";
+      const offOv = document.getElementById("chOfflineOverride");
+      if (offOv) offOv.value = ch.offlineVideoUrl || "";
       setTxt("chFormHeading", `✏️ Editing #${ch.order || 1}: ${ch.name}`);
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
@@ -1017,6 +1064,390 @@ function renderAdminChannelsTable() {
       renderAdminChannelsTable();
       renderKpis();
       toast(`Removed "${removed?.name || "Channel"}" — remaining channels auto-adjusted (#1..#${admState.channels.length})!`);
+    });
+  });
+}
+
+/* ==================== TAB 2B: IMDb MOVIES & SERIES AUTO-LOADER STUDIO ==================== */
+function populateImdbCategoryOptions(kind = "movie", selectedVal = "") {
+  const sel = document.getElementById("imdbCategorySelect");
+  if (!sel) return;
+  const cats = kind === "series" ? SERIES_CATEGORIES : VOD_CATEGORIES;
+  sel.innerHTML = cats
+    .map((c) => `<option value="${escAttr(c.name)}">${esc(c.name)}</option>`)
+    .join("");
+  if (selectedVal && cats.some((c) => c.name === selectedVal)) {
+    sel.value = selectedVal;
+  }
+}
+
+function bindImdbStudio() {
+  populateImdbCategoryOptions("movie");
+
+  const kindSel = document.getElementById("imdbKindSelect");
+  kindSel?.addEventListener("change", () => {
+    populateImdbCategoryOptions(kindSel.value);
+  });
+
+  document.getElementById("admFetchImdbBtn")?.addEventListener("click", async () => {
+    const raw = document.getElementById("admImdbIdInput")?.value.trim() || "";
+    const prefType = document.getElementById("admImdbTypeSelect")?.value || "auto";
+    if (!raw) return toast("Paste an IMDb ID first (e.g. tt1375666 or tt4320258)!");
+    toast("⚡ Loading official IMDb Rating, Poster, Cast & Plot...");
+    try {
+      const item = await fetchImdbTitle(raw, prefType);
+      const isSeries = item.type === "series" || Array.isArray(item.episodes);
+      document.getElementById("admImdbIdInput").value = item.imdbId || raw;
+      document.getElementById("imdbTitleInput").value = item.title || "";
+      document.getElementById("imdbKindSelect").value = isSeries ? "series" : "movie";
+      populateImdbCategoryOptions(isSeries ? "series" : "movie", item.category);
+      document.getElementById("imdbRatingInput").value = item.imdbRating || "8.2";
+      document.getElementById("imdbYearInput").value = item.year || "2024";
+      document.getElementById("imdbPosterInput").value = item.poster || "";
+      document.getElementById("imdbBackdropInput").value = item.backdrop || "";
+      document.getElementById("imdbGenresInput").value = Array.isArray(item.genres)
+        ? item.genres.join(", ")
+        : String(item.genres || "");
+      document.getElementById("imdbDirectorInput").value = item.director || "";
+      document.getElementById("imdbCastInput").value = item.cast || "";
+      document.getElementById("imdbPlotInput").value = item.plot || "";
+      admState.pendingImdbEpisodes = isSeries ? item.episodes || null : null;
+      toast(`✅ Loaded "${item.title}" (⭐ ${item.imdbRating} on IMDb) — Click Save to publish!`);
+    } catch (err) {
+      toast(err?.message || "Failed to load IMDb ID");
+    }
+  });
+
+  document.getElementById("imdbResetBtn")?.addEventListener("click", resetImdbForm);
+
+  document.getElementById("imdbForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const editKey = document.getElementById("imdbEditKey")?.value.trim() || "";
+    const rawImdb = document.getElementById("admImdbIdInput")?.value.trim() || "";
+    const imdbId = extractImdbId(rawImdb) || `tt${Math.floor(1000000 + Math.random() * 8999999)}`;
+    const kind = document.getElementById("imdbKindSelect")?.value === "series" ? "series" : "movie";
+    const title = document.getElementById("imdbTitleInput")?.value.trim() || `IMDb Title (${imdbId})`;
+    const imdbRating = document.getElementById("imdbRatingInput")?.value.trim() || "8.0";
+    const year = document.getElementById("imdbYearInput")?.value.trim() || "2024";
+    const category = document.getElementById("imdbCategorySelect")?.value || "";
+    const tier = document.getElementById("imdbTierSelect")?.value === "pro" ? "pro" : "free";
+    const poster = document.getElementById("imdbPosterInput")?.value.trim() || metahubPoster(imdbId);
+    const backdrop = document.getElementById("imdbBackdropInput")?.value.trim() || metahubBackdrop(imdbId);
+    const streamUrl = document.getElementById("imdbStreamUrlInput")?.value.trim() || "";
+    const genres = (document.getElementById("imdbGenresInput")?.value || "Drama")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const director = document.getElementById("imdbDirectorInput")?.value.trim() || "IMDb Selection";
+    const cast = document.getElementById("imdbCastInput")?.value.trim() || "Featured Cast";
+    const plot = document.getElementById("imdbPlotInput")?.value.trim() || `${title} on BarakatWave Cinema.`;
+
+    if (kind === "movie") {
+      const catMeta = VOD_CATEGORIES.find((c) => c.name === category) || VOD_CATEGORIES[0];
+      const existingIdx = admState.movies.findIndex((m) => m.id === editKey || m.imdbId === imdbId);
+      const maxSid = admState.movies.reduce((acc, m) => Math.max(acc, Number(m.streamId) || 5000), 5000);
+      const rec = {
+        id: existingIdx >= 0 ? admState.movies[existingIdx].id : `mov_${imdbId}`,
+        streamId: existingIdx >= 0 ? admState.movies[existingIdx].streamId : maxSid + 1,
+        imdbId,
+        title,
+        year,
+        imdbRating,
+        runtime: "135 min",
+        genres,
+        category: catMeta.name,
+        categoryId: catMeta.id,
+        director,
+        cast,
+        plot,
+        poster,
+        backdrop,
+        tier,
+        streamUrl,
+        order: existingIdx >= 0 ? admState.movies[existingIdx].order : admState.movies.length + 1
+      };
+      if (existingIdx >= 0) admState.movies[existingIdx] = rec;
+      else admState.movies.push(rec);
+      await persistMoviesAndSeries();
+    } else {
+      const catMeta = SERIES_CATEGORIES.find((c) => c.name === category) || SERIES_CATEGORIES[0];
+      const existingIdx = admState.series.findIndex((s) => s.id === editKey || s.imdbId === imdbId);
+      const maxSeriesId = admState.series.reduce((acc, s) => Math.max(acc, Number(s.seriesId) || 7000), 7000);
+      const seriesId = existingIdx >= 0 ? admState.series[existingIdx].seriesId : maxSeriesId + 1;
+      const episodes =
+        admState.pendingImdbEpisodes ||
+        (existingIdx >= 0 ? admState.series[existingIdx].episodes : null) || [
+          {
+            id: `${seriesId}0101`,
+            season: 1,
+            episode: 1,
+            title: `${title} — S01E01`,
+            plot,
+            duration: "45 min",
+            streamUrl
+          }
+        ];
+      const rec = {
+        id: existingIdx >= 0 ? admState.series[existingIdx].id : `ser_${imdbId}`,
+        seriesId,
+        imdbId,
+        title,
+        year,
+        imdbRating,
+        runtime: "45 min",
+        genres,
+        category: catMeta.name,
+        categoryId: catMeta.id,
+        director,
+        cast,
+        plot,
+        poster,
+        backdrop,
+        tier,
+        streamUrl,
+        episodes,
+        seasonsCount: new Set(episodes.map((ep) => Number(ep.season) || 1)).size || 1,
+        order: existingIdx >= 0 ? admState.series[existingIdx].order : admState.series.length + 1
+      };
+      if (existingIdx >= 0) admState.series[existingIdx] = rec;
+      else admState.series.push(rec);
+      await persistMoviesAndSeries();
+    }
+
+    resetImdbForm();
+    renderAdminImdbTable();
+    renderKpis();
+    toast(`🎬 Saved "${title}" (${imdbId} • ⭐ ${imdbRating}) to RTDB & Xtream Panel!`);
+  });
+
+  // Bulk IMDb IDs Importer
+  document.getElementById("admBulkImdbImportBtn")?.addEventListener("click", async () => {
+    const raw = document.getElementById("admBulkImdbIds")?.value || "";
+    const ids = [...new Set((raw.match(/tt\d{6,10}/gi) || []).map((x) => x.toLowerCase()))];
+    if (!ids.length) return toast("Paste at least one valid tt... IMDb ID!");
+
+    toast(`⚡ Auto-loading ${ids.length} IMDb IDs...`);
+    let addedCount = 0;
+    for (const id of ids) {
+      try {
+        const item = await fetchImdbTitle(id, "auto");
+        if (item.type === "series") {
+          const exists = admState.series.findIndex((s) => s.imdbId === item.imdbId);
+          const maxSid = admState.series.reduce((m, s) => Math.max(m, Number(s.seriesId) || 7000), 7000);
+          const rec = {
+            ...item,
+            id: `ser_${item.imdbId}`,
+            seriesId: exists >= 0 ? admState.series[exists].seriesId : maxSid + 1,
+            tier: "free",
+            streamUrl: "",
+            order: exists >= 0 ? admState.series[exists].order : admState.series.length + 1
+          };
+          if (exists >= 0) admState.series[exists] = rec;
+          else admState.series.push(rec);
+        } else {
+          const exists = admState.movies.findIndex((m) => m.imdbId === item.imdbId);
+          const maxSid = admState.movies.reduce((acc, m) => Math.max(acc, Number(m.streamId) || 5000), 5000);
+          const rec = {
+            ...item,
+            id: `mov_${item.imdbId}`,
+            streamId: exists >= 0 ? admState.movies[exists].streamId : maxSid + 1,
+            tier: "free",
+            streamUrl: "",
+            order: exists >= 0 ? admState.movies[exists].order : admState.movies.length + 1
+          };
+          if (exists >= 0) admState.movies[exists] = rec;
+          else admState.movies.push(rec);
+        }
+        addedCount++;
+      } catch {
+        // continue next ID
+      }
+    }
+
+    await persistMoviesAndSeries();
+    document.getElementById("admBulkImdbIds").value = "";
+    renderAdminImdbTable();
+    renderKpis();
+    toast(`🎉 Imported & synced ${addedCount} IMDb Movies/Series to RTDB & Xtream VOD!`);
+  });
+
+  document.getElementById("admImdbFilterKind")?.addEventListener("change", renderAdminImdbTable);
+  document.getElementById("admImdbFilterSearch")?.addEventListener("input", renderAdminImdbTable);
+}
+
+function resetImdbForm() {
+  document.getElementById("imdbForm")?.reset();
+  const editKey = document.getElementById("imdbEditKey");
+  if (editKey) editKey.value = "";
+  const idInp = document.getElementById("admImdbIdInput");
+  if (idInp) idInp.value = "";
+  admState.pendingImdbEpisodes = null;
+  populateImdbCategoryOptions("movie");
+  setTxt("imdbFormHeading", "🎬 Add / Edit Movie or TV Series via IMDb ID");
+}
+
+async function persistMoviesAndSeries() {
+  const movObj = {};
+  admState.movies = admState.movies.map((m, idx) => {
+    const id = m.id || `mov_${m.imdbId || 5001 + idx}`;
+    const updated = { ...m, id, order: idx + 1 };
+    movObj[id] = updated;
+    return updated;
+  });
+
+  const serObj = {};
+  admState.series = admState.series.map((s, idx) => {
+    const id = s.id || `ser_${s.imdbId || 7001 + idx}`;
+    const updated = { ...s, id, order: idx + 1 };
+    serObj[id] = updated;
+    return updated;
+  });
+
+  await Promise.all([dbWrite("movies", movObj), dbWrite("series", serObj)]);
+  fetch("/api/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: "movies", value: movObj })
+  }).catch(() => {});
+  fetch("/api/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: "series", value: serObj })
+  }).catch(() => {});
+}
+
+function renderAdminImdbTable() {
+  const tbody = document.getElementById("admImdbTbody");
+  if (!tbody) return;
+
+  const filterKind = document.getElementById("admImdbFilterKind")?.value || "all";
+  const q = (document.getElementById("admImdbFilterSearch")?.value || "").trim().toLowerCase();
+
+  let combined = [
+    ...admState.movies.map((m) => ({ ...m, _kind: "movie" })),
+    ...admState.series.map((s) => ({ ...s, _kind: "series" }))
+  ];
+
+  if (filterKind !== "all") {
+    combined = combined.filter((x) => x._kind === filterKind);
+  }
+  if (q) {
+    combined = combined.filter(
+      (x) =>
+        String(x.title || "").toLowerCase().includes(q) ||
+        String(x.imdbId || "").toLowerCase().includes(q) ||
+        String(x.category || "").toLowerCase().includes(q)
+    );
+  }
+
+  setTxt("admImdbCount", combined.length);
+
+  if (!combined.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:22px;" class="muted-sm">No IMDb titles match your filter.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = combined
+    .map(
+      (item) => `
+      <tr>
+        <td>
+          <code>${esc(item.imdbId || "")}</code>
+          <div style="margin-top:4px;"><span class="badge badge-gold">⭐ ${esc(item.imdbRating || "8.0")}</span></div>
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:9px;">
+            <img src="${escAttr(item.poster || BRAND.logoPrimary)}" onerror="this.onerror=null;this.src='/assets/logo-fallback.svg';" style="width:34px;height:48px;border-radius:6px;object-fit:cover;" alt="" />
+            <div>
+              <strong>${esc(item.title)}</strong> <span class="muted-sm">(${esc(item.year || "")})</span>
+              <div class="muted-sm" style="font-size:0.72rem;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(item.cast || "")}</div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <span class="badge badge-cyan">${item._kind === "series" ? "📺 SERIES" : "🎬 MOVIE"}</span>
+          <div class="muted-sm" style="font-size:0.73rem;margin-top:3px;">${esc(item.category || "")}</div>
+        </td>
+        <td>
+          ${
+            item.streamUrl
+              ? `<span class="badge badge-free">🟢 Custom Stream Active</span>`
+              : `<span class="badge badge-cyan">🎬 Coming Soon Video</span>`
+          }
+        </td>
+        <td>
+          <button type="button" class="badge ${item.tier === "pro" ? "badge-gold" : "badge-free"}" style="cursor:pointer;" data-imdb-tier="${escAttr(item.id)}" data-imdb-kind="${item._kind}">
+            ${item.tier === "pro" ? "👑 PRO VIP" : "🟢 FREE"}
+          </button>
+        </td>
+        <td>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-sm btn-outline" data-imdb-edit="${escAttr(item.id)}" data-imdb-kind="${item._kind}">✏️ Edit</button>
+            <button type="button" class="btn btn-sm btn-danger" data-imdb-del="${escAttr(item.id)}" data-imdb-kind="${item._kind}">✕</button>
+          </div>
+        </td>
+      </tr>`
+    )
+    .join("");
+
+  tbody.querySelectorAll("[data-imdb-tier]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.imdbTier;
+      const kind = btn.dataset.imdbKind;
+      const arr = kind === "series" ? admState.series : admState.movies;
+      const found = arr.find((x) => x.id === id);
+      if (!found) return;
+      found.tier = found.tier === "pro" ? "free" : "pro";
+      await persistMoviesAndSeries();
+      renderAdminImdbTable();
+      toast(`Switched "${found.title}" to ${found.tier.toUpperCase()}`);
+    });
+  });
+
+  tbody.querySelectorAll("[data-imdb-edit]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.imdbEdit;
+      const kind = btn.dataset.imdbKind;
+      const arr = kind === "series" ? admState.series : admState.movies;
+      const item = arr.find((x) => x.id === id);
+      if (!item) return;
+
+      document.getElementById("imdbEditKey").value = item.id;
+      document.getElementById("admImdbIdInput").value = item.imdbId || "";
+      document.getElementById("imdbTitleInput").value = item.title || "";
+      document.getElementById("imdbKindSelect").value = kind;
+      populateImdbCategoryOptions(kind, item.category);
+      document.getElementById("imdbRatingInput").value = item.imdbRating || "8.0";
+      document.getElementById("imdbYearInput").value = item.year || "";
+      document.getElementById("imdbTierSelect").value = item.tier === "pro" ? "pro" : "free";
+      document.getElementById("imdbPosterInput").value = item.poster || "";
+      document.getElementById("imdbBackdropInput").value = item.backdrop || "";
+      document.getElementById("imdbStreamUrlInput").value = item.streamUrl || "";
+      document.getElementById("imdbGenresInput").value = Array.isArray(item.genres)
+        ? item.genres.join(", ")
+        : String(item.genres || "");
+      document.getElementById("imdbDirectorInput").value = item.director || "";
+      document.getElementById("imdbCastInput").value = item.cast || "";
+      document.getElementById("imdbPlotInput").value = item.plot || "";
+      admState.pendingImdbEpisodes = kind === "series" ? item.episodes || null : null;
+      setTxt("imdbFormHeading", `✏️ Editing IMDb Title: ${item.title} (${item.imdbId})`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  });
+
+  tbody.querySelectorAll("[data-imdb-del]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.imdbDel;
+      const kind = btn.dataset.imdbKind;
+      if (kind === "series") {
+        admState.series = admState.series.filter((s) => s.id !== id);
+      } else {
+        admState.movies = admState.movies.filter((m) => m.id !== id);
+      }
+      await persistMoviesAndSeries();
+      renderAdminImdbTable();
+      renderKpis();
+      toast("Removed IMDb title from catalog");
     });
   });
 }
@@ -1235,7 +1666,7 @@ async function runGitHubPublish(previewOnly) {
   }
 }
 
-/* ==================== TAB 5: DEFAULT WELCOME & PRO UNLOCK VIDEOS ==================== */
+/* ==================== TAB 5: BROADCAST VIDEOS (INTRO, OFFLINE, COMING SOON & PRO) ==================== */
 function bindDefaultsEditor() {
   document.getElementById("resetWelcomeBtn")?.addEventListener("click", () => {
     document.getElementById("defWelcomeUrl").value = "/media/welcome/index.m3u8";
@@ -1244,6 +1675,16 @@ function bindDefaultsEditor() {
   document.getElementById("resetProVidBtn")?.addEventListener("click", () => {
     document.getElementById("defProVideoUrl").value = "/media/pro-unlock/index.m3u8";
     toast("Reset to built-in HD PRO Unlock Video");
+  });
+  document.getElementById("resetOfflineVidBtn")?.addEventListener("click", () => {
+    const el = document.getElementById("defOfflineVideoUrl");
+    if (el) el.value = "/media/channel-offline/index.m3u8";
+    toast("Reset to built-in HD Channel Offline Standby Video");
+  });
+  document.getElementById("resetComingSoonVidBtn")?.addEventListener("click", () => {
+    const el = document.getElementById("defComingSoonVideoUrl");
+    if (el) el.value = "/media/coming-soon/index.m3u8";
+    toast("Reset to built-in HD Coming Soon Video");
   });
 
   document.getElementById("previewWelcomeBtn")?.addEventListener("click", () => {
@@ -1254,6 +1695,16 @@ function bindDefaultsEditor() {
   document.getElementById("previewProVidBtn")?.addEventListener("click", () => {
     const u = document.getElementById("defProVideoUrl").value.trim() || "/media/pro-unlock/index.m3u8";
     setTxt("defaultsPreviewLabel", "👑 Previewing Premium PRO Unlock Video");
+    openMiniVideoPreview("defaultsVideoEl", "defaultsPreviewBox", u);
+  });
+  document.getElementById("previewOfflineVidBtn")?.addEventListener("click", () => {
+    const u = document.getElementById("defOfflineVideoUrl")?.value.trim() || "/media/channel-offline/index.m3u8";
+    setTxt("defaultsPreviewLabel", "📡 Previewing Channel Offline Standby Video");
+    openMiniVideoPreview("defaultsVideoEl", "defaultsPreviewBox", u);
+  });
+  document.getElementById("previewComingSoonVidBtn")?.addEventListener("click", () => {
+    const u = document.getElementById("defComingSoonVideoUrl")?.value.trim() || "/media/coming-soon/index.m3u8";
+    setTxt("defaultsPreviewLabel", "🎬 Previewing IMDb Movies/Series Coming Soon Video");
     openMiniVideoPreview("defaultsVideoEl", "defaultsPreviewBox", u);
   });
 
@@ -1269,19 +1720,28 @@ function bindDefaultsEditor() {
     const stitchedUrl = `/live/demo/demo/${sid}.m3u8?_t=${Date.now()}`;
     setTxt(
       "defaultsPreviewLabel",
-      `▶ Xtream / HLS Live Simulation (${freeCh ? freeCh.name : "Channel #1001"}): 1) Intro Plays First ➔ 2) Auto-Switches to Live Channel!`
+      `▶ Televizo + HLS Live Simulation (${freeCh ? freeCh.name : "Channel #1001"}): 1) Pure Intro Plays First ➔ 2) Auto-Switches to Live Channel!`
     );
     openMiniVideoPreview("defaultsVideoEl", "defaultsPreviewBox", stitchedUrl);
     document.getElementById("defaultsPreviewBox")?.scrollIntoView({ behavior: "smooth", block: "center" });
   });
 
-  // Live Simulator 2: Watch what a Free Xtream / Web User sees when clicking a PRO VIP Channel!
+  // Live Simulator 2: Channel Offline Standby Video
+  document.getElementById("simOfflineVideoBtn")?.addEventListener("click", async () => {
+    await saveDefaultsQuietly();
+    const url = `/api/stream?mode=offline&_t=${Date.now()}`;
+    setTxt("defaultsPreviewLabel", "📡 Channel Offline Failover Simulation: Plays automatically when any channel link fails!");
+    openMiniVideoPreview("defaultsVideoEl", "defaultsPreviewBox", url);
+    document.getElementById("defaultsPreviewBox")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+
+  // Live Simulator 3: Free User Opening PRO VIP Channel
   document.getElementById("simProLockedBtn")?.addEventListener("click", async () => {
     await saveDefaultsQuietly();
     const proCh = admState.channels.find((c) => c.tier === "pro");
     const url = proCh
       ? `/live/demo/demo/${proCh.streamId}.m3u8?_t=${Date.now()}`
-      : `/api/stream?mode=pro_lock&id=1008&_t=${Date.now()}`;
+      : `/api/stream?mode=pro_lock&id=2001&_t=${Date.now()}`;
     setTxt(
       "defaultsPreviewLabel",
       `🔒 Free User Opening PRO Channel (${proCh ? proCh.name : "PRO VIP"}): Continuous Premium Unlock Video Stream!`
@@ -1290,10 +1750,19 @@ function bindDefaultsEditor() {
     document.getElementById("defaultsPreviewBox")?.scrollIntoView({ behavior: "smooth", block: "center" });
   });
 
+  // Live Simulator 4: IMDb Movies & Series "Service is Building — Coming Soon" VOD Video
+  document.getElementById("simComingSoonBtn")?.addEventListener("click", async () => {
+    await saveDefaultsQuietly();
+    const url = `/movie/demo/demo/5001.mp4?_t=${Date.now()}`;
+    setTxt("defaultsPreviewLabel", "🎬 Xtream VOD / IMDb Movie Simulation: Service is Building — Coming Soon!");
+    openMiniVideoPreview("defaultsVideoEl", "defaultsPreviewBox", url);
+    document.getElementById("defaultsPreviewBox")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+
   document.getElementById("defaultsForm")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     await saveDefaultsQuietly();
-    toast("✅ Intro Video & PRO Unlock Video Saved for Web + All Xtream Players!");
+    toast("✅ All 4 Broadcast Videos (Intro, Offline, Coming Soon & PRO) Saved for Web + Xtream!");
   });
 
   checkRtdbPublicReadForIptv();
@@ -1304,10 +1773,14 @@ async function saveDefaultsQuietly() {
     ...admState.settings,
     welcomeVideoEnabled: document.getElementById("defWelcomeEnabled").checked,
     welcomeVideoUrl: document.getElementById("defWelcomeUrl").value.trim() || "/media/welcome/index.m3u8",
-    welcomeDurationSec: Number(document.getElementById("defWelcomeDur").value) || 6,
+    welcomeDurationSec: Number(document.getElementById("defWelcomeDur").value) || 8,
     welcomeSkippable: document.getElementById("defWelcomeSkip").checked,
     proUnlockVideoEnabled: document.getElementById("defProVideoEnabled").checked,
     proUnlockVideoUrl: document.getElementById("defProVideoUrl").value.trim() || "/media/pro-unlock/index.m3u8",
+    channelOfflineVideoUrl:
+      document.getElementById("defOfflineVideoUrl")?.value.trim() || "/media/channel-offline/index.m3u8",
+    comingSoonVideoUrl:
+      document.getElementById("defComingSoonVideoUrl")?.value.trim() || "/media/coming-soon/index.m3u8",
     proWhatsapp: document.getElementById("defProPhone").value.trim() || "03062015326",
     siteAnnouncement: document.getElementById("defAnnouncement").value.trim()
   };
@@ -1340,10 +1813,14 @@ function populateDefaultsForm() {
   const s = admState.settings;
   document.getElementById("defWelcomeEnabled").checked = s.welcomeVideoEnabled !== false;
   document.getElementById("defWelcomeUrl").value = s.welcomeVideoUrl || "/media/welcome/index.m3u8";
-  document.getElementById("defWelcomeDur").value = s.welcomeDurationSec || 6;
+  document.getElementById("defWelcomeDur").value = s.welcomeDurationSec || 8;
   document.getElementById("defWelcomeSkip").checked = s.welcomeSkippable !== false;
   document.getElementById("defProVideoEnabled").checked = s.proUnlockVideoEnabled !== false;
   document.getElementById("defProVideoUrl").value = s.proUnlockVideoUrl || "/media/pro-unlock/index.m3u8";
+  const offEl = document.getElementById("defOfflineVideoUrl");
+  if (offEl) offEl.value = s.channelOfflineVideoUrl || "/media/channel-offline/index.m3u8";
+  const csEl = document.getElementById("defComingSoonVideoUrl");
+  if (csEl) csEl.value = s.comingSoonVideoUrl || "/media/coming-soon/index.m3u8";
   document.getElementById("defProPhone").value = s.proWhatsapp || "03062015326";
   document.getElementById("defAnnouncement").value = s.siteAnnouncement || DEFAULT_SETTINGS.siteAnnouncement;
 

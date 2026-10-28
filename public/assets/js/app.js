@@ -6,8 +6,12 @@
 import {
   BRAND,
   CATEGORIES,
+  VOD_CATEGORIES,
+  SERIES_CATEGORIES,
   DEFAULT_SETTINGS,
   DEFAULT_CHANNELS,
+  DEFAULT_MOVIES,
+  DEFAULT_SERIES,
   DEFAULT_BLOGS,
   DEFAULT_REVIEWS,
   DEFAULT_FAQS,
@@ -15,6 +19,7 @@ import {
   resolveCategoryMeta,
   getCategoryPriority
 } from "./default-data.js";
+import { fetchImdbTitle } from "./imdb-client.js";
 import {
   subscribeAuth,
   loginWithGoogle,
@@ -39,6 +44,11 @@ const state = {
   xtreamAccount: null,
   xtreamPassVisible: false,
   channels: [...DEFAULT_CHANNELS],
+  movies: [...DEFAULT_MOVIES],
+  series: [...DEFAULT_SERIES],
+  cinemaType: "all",
+  cinemaCategory: "ALL",
+  cinemaQuery: "",
   settings: { ...DEFAULT_SETTINGS },
   blogs: [...DEFAULT_BLOGS],
   reviews: [...DEFAULT_REVIEWS],
@@ -65,6 +75,7 @@ function init() {
   bindNavigation();
   bindAuthModal();
   bindGuideControls();
+  bindCinemaHub();
   bindXtreamActions();
   bindPlaylistStudio();
   bindReviewsAndSupport();
@@ -137,10 +148,35 @@ function init() {
     renderReviews();
   }, null);
 
+  dbWatch("movies", (val) => {
+    if (val && typeof val === "object") {
+      const arr = Array.isArray(val)
+        ? val.filter(Boolean)
+        : Object.entries(val).map(([id, m]) => ({ id, ...m }));
+      if (arr.length) {
+        state.movies = arr.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+      }
+    }
+    renderCinemaHub();
+  }, null);
+
+  dbWatch("series", (val) => {
+    if (val && typeof val === "object") {
+      const arr = Array.isArray(val)
+        ? val.filter(Boolean)
+        : Object.entries(val).map(([id, s]) => ({ id, ...s }));
+      if (arr.length) {
+        state.series = arr.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+      }
+    }
+    renderCinemaHub();
+  }, null);
+
   // Initial immediate render using built-in curated data (0ms first meaningful UI)
   renderCategoryChips();
   renderChannelGuide();
   renderChannelCards();
+  renderCinemaHub();
   renderPlaylistCatalogChecks();
   renderBlogsGrid();
   renderReviews();
@@ -215,7 +251,16 @@ function initPlayer() {
     introOverlayEl: document.getElementById("introOverlay"),
     introCountdownEl: document.getElementById("introCountdown"),
     skipIntroBtnEl: document.getElementById("skipIntroBtn"),
-    proOverlayEl: document.getElementById("proUnlockOverlay")
+    proOverlayEl: document.getElementById("proUnlockOverlay"),
+    onStateChange: (mode, item) => {
+      const subEl = document.getElementById("nowPlayingSub");
+      if (!subEl) return;
+      if (mode === "offline_standby") {
+        subEl.textContent = `📡 ${item?.name || "Channel"} • Signal Restoring — Broadcast Standby Active`;
+      } else if (mode === "coming_soon") {
+        subEl.textContent = `🎬 ${item?.title || item?.name || "Cinema VOD"} • Service Is Building — Coming Soon!`;
+      }
+    }
   });
 
   document.getElementById("prevChBtn")?.addEventListener("click", () => stepChannel(-1));
@@ -324,7 +369,7 @@ function bindNavigation() {
 }
 
 function switchView(viewName) {
-  const valid = ["live", "xtream", "playlist", "pro", "blogs", "support"];
+  const valid = ["live", "cinema", "xtream", "playlist", "pro", "blogs", "support"];
   const target = valid.includes(viewName) ? viewName : "live";
   valid.forEach((v) => {
     const sec = document.getElementById(`view-${v}`);
@@ -343,7 +388,7 @@ function switchView(viewName) {
 
 function handleInitialUrlRouting() {
   const hash = (window.location.hash || "").replace(/^#/, "").toLowerCase();
-  if (["xtream", "playlist", "pro", "blogs", "support"].includes(hash)) {
+  if (["cinema", "xtream", "playlist", "pro", "blogs", "support"].includes(hash)) {
     switchView(hash);
   }
 }
@@ -1332,6 +1377,269 @@ function renderFaqs() {
         <p class="muted-sm" style="margin:8px 0 0;">${escHtml(f.a)}</p>
       </details>`
   ).join("");
+}
+
+/* ==================== IMDb MOVIES & SERIES CINEMA HUB ==================== */
+function bindCinemaHub() {
+  document.querySelectorAll("#cinemaTypeTabs [data-cin-type]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.cinemaType = btn.dataset.cinType || "all";
+      state.cinemaCategory = "ALL";
+      document.querySelectorAll("#cinemaTypeTabs [data-cin-type]").forEach((b) => {
+        b.className = b === btn ? "btn btn-sm btn-primary" : "btn btn-sm btn-outline";
+      });
+      renderCinemaHub();
+    });
+  });
+
+  const searchInp = document.getElementById("cinemaSearchInput");
+  searchInp?.addEventListener("input", () => {
+    state.cinemaQuery = searchInp.value.trim();
+    renderCinemaHub();
+  });
+
+  document.getElementById("closeCinemaModalBtn")?.addEventListener("click", () => {
+    const m = document.getElementById("cinemaDetailModal");
+    if (m) m.hidden = true;
+  });
+
+  document.getElementById("cinemaDetailModal")?.addEventListener("click", (e) => {
+    if (e.target.id === "cinemaDetailModal") e.target.hidden = true;
+  });
+
+  document.getElementById("userImdbLookupBtn")?.addEventListener("click", async () => {
+    const inp = document.getElementById("userImdbLookupInput");
+    const raw = inp?.value.trim() || "";
+    if (!raw) return showToast("Paste an IMDb ID like tt1375666 or tt4320258!");
+    try {
+      showToast("⚡ Fetching official IMDb rating & metadata...");
+      const item = await fetchImdbTitle(raw, "auto");
+      openCinemaDetailModal(item);
+    } catch (err) {
+      showToast(err?.message || "Could not load IMDb ID");
+    }
+  });
+}
+
+function getCombinedCinemaItems() {
+  const movs = state.movies.map((m) => ({ ...m, _mediaType: "movie" }));
+  const sers = state.series.map((s) => ({ ...s, _mediaType: "series" }));
+  setText("cinCountAll", String(movs.length + sers.length));
+  setText("cinCountMovies", String(movs.length));
+  setText("cinCountSeries", String(sers.length));
+
+  let list =
+    state.cinemaType === "movie"
+      ? movs
+      : state.cinemaType === "series"
+        ? sers
+        : [...movs, ...sers];
+
+  if (state.cinemaCategory !== "ALL") {
+    list = list.filter((x) => x.category === state.cinemaCategory);
+  }
+
+  if (state.cinemaQuery) {
+    const q = state.cinemaQuery.toLowerCase();
+    list = list.filter(
+      (x) =>
+        String(x.title || "").toLowerCase().includes(q) ||
+        String(x.imdbId || "").toLowerCase().includes(q) ||
+        String(x.cast || "").toLowerCase().includes(q) ||
+        String(x.director || "").toLowerCase().includes(q) ||
+        String((x.genres || []).join(" ")).toLowerCase().includes(q)
+    );
+  }
+  return list;
+}
+
+function renderCinemaHub() {
+  const chipsEl = document.getElementById("cinemaCategoryChips");
+  const gridEl = document.getElementById("cinemaCardsGrid");
+  if (!gridEl) return;
+
+  const baseCategories =
+    state.cinemaType === "movie"
+      ? VOD_CATEGORIES.map((c) => c.name)
+      : state.cinemaType === "series"
+        ? SERIES_CATEGORIES.map((c) => c.name)
+        : [...VOD_CATEGORIES.map((c) => c.name), ...SERIES_CATEGORIES.map((c) => c.name)];
+
+  if (chipsEl) {
+    const allChipItems = ["ALL", ...baseCategories];
+    chipsEl.innerHTML = allChipItems
+      .map(
+        (cat) =>
+          `<button type="button" class="chip ${state.cinemaCategory === cat ? "active" : ""}" data-cin-cat="${escAttr(cat)}">${escHtml(cat === "ALL" ? "🌐 All Genres & Categories" : cat)}</button>`
+      )
+      .join("");
+    chipsEl.querySelectorAll("[data-cin-cat]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.cinemaCategory = btn.dataset.cinCat || "ALL";
+        renderCinemaHub();
+      });
+    });
+  }
+
+  const items = getCombinedCinemaItems();
+  if (!items.length) {
+    gridEl.innerHTML = `<div class="glass-card" style="grid-column:1/-1;padding:28px;text-align:center;">No Movies or Series match your filter. Try pasting any <code>tt...</code> IMDb ID above!</div>`;
+    return;
+  }
+
+  gridEl.innerHTML = items
+    .map((item) => {
+      const isSeries = item._mediaType === "series" || item.type === "series";
+      const rating = Number(item.imdbRating || 8.0).toFixed(1);
+      const statusRibbon = item.streamUrl
+        ? "▶ STREAMING NOW IN HD"
+        : "🎬 SERVICE BUILDING • COMING SOON";
+      return `
+        <article class="cinema-card" data-open-cin="${escAttr(item.id || item.imdbId)}" data-cin-kind="${isSeries ? "series" : "movie"}">
+          <div class="cinema-poster-wrap">
+            <img
+              src="${escAttr(item.poster || BRAND.logoPrimary)}"
+              onerror="this.onerror=null;this.src='${escAttr(BRAND.logoPrimary)}';"
+              alt="${escAttr(item.title)}"
+              loading="lazy"
+            />
+            <span class="imdb-rating-pill">⭐ ${escHtml(rating)}</span>
+            <span class="cinema-type-pill">${isSeries ? "📺 SERIES" : "🎬 MOVIE"}</span>
+            <div class="cinema-coming-ribbon">${escHtml(statusRibbon)}</div>
+          </div>
+          <div class="cinema-card-body">
+            <div class="cinema-card-title">${escHtml(item.title)}</div>
+            <div class="muted-sm" style="font-size:0.75rem;">
+              ${escHtml(item.year || "HD")} &bull; <code>${escHtml(item.imdbId || "")}</code>
+              ${item.tier === "pro" ? `<span class="badge badge-gold" style="margin-left:4px;padding:1px 6px;font-size:0.65rem;">👑 PRO</span>` : ""}
+            </div>
+            <div class="muted-sm" style="font-size:0.73rem;margin-top:auto;">
+              ${escHtml(Array.isArray(item.genres) ? item.genres.slice(0, 3).join(" • ") : item.category || "")}
+            </div>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  gridEl.querySelectorAll("[data-open-cin]").forEach((card) => {
+    card.addEventListener("click", () => {
+      const key = card.dataset.openCin;
+      const found = items.find((x) => (x.id || x.imdbId) === key);
+      if (found) openCinemaDetailModal(found);
+    });
+  });
+}
+
+function openCinemaDetailModal(item) {
+  const modal = document.getElementById("cinemaDetailModal");
+  const content = document.getElementById("cinemaModalContent");
+  if (!modal || !content || !item) return;
+
+  const isSeries = item._mediaType === "series" || item.type === "series" || Array.isArray(item.episodes);
+  const rating = Number(item.imdbRating || 8.0).toFixed(1);
+  const genres = Array.isArray(item.genres) ? item.genres.join(" • ") : String(item.genres || "Drama");
+  const episodes = Array.isArray(item.episodes) ? item.episodes : [];
+
+  content.innerHTML = `
+    <div class="cinema-modal-hero" style="background-image:url('${escAttr(item.backdrop || item.poster || BRAND.logoPrimary)}');">
+      <div class="cinema-modal-hero-inner">
+        <img
+          src="${escAttr(item.poster || BRAND.logoPrimary)}"
+          onerror="this.onerror=null;this.src='${escAttr(BRAND.logoPrimary)}';"
+          alt="${escAttr(item.title)}"
+          style="width:100%;max-width:155px;border-radius:14px;border:2px solid rgba(255,255,255,0.22);box-shadow:0 12px 30px rgba(0,0,0,0.45);"
+        />
+        <div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+            <span class="badge badge-gold">⭐ IMDb ${escHtml(rating)} / 10</span>
+            <span class="badge badge-cyan">${isSeries ? "📺 TV SERIES" : "🎬 FEATURE MOVIE"}</span>
+            <code style="background:rgba(255,255,255,0.14);padding:3px 8px;border-radius:6px;color:#fff;font-size:0.76rem;">${escHtml(item.imdbId || "")}</code>
+            ${item.tier === "pro" ? `<span class="badge badge-gold">👑 PRO VIP</span>` : `<span class="badge badge-free">🟢 FREE ACCESS</span>`}
+          </div>
+          <h2 id="cinModalTitle" style="margin:0 0 6px;font-size:1.5rem;color:#fff;">${escHtml(item.title)} (${escHtml(item.year || "HD")})</h2>
+          <div style="font-size:0.84rem;color:#cbd5e1;margin-bottom:10px;">
+            ${escHtml(genres)} &bull; ${escHtml(item.runtime || "HD")} &bull; ${escHtml(item.language || "Multi Audio")}
+          </div>
+          <p style="margin:0 0 14px;font-size:0.9rem;line-height:1.55;color:#e2e8f0;">${escHtml(item.plot || "")}</p>
+          <div style="font-size:0.8rem;color:#cbd5e1;margin-bottom:14px;">
+            <strong>Director:</strong> ${escHtml(item.director || "IMDb Selection")}<br/>
+            <strong>Cast:</strong> ${escHtml(item.cast || "Featured Cast")}
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-primary" id="cinWatchMainBtn">
+              ▶ ${item.streamUrl ? "Watch Now in HD" : "Preview Broadcast (Service Building — Coming Soon)"}
+            </button>
+            <a href="https://www.imdb.com/title/${escAttr(item.imdbId || "")}/" target="_blank" rel="noopener" class="btn btn-outline" style="color:#fff;border-color:rgba(255,255,255,0.3);">
+              🌟 View on IMDb (${escHtml(item.imdbId || "")})
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="padding:18px 24px 22px;">
+      <div class="cred-box" style="margin-bottom:${isSeries && episodes.length ? "14px" : "0"};">
+        <strong>📡 Xtream Codes VOD &amp; Series Sync Active:</strong>
+        <span class="muted-sm">This title (<code>${escHtml(item.imdbId || "")}</code> • ⭐ ${escHtml(rating)}) also appears automatically inside <strong>Televizo, IPTV Smarters Pro &amp; TiviMate</strong> under <em>${escHtml(item.category || "IMDb Cinema")}</em>!</span>
+      </div>
+      ${
+        isSeries && episodes.length
+          ? `
+        <h3 style="margin:8px 0 10px;font-size:1rem;">📺 Episodes (${episodes.length})</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;">
+          ${episodes
+            .map(
+              (ep, idx) => `
+            <button type="button" class="cred-box" style="text-align:left;cursor:pointer;" data-play-ep-idx="${idx}">
+              <div style="font-weight:800;font-size:0.84rem;">▶ S${String(ep.season || 1).padStart(2, "0")}E${String(ep.episode || idx + 1).padStart(2, "0")} — ${escHtml(ep.title)}</div>
+              <div class="muted-sm" style="font-size:0.74rem;margin-top:3px;">${ep.streamUrl ? "🟢 HD Stream Ready" : "🎬 Coming Soon Broadcast"}</div>
+            </button>`
+            )
+            .join("")}
+        </div>`
+          : ""
+      }
+    </div>
+  `;
+
+  modal.hidden = false;
+
+  document.getElementById("cinWatchMainBtn")?.addEventListener("click", () => {
+    modal.hidden = true;
+    playVodInStudio(item);
+  });
+
+  content.querySelectorAll("[data-play-ep-idx]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const ep = episodes[Number(btn.dataset.playEpIdx) || 0];
+      modal.hidden = true;
+      playVodInStudio({
+        ...item,
+        title: ep ? ep.title : item.title,
+        streamUrl: (ep && ep.streamUrl) || item.streamUrl || ""
+      });
+    });
+  });
+}
+
+function playVodInStudio(vodItem) {
+  switchView("live");
+  setText("activeChannelTitle", `${vodItem.title} ⭐ ${vodItem.imdbRating || "8.0"}`);
+  setText(
+    "activeChannelMeta",
+    `${vodItem.category || "IMDb Cinema"} • IMDb ${vodItem.imdbId || ""} • ${vodItem.streamUrl ? "HD VOD" : "Service Building — Coming Soon"}`
+  );
+  const logoEl = document.getElementById("activeChannelLogo");
+  if (logoEl) logoEl.src = vodItem.poster || BRAND.logoPrimary;
+
+  player?.loadVod(vodItem, {
+    settings: state.settings,
+    userPlan: getEffectiveUserPlan()
+  });
+
+  setTimeout(() => {
+    document.getElementById("playerStage")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, 120);
 }
 
 /* ==================== UTILITIES ==================== */

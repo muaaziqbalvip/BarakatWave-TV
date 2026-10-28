@@ -11,6 +11,7 @@ import {
 } from "../_lib/rtdb.js";
 import {
   buildChannelLiveMediaM3u8,
+  buildFiniteVodM3u8,
   buildLoopingLiveM3u8,
   loadClipSegments
 } from "../_lib/hls.js";
@@ -23,8 +24,8 @@ export default async function handler(req, res) {
   const mode = String(q.mode || "live");
   const streamId = String(q.id || "1001");
   const sessionStartSec = parseInt(String(q.st || "0"), 10) || 0;
-  const initialUpstreamSeq = parseInt(String(q.u0 || "0"), 10) || 0;
   const skipIntro = q.nointro === "1";
+  const forceBridge = q.bridge === "1";
 
   const [settings, channels] = await Promise.all([getSettings(), getChannels()]);
   const channel =
@@ -43,8 +44,45 @@ export default async function handler(req, res) {
     return sendText(res, 200, m3u8, "application/vnd.apple.mpegurl; charset=utf-8", "no-store");
   }
 
+  // Mode 2: Continuous Channel Offline / Stream Unavailable Broadcast Video
+  if (mode === "offline") {
+    const offlineUrl = (
+      (channel && channel.offlineVideoUrl) ||
+      settings.channelOfflineVideoUrl ||
+      "/media/channel-offline/index.m3u8"
+    ).trim();
+    const offlineSegs = await loadClipSegments(
+      offlineUrl,
+      baseUrl,
+      "/media/channel-offline/index.m3u8",
+      8
+    );
+    const m3u8 = buildLoopingLiveM3u8(offlineSegs, 6);
+    return sendText(res, 200, m3u8, "application/vnd.apple.mpegurl; charset=utf-8", "no-store");
+  }
+
+  // Mode 3: Movies & Series "Service is Building — Coming Soon" VOD Broadcast Video
+  if (mode === "coming_soon") {
+    const csUrl = (settings.comingSoonVideoUrl || "/media/coming-soon/index.m3u8").trim();
+    const csSegs = await loadClipSegments(csUrl, baseUrl, "/media/coming-soon/index.m3u8", 8);
+    const m3u8 = q.loop === "1" ? buildLoopingLiveM3u8(csSegs, 6) : buildFiniteVodM3u8(csSegs);
+    return sendText(res, 200, m3u8, "application/vnd.apple.mpegurl; charset=utf-8", "no-store");
+  }
+
   if (!channel) {
-    return sendText(res, 404, "#EXTM3U\n#EXT-X-ENDLIST\n", "application/vnd.apple.mpegurl");
+    const offlineSegs = await loadClipSegments(
+      settings.channelOfflineVideoUrl || "/media/channel-offline/index.m3u8",
+      baseUrl,
+      "/media/channel-offline/index.m3u8",
+      8
+    );
+    return sendText(
+      res,
+      200,
+      buildLoopingLiveM3u8(offlineSegs, 6),
+      "application/vnd.apple.mpegurl; charset=utf-8",
+      "no-store"
+    );
   }
 
   // Enforce PRO tier check on direct stream calls too
@@ -66,14 +104,14 @@ export default async function handler(req, res) {
     }
   }
 
-  // Mode 2: Live Channel (Intro Video plays first -> transitions directly to Live Channel!)
+  // Mode 4: Live Channel (Intro Video plays first -> transitions directly to Live Channel or Offline Video!)
   const m3u8 = await buildChannelLiveMediaM3u8({
     channel,
     settings,
     baseUrl,
     sessionStartSec,
-    initialUpstreamSeq,
-    skipIntro
+    skipIntro,
+    forceBridge
   });
   return sendText(res, 200, m3u8, "application/vnd.apple.mpegurl; charset=utf-8", "no-store");
 }

@@ -17,6 +17,8 @@ export default async function handler(req, res) {
   }
   const allowedPrefixes = [
     "channels",
+    "movies",
+    "series",
     "settings/defaults",
     "xtreamAccounts/",
     "playlists/",

@@ -136,6 +136,7 @@
 
       <nav class="main-nav" aria-label="Primary Navigation">
         <button class="nav-tab active" data-view="live">📺 Live TV</button>
+        <button class="nav-tab" data-view="cinema">🎬 Movies &amp; Series</button>
         <button class="nav-tab" data-view="xtream">⚡ Free Xtream</button>
         <button class="nav-tab" data-view="playlist">📋 My Playlist</button>
         <button class="nav-tab" data-view="pro">👑 PRO VIP</button>
@@ -303,6 +304,55 @@
         </div>
       </div>
       <div id="channelCardsGrid"></div>
+    </section>
+
+    <!-- ==================== VIEW 1B: IMDb MOVIES & SERIES CINEMA HUB ==================== -->
+    <section class="app-section" id="view-cinema" hidden>
+      <div class="glass-card" style="padding:22px 24px;margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
+          <div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+              <span class="badge badge-gold">⭐ IMDb ID POWERED</span>
+              <span class="badge badge-cyan">🎬 XTREAM VOD + SERIES READY</span>
+            </div>
+            <h1 style="margin:0 0 6px;font-size:1.55rem;">🍿 BarakatWave IMDb Movies &amp; Web Series Hub</h1>
+            <p class="muted-sm" style="margin:0;max-width:740px;">
+              Every Movie &amp; Series loads official <strong>IMDb Ratings, Posters, Cast, Synopsis &amp; Seasons</strong> directly by IMDb ID (<code>tt...</code>) across Web &amp; Xtream Apps (Televizo, IPTV Smarters, TiviMate). <em>Dedicated VOD media servers are currently building — clicking Watch plays our official Coming Soon HD broadcast!</em>
+            </p>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <input
+              type="text"
+              id="userImdbLookupInput"
+              class="input-field"
+              placeholder="Paste any IMDb ID (e.g. tt1375666)"
+              style="width:225px;"
+            />
+            <button type="button" class="btn btn-gold" id="userImdbLookupBtn">⚡ Load IMDb ID</button>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;" id="cinemaTypeTabs">
+            <button type="button" class="btn btn-sm btn-primary" data-cin-type="all">🌐 All Titles (<span id="cinCountAll">0</span>)</button>
+            <button type="button" class="btn btn-sm btn-outline" data-cin-type="movie">🎬 Movies (<span id="cinCountMovies">0</span>)</button>
+            <button type="button" class="btn btn-sm btn-outline" data-cin-type="series">📺 TV Series (<span id="cinCountSeries">0</span>)</button>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;flex:1;justify-content:flex-end;min-width:240px;">
+            <input
+              type="search"
+              id="cinemaSearchInput"
+              class="input-field"
+              placeholder="🔍 Search title, actor, director, genre, or tt..."
+              style="max-width:340px;"
+            />
+          </div>
+        </div>
+
+        <div class="category-chips" id="cinemaCategoryChips" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="cinema-grid" id="cinemaCardsGrid"></div>
     </section>
 
     <!-- ==================== VIEW 2: FREE XTREAM SERVER PANEL ==================== -->
@@ -647,6 +697,54 @@
         </div>
       </div>
     </section>
+
+    <!-- ==================== EXECUTIVE FOUNDER & MIZANORA ECOSYSTEM SPOTLIGHT ==================== -->
+    <section class="glass-card founder-spotlight" aria-label="Founder & Mizanora Projects Credit">
+      <div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+          <span class="badge badge-gold">👑 MIZANORA PROJECTS</span>
+          <span class="badge badge-cyan">ARCHITECTED BY MUAAZ IQBAL</span>
+        </div>
+        <h2 style="margin:0 0 8px;font-size:1.35rem;">Engineered &amp; Founded by Muaaz Iqbal</h2>
+        <p class="muted-sm" style="margin:0;line-height:1.65;">
+          <strong>BarakatWave Live TV</strong> is a flagship cloud broadcasting, Xtream Codes v2.9, and IMDb Cinema platform created under <strong>Mizanora Projects</strong> by full-stack software architect &amp; AI innovator <strong>Muaaz Iqbal</strong> (Kasur, Punjab, Pakistan). Built for speed, family-friendly reliability, and seamless compatibility across Web, Televizo, TiviMate, IPTV Smarters Pro, and Smart TVs.
+        </p>
+        <div class="founder-pillar-grid">
+          <div class="founder-pillar-card">
+            <strong style="font-size:0.86rem;">🌊 BarakatWave Live TV</strong>
+            <div class="muted-sm" style="font-size:0.76rem;margin-top:3px;">3-Phase HLS Pre-Roll, Offline Standby Failover &amp; Free Xtream Server</div>
+          </div>
+          <div class="founder-pillar-card">
+            <strong style="font-size:0.86rem;">🛍 Mizanora Store</strong>
+            <div class="muted-sm" style="font-size:0.76rem;margin-top:3px;">Luxury Halal E-Commerce &amp; Noor AI (<a href="https://mizanora.vercel.app" target="_blank" rel="noopener">mizanora.vercel.app</a>)</div>
+          </div>
+          <div class="founder-pillar-card">
+            <strong style="font-size:0.86rem;">🤖 Mizanora AI Systems</strong>
+            <div class="muted-sm" style="font-size:0.76rem;margin-top:3px;">Autonomous Multi-Model WhatsApp &amp; Voice Intelligence</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;">
+          <a href="/blog/muaaz-iqbal-founder-architect-mizanora-projects-barakatwave-tv" class="btn btn-sm btn-primary">👤 About Muaaz Iqbal</a>
+          <a href="https://mizanora.vercel.app" target="_blank" rel="noopener" class="btn btn-sm btn-gold">🌐 Mizanora Official</a>
+          <a href="https://github.com/muaaziqbalvip" target="_blank" rel="noopener" class="btn btn-sm btn-outline">💻 GitHub @muaaziqbalvip</a>
+          <a href="https://wa.me/923062015326" target="_blank" rel="noopener" class="btn btn-sm btn-whatsapp">💬 VIP WhatsApp: 0306-2015326</a>
+        </div>
+      </div>
+      <div class="cred-box" style="display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:22px;">
+        <img
+          src="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png"
+          onerror="this.onerror=null;this.src='/assets/logo-fallback.svg';"
+          alt="BarakatWave Official Logo"
+          style="width:82px;height:82px;border-radius:20px;object-fit:contain;margin-bottom:10px;"
+        />
+        <strong style="font-size:1.08rem;">Muaaz Iqbal</strong>
+        <span class="muted-sm" style="font-size:0.8rem;">Founder, Lead Architect &amp; Developer</span>
+        <span class="badge badge-cyan" style="margin-top:8px;">Mizanora Projects &bull; Pakistan</span>
+        <div class="muted-sm" style="font-size:0.77rem;margin-top:10px;">
+          Official PRO VIP Line: <strong>0306-2015326</strong>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- Footer -->
@@ -707,6 +805,10 @@
       <span class="mob-ico">📺</span>
       <span>Live TV</span>
     </button>
+    <button type="button" class="mob-nav-btn" data-view="cinema">
+      <span class="mob-ico">🎬</span>
+      <span>Cinema</span>
+    </button>
     <button type="button" class="mob-nav-btn" data-view="xtream">
       <span class="mob-ico">⚡</span>
       <span>Xtream</span>
@@ -724,6 +826,14 @@
       <span>Support</span>
     </button>
   </nav>
+
+  <!-- ==================== IMDb MOVIE & SERIES DETAIL MODAL ==================== -->
+  <div class="modal-backdrop" id="cinemaDetailModal" hidden>
+    <div class="modal-card glass-card cinema-modal-box" role="dialog" aria-modal="true" aria-labelledby="cinModalTitle">
+      <button class="modal-close" id="closeCinemaModalBtn" aria-label="Close" style="z-index:5;">✕</button>
+      <div id="cinemaModalContent"></div>
+    </div>
+  </div>
 
   <!-- ==================== DUAL AUTH MODAL (GOOGLE + GMAIL/PASSWORD) ==================== -->
   <div class="modal-backdrop" id="authModal" hidden>
