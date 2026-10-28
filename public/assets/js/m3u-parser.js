@@ -1,9 +1,15 @@
 /**
- * BarakatWave M3U / M3U8 Parser & Playlist Generator
+ * BarakatWave M3U / M3U8 Parser, Auto-Classifier & Playlist Generator
  * Supports #EXTINF, tvg-id, tvg-name, tvg-logo, group-title, #EXTGRP, #EXTVLCOPT
+ * Automatically classifies & sorts channels into Priority Emoji Xtream Groups!
  */
 
-export function parseM3uPlaylist(rawText, defaultTier = "free") {
+import {
+  resolveCategoryMeta,
+  autoSortAndReindexChannels
+} from "./catalog-browser.js";
+
+export function parseM3uPlaylist(rawText, defaultTier = "free", { autoSort = true } = {}) {
   const lines = String(rawText || "")
     .replace(/\r\n/g, "\n")
     .split("\n");
@@ -29,10 +35,10 @@ export function parseM3uPlaylist(rawText, defaultTier = "free") {
 
       const name = (getAttr("tvg-name") || displayTitle || `Channel ${channels.length + 1}`).trim();
       const logo = getAttr("tvg-logo");
-      const group = getAttr("group-title") || "Imported Live TV";
+      const group = getAttr("group-title") || "";
       const epgId = getAttr("tvg-id");
-      const country = getAttr("tvg-country") || "INT";
-      const language = getAttr("tvg-language") || "Multi";
+      const country = getAttr("tvg-country") || (/pakistan|urdu|ptv|geo|ary|hum|samaa|dunya/i.test(`${name} ${group}`) ? "PK" : "INT");
+      const language = getAttr("tvg-language") || (country === "PK" ? "Urdu" : "Multi");
 
       currentMeta = { name, logo, category: group, epgId, country, language };
       continue;
@@ -62,49 +68,56 @@ export function parseM3uPlaylist(rawText, defaultTier = "free") {
       const meta = currentMeta || {
         name: guessNameFromUrl(line, channels.length + 1),
         logo: "",
-        category: "Live TV",
+        category: "",
         epgId: "",
         country: "PK",
         language: "Urdu / English"
       };
+      const catMeta = resolveCategoryMeta(meta.category, meta.name, meta.country, true);
       const slug = slugify(meta.name) || `ch-${channels.length + 1}`;
+      const inferredTier =
+        /\[pro|vip\]/i.test(meta.name) ? "pro" : defaultTier === "pro" ? "pro" : "free";
+
       channels.push({
         id: `ch_${slug}_${Math.random().toString(36).slice(2, 6)}`,
         streamId: 3000 + channels.length + 1,
         slug,
         name: meta.name,
         logo: meta.logo || "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
-        category: meta.category || "Live TV",
+        category: catMeta.name,
+        categoryId: catMeta.id,
         country: meta.country || "PK",
         language: meta.language || "Urdu / English",
         epgId: meta.epgId || `${slug}.bw`,
-        tier: defaultTier === "pro" ? "pro" : "free",
+        tier: inferredTier,
         status: "active",
         url: line,
         backupUrls: [],
-        headers: { ...currentHeaders }
+        headers: { ...currentHeaders },
+        order: channels.length + 1
       });
       currentMeta = null;
       currentHeaders = {};
     }
   }
 
-  return channels;
+  return autoSort ? autoSortAndReindexChannels(channels, { reclassify: false }) : channels;
 }
 
 export function exportChannelsToM3u(channels, { baseUrl = "", useCleanLinks = false, title = "BarakatWave Live TV" } = {}) {
-  const origin = (baseUrl || window.location.origin).replace(/\/+$/, "");
+  const origin = (baseUrl || (typeof window !== "undefined" ? window.location.origin : "https://barakatwave.vercel.app")).replace(/\/+$/, "");
   const out = [
-    `#EXTM3U x-tvg-url="${origin}/xmltv.php"`,
+    `#EXTM3U x-tvg-url="${origin}/xmltv.php" url-tvg="${origin}/xmltv.php"`,
     `#PLAYLIST:${title} — A Mizanora Project by Muaaz Iqbal`
   ];
   for (const ch of channels) {
+    const catMeta = resolveCategoryMeta(ch.category, ch.name, ch.country, false);
+    const groupTitle = (catMeta.xtreamTitle || catMeta.name || ch.category || "📺 LIVE TV").replace(/"/g, "'");
     const safeName = String(ch.name || "Channel").replace(/"/g, "'");
-    const safeCat = String(ch.category || "Live TV").replace(/"/g, "'");
     const safeLogo = String(ch.logo || "").replace(/"/g, "");
     const safeEpg = String(ch.epgId || `${ch.slug}.bw`).replace(/"/g, "");
     out.push(
-      `#EXTINF:-1 tvg-id="${safeEpg}" tvg-name="${safeName}" tvg-logo="${safeLogo}" group-title="${safeCat}",${ch.name}`
+      `#EXTINF:-1 tvg-id="${safeEpg}" tvg-name="${safeName}" tvg-logo="${safeLogo}" group-title="${groupTitle}",${ch.name}`
     );
     if (ch.headers && ch.headers["User-Agent"]) {
       out.push(`#EXTVLCOPT:http-user-agent=${ch.headers["User-Agent"]}`);
@@ -133,7 +146,7 @@ function guessNameFromUrl(url, index) {
   try {
     const u = new URL(url, "http://localhost");
     const segs = u.pathname.split("/").filter(Boolean);
-    const base = (segs[segs.length - 1] || "").replace(/\.(m3u8|ts|mp4)$/i, "");
+    const base = (segs[segs.length - 1] || "").replace(/\.(m3u8|ts|m2ts|mp4)$/i, "");
     if (base && base !== "index" && base !== "master" && base !== "playlist") {
       return base.replace(/[-_]+/g, " ").toUpperCase();
     }

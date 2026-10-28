@@ -5,7 +5,7 @@ import {
   sendText
 } from "../_lib/origin.js";
 import { getChannels, getPlaylistById } from "../_lib/rtdb.js";
-import { BRAND } from "../../data/catalog.js";
+import { BRAND, decorateGroupTitle } from "../../data/catalog.js";
 
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
@@ -24,8 +24,9 @@ export default async function handler(req, res) {
       `#PLAYLIST:BarakatWave TV (${rawId.toUpperCase()}) - Mizanora Projects by Muaaz Iqbal`
     ];
     for (const ch of list) {
+      const grp = (ch.xtreamGroup || ch.category || "🇵🇰 ⭐ PAKISTAN TOP CHANNELS").replace(/"/g, "'");
       lines.push(
-        `#EXTINF:-1 tvg-id="${ch.epgId}" tvg-logo="${ch.logo || BRAND.logoPrimary}" group-title="${ch.category}",${ch.name}`
+        `#EXTINF:-1 tvg-id="${ch.epgId}" tvg-logo="${ch.logo || BRAND.logoPrimary}" group-title="${grp}",${ch.name}`
       );
       lines.push(`${baseUrl}/ch/${ch.slug}.m3u8`);
     }
@@ -59,8 +60,9 @@ export default async function handler(req, res) {
   ];
 
   for (const ch of chosenCatalog) {
+    const grp = (ch.xtreamGroup || ch.category || "🇵🇰 ⭐ PAKISTAN TOP CHANNELS").replace(/"/g, "'");
     lines.push(
-      `#EXTINF:-1 tvg-id="${ch.epgId}" tvg-logo="${ch.logo || BRAND.logoPrimary}" group-title="${ch.category}",${ch.name}`
+      `#EXTINF:-1 tvg-id="${ch.epgId}" tvg-logo="${ch.logo || BRAND.logoPrimary}" group-title="${grp}",${ch.name}`
     );
     if (xtUser && xtPass) {
       lines.push(
@@ -74,7 +76,7 @@ export default async function handler(req, res) {
   for (const custom of customStreams) {
     if (!custom || !custom.url) continue;
     const cName = String(custom.name || "Custom Live Channel").replace(/[\r\n"]/g, " ");
-    const cGroup = String(custom.category || "My Custom Channels").replace(/[\r\n"]/g, " ");
+    const cGroup = decorateGroupTitle(String(custom.category || "My Custom Channels").replace(/[\r\n"]/g, " "));
     const cLogo = String(custom.logo || BRAND.logoPrimary).replace(/[\r\n"]/g, "");
     lines.push(`#EXTINF:-1 tvg-logo="${cLogo}" group-title="${cGroup}",${cName}`);
     lines.push(String(custom.url).trim());

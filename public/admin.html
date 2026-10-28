@@ -144,17 +144,24 @@
         <!-- TAB 2: CHANNELS & M3U8 MANAGER -->
         <section data-adm-panel="channels" hidden>
           <div class="glass-card" style="padding:22px;margin-bottom:18px;">
-            <h2 style="margin-top:0;" id="chFormHeading">➕ Add / Edit Live Channel &amp; Test Working M3U8</h2>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+              <h2 style="margin:0;" id="chFormHeading">➕ Add / Edit Live Channel &amp; Test Working M3U8</h2>
+              <span class="badge badge-cyan">⚡ Auto-Adjust Channel Order Enabled</span>
+            </div>
             <form id="channelForm" class="form-stack">
               <input type="hidden" id="chEditId" />
               <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;">
                 <div class="form-group">
                   <label>Channel Name *</label>
-                  <input type="text" id="chName" class="input-field" placeholder="e.g. PTV Sports HD" required />
+                  <input type="text" id="chName" class="input-field" placeholder="e.g. Geo News HD / QTV Islamic" required />
                 </div>
                 <div class="form-group">
-                  <label>Category / Group *</label>
-                  <input type="text" id="chCategory" class="input-field" placeholder="e.g. Live Sports HD" value="Live Sports HD" required />
+                  <label style="display:flex;justify-content:space-between;align-items:center;">
+                    <span>Xtream Emoji Group / Category *</span>
+                    <button type="button" id="autoDetectGroupBtn" style="background:none;border:none;color:var(--primary);font-size:0.74rem;font-weight:800;cursor:pointer;padding:0;">✨ Auto-Detect</button>
+                  </label>
+                  <select id="chCategorySelect" class="input-field"></select>
+                  <input type="text" id="chCategory" class="input-field" placeholder="e.g. 🔥 📺 Special Ramadan HD" style="margin-top:6px;" hidden />
                 </div>
                 <div class="form-group">
                   <label>Access Tier (Free vs PRO VIP) *</label>
@@ -162,6 +169,15 @@
                     <option value="free">🟢 FREE Channel (Open to All)</option>
                     <option value="pro">👑 PRO VIP Channel (Locked with Unlock Video)</option>
                   </select>
+                </div>
+                <div class="form-group">
+                  <label>Position # (Blank = Smart Priority Auto-Slot)</label>
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="number" min="1" id="chOrderInput" class="input-field" placeholder="Auto (or #1, #2...)" />
+                    <label style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:0.8rem;font-weight:700;cursor:pointer;">
+                      <input type="checkbox" id="chPinnedCheck" /> 📌 Pin Top
+                    </label>
+                  </div>
                 </div>
                 <div class="form-group">
                   <label>Country / Language</label>
@@ -215,19 +231,66 @@
           </div>
 
           <div class="glass-card" style="padding:22px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-              <h3 style="margin:0;">📡 Active Catalog Channels (<span id="admChCount">0</span>)</h3>
-              <input type="search" id="admChFilter" class="input-field" placeholder="Filter channels..." style="max-width:260px;" />
+            <div class="adm-sort-toolbar">
+              <div>
+                <h3 style="margin:0 0 3px;">📡 Active Catalog &amp; Priority Sorting Studio (<span id="admChCount">0</span> Channels)</h3>
+                <div class="muted-sm" style="font-size:0.78rem;">
+                  Drag <code>⠿</code>, type any <code>#</code> number, or click <code>⏫ ⬆️ ⬇️</code> — <strong>all other channels auto-adjust (1..N) automatically!</strong>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-primary" id="smartAutoSortBtn" title="Sort 1st PK Top -> 2nd Islamic -> 3rd Drama -> 4th News -> 5th Movies & Others">
+                  ✨ Smart Priority Auto-Sort (🇵🇰 ➔ 🕌 ➔ 🎭 ➔ 📰 ➔ 🎬)
+                </button>
+                <button type="button" class="btn btn-outline" id="admSortAzBtn" title="Sort Alphabetically within Groups">
+                  🔤 A–Z in Groups
+                </button>
+              </div>
             </div>
+
+            <div class="adm-filter-bar">
+              <input type="search" id="admChFilter" class="input-field" placeholder="🔍 Search name, #ID, position, group, country, M3U8 URL..." />
+              <select id="admGroupFilter" class="input-field">
+                <option value="ALL">🗂 All Emoji Groups</option>
+              </select>
+              <select id="admTierFilter" class="input-field">
+                <option value="ALL">💎 All Tiers (Free + PRO)</option>
+                <option value="free">🟢 Free HD Only</option>
+                <option value="pro">👑 PRO VIP Only</option>
+                <option value="pinned">📌 Pinned Only</option>
+              </select>
+              <select id="admSortSelect" class="input-field">
+                <option value="order">🔢 View by Channel Position (#1 ➔ #N)</option>
+                <option value="priority">✨ Preview Priority Group Order</option>
+                <option value="az">🔤 Preview Name (A ➔ Z)</option>
+                <option value="stream_id">🆔 Preview Stream ID</option>
+              </select>
+            </div>
+
+            <div class="adm-bulk-bar" id="admBulkBar" hidden>
+              <div>
+                <strong>✅ <span id="admBulkSelectedCount">0</span> Channels Selected</strong>
+                <span class="muted-sm" style="margin-left:8px;">Remaining channels auto-adjust cleanly!</span>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <select id="admBulkGroupSelect" class="select-compact"></select>
+                <button type="button" class="btn btn-sm btn-primary" id="admBulkApplyGroupBtn">🗂 Move to Group</button>
+                <button type="button" class="btn btn-sm btn-outline" id="admBulkSetFreeBtn">🟢 Make FREE</button>
+                <button type="button" class="btn btn-sm btn-gold" id="admBulkSetProBtn">👑 Make PRO VIP</button>
+                <button type="button" class="btn btn-sm btn-danger" id="admBulkDeleteBtn">✕ Delete Selected</button>
+              </div>
+            </div>
+
             <div class="table-wrap">
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>ID</th>
-                    <th>Channel</th>
-                    <th>Category</th>
-                    <th>Tier (Click to Switch)</th>
-                    <th>Channel M3U8 File &amp; Actions</th>
+                    <th style="width:34px;"><input type="checkbox" id="selectAllChCheck" title="Select All Visible" /></th>
+                    <th style="width:155px;">Order # &amp; Auto-Adjust</th>
+                    <th>Channel &amp; Stream ID</th>
+                    <th>Emoji Xtream Group</th>
+                    <th>Tier (1-Click)</th>
+                    <th>Actions &amp; Links</th>
                   </tr>
                 </thead>
                 <tbody id="admChannelsTbody"></tbody>

@@ -262,8 +262,15 @@
                 type="search"
                 id="channelSearchInput"
                 class="input-field"
-                placeholder="Search channel, category, PK, IND, Sports..."
+                placeholder="Search PK, Islamic, Drama, News, Movies..."
               />
+              <select id="viewerSortSelect" class="select-compact" aria-label="Sort Channels" title="Sort Channels">
+                <option value="priority">✨ Smart Order</option>
+                <option value="order">🔢 Channel #</option>
+                <option value="az">🔤 Name A–Z</option>
+                <option value="free_first">🟢 Free First</option>
+                <option value="pro_first">👑 PRO First</option>
+              </select>
             </div>
             <div class="category-chips" id="categoryChips"></div>
           </div>
@@ -287,11 +294,15 @@
       <!-- Full Visual Channel Wall -->
       <div class="section-head">
         <div>
-          <h2>🌊 Browse All Live Channels</h2>
-          <p>Instant browser playback with automatic multi-server HLS relay &bull; Curated under Mizanora Projects</p>
+          <h2>🌊 Browse Live Channels by Priority Groups</h2>
+          <p>🇵🇰 Pakistan Top &rarr; 🕌 Islamic &rarr; 🎭 Drama &amp; Entertainment &rarr; 📰 News &rarr; 🎬 Movies &amp; Sports</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm btn-primary" id="wallGroupedBtn">🗂 Emoji Category Groups</button>
+          <button type="button" class="btn btn-sm btn-outline" id="wallFlatBtn">▦ Compact Grid</button>
         </div>
       </div>
-      <div class="channel-cards-grid" id="channelCardsGrid"></div>
+      <div id="channelCardsGrid"></div>
     </section>
 
     <!-- ==================== VIEW 2: FREE XTREAM SERVER PANEL ==================== -->

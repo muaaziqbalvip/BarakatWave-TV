@@ -1,6 +1,6 @@
 #EXTM3U
-#PLAYLIST:Mizanora Family Royal HD [PRO VIP] — BarakatWave Live TV (PRO VIP (Unlock: 0306-2015326))
+#PLAYLIST:Mizanora Family Drama Royal HD [PRO VIP] — BarakatWave Live TV (PRO VIP (Unlock: 0306-2015326))
 #EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.channel",VALUE="mizanora-family-royal-hd-pro"
 #EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
-#EXTINF:-1 tvg-id="mizanora.royal.pro" tvg-name="Mizanora Family Royal HD [PRO VIP]" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="Entertainment & Drama",Mizanora Family Royal HD [PRO VIP]
+#EXTINF:-1 tvg-id="mizanora.royal.pro" tvg-name="Mizanora Family Drama Royal HD [PRO VIP]" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="🎭 📺 DRAMA & ENTERTAINMENT HD",Mizanora Family Drama Royal HD [PRO VIP]
 https://barakatwave.vercel.app/ch/mizanora-family-royal-hd-pro.m3u8

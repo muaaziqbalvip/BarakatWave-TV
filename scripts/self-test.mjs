@@ -4,6 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAppServer } from "./dev-server.mjs";
 import { parseM3uPlaylist, exportChannelsToM3u } from "../public/assets/js/m3u-parser.js";
+import {
+  autoSortAndReindexChannels,
+  moveChannelToPosition,
+  insertOrUpdateChannelSmart
+} from "../data/catalog.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -43,6 +48,38 @@ async function run() {
   const exported = exportChannelsToM3u(parsed, { baseUrl: "https://barakatwave.vercel.app", useCleanLinks: true });
   check("M3U Exporter generates clean BarakatWave channel M3U8 URL", exported.includes("https://barakatwave.vercel.app/ch/ptv-home-hd.m3u8"));
 
+  // 2b. Verify Smart Priority Auto-Sort (PK Top -> Islamic -> Drama -> News -> Movies) & Auto-Adjust Reordering
+  const mixedChannels = [
+    { id: "m1", name: "Star Gold Movies HD", category: "", country: "INT", order: 1 },
+    { id: "n1", name: "Geo News HD", category: "", country: "PK", order: 2 },
+    { id: "i1", name: "Madani Channel Urdu HD", category: "", country: "PK", order: 3 },
+    { id: "d1", name: "ARY Digital Drama HD", category: "", country: "PK", order: 4 },
+    { id: "p1", name: "PTV Home Flagship", category: "Pakistan Top", country: "PK", order: 5 }
+  ];
+  const smartSorted = autoSortAndReindexChannels(mixedChannels, { reclassify: true });
+  check(
+    "Smart Priority Auto-Sort orders: 1st PK Top -> 2nd Islamic -> 3rd Drama -> 4th News -> 5th Movies",
+    smartSorted.map((c) => c.id).join(",") === "p1,i1,d1,n1,m1" &&
+      smartSorted.map((c) => c.order).join(",") === "1,2,3,4,5"
+  );
+
+  const reordered = moveChannelToPosition(smartSorted, "m1", 2);
+  check(
+    "Moving channel #5 to #2 automatically re-adjusts all other channels (#1..#5 with zero gaps)",
+    reordered.map((c) => c.id).join(",") === "p1,m1,i1,d1,n1" &&
+      reordered.map((c) => c.order).join(",") === "1,2,3,4,5"
+  );
+
+  const inserted = insertOrUpdateChannelSmart(
+    reordered,
+    { id: "new_isl", name: "QTV Islamic Live", category: "🕌 🌙 Islamic & Spiritual HD", country: "PK" },
+    {}
+  );
+  check(
+    "Inserting new channel auto-slots & re-numbers entire lineup sequentially (#1..#6)",
+    inserted.length === 6 && inserted.map((c) => c.order).join(",") === "1,2,3,4,5,6"
+  );
+
   // 3. Spin up Full Server & Test HTTP / Xtream / HLS Stitching / SEO / SSR Blogs
   const server = createAppServer();
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
@@ -68,14 +105,33 @@ async function run() {
     check("Xtream player_api.php rejects wrong password (auth=0)", xtBad.user_info?.auth === 0);
 
     const xtCats = await (await fetch(`${base}/player_api.php?username=demo&password=demo&action=get_live_categories`)).json();
-    check("Xtream get_live_categories returns categories array", Array.isArray(xtCats) && xtCats.length >= 5);
+    check("Xtream get_live_categories returns categories array", Array.isArray(xtCats) && xtCats.length >= 9);
+    check(
+      "Xtream get_live_categories has Priority Emoji Groups (1. PK Top -> 2. Islamic -> 3. Drama -> 4. News -> 5. Movies)",
+      xtCats[0].category_name.includes("🇵🇰") &&
+        xtCats[0].category_name.includes("PAKISTAN TOP") &&
+        xtCats[1].category_name.includes("🕌") &&
+        xtCats[1].category_name.includes("ISLAMIC") &&
+        xtCats[2].category_name.includes("🎭") &&
+        xtCats[2].category_name.includes("DRAMA") &&
+        xtCats[3].category_name.includes("📰") &&
+        xtCats[3].category_name.includes("NEWS") &&
+        xtCats[4].category_name.includes("🎬") &&
+        xtCats[4].category_name.includes("MOVIES")
+    );
 
     const xtStreams = await (await fetch(`${base}/player_api.php?username=demo&password=demo&action=get_live_streams`)).json();
     check("Xtream get_live_streams returns channels with integer stream_id", Array.isArray(xtStreams) && xtStreams.length >= 10 && typeof xtStreams[0].stream_id === "number");
 
     // 3c. Xtream get.php (M3U Plus) & xmltv.php (EPG)
     const m3uPlus = await (await fetch(`${base}/get.php?username=demo&password=demo&type=m3u_plus&output=m3u8`)).text();
-    check("Xtream get.php returns #EXTM3U with /live/demo/demo/ stream links", m3uPlus.startsWith("#EXTM3U") && m3uPlus.includes("/live/demo/demo/1001.m3u8"));
+    check(
+      "Xtream get.php returns #EXTM3U with Emoji group-titles & /live/demo/demo/ stream links",
+      m3uPlus.startsWith("#EXTM3U") &&
+        m3uPlus.includes("/live/demo/demo/1001.m3u8") &&
+        m3uPlus.includes('group-title="🇵🇰 ⭐ PAKISTAN TOP CHANNELS"') &&
+        m3uPlus.includes('group-title="🕌 🌙 ISLAMIC & SPIRITUAL HD"')
+    );
 
     const xmltv = await (await fetch(`${base}/xmltv.php?username=demo&password=demo`)).text();
     check("Xtream xmltv.php returns valid <tv> EPG XML", xmltv.includes("<tv") && xmltv.includes("<programme"));

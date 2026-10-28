@@ -33,14 +33,17 @@ export default async function handler(req, res) {
 
   for (const ch of channels) {
     const isLocked = ch.tier === "pro" && acct.effectivePlan !== "pro";
+    const cleanBaseName = ch.name.replace(/\s*\[PRO.*?\]/i, "").trim();
+    const catIcon = ch.categoryIcon || "📺";
+    const pinPrefix = ch.pinned ? "📌 " : "";
     const displayTitle =
       ch.tier === "pro"
         ? isLocked
-          ? `[PRO LOCKED - 0306-2015326] ${ch.name.replace(/\s*\[PRO.*?\]/i, "")}`
-          : `[PRO VIP] ${ch.name.replace(/\s*\[PRO.*?\]/i, "")}`
-        : ch.name;
+          ? `🔒 👑 ${cleanBaseName} [PRO VIP • 0306-2015326]`
+          : `👑 ${catIcon} ${cleanBaseName} [PRO VIP]`
+        : `${pinPrefix}🟢 ${catIcon} ${cleanBaseName}`;
     const safeName = displayTitle.replace(/"/g, "'");
-    const safeGroup = (ch.category || "Live TV").replace(/"/g, "'");
+    const safeGroup = (ch.xtreamGroup || ch.category || "🇵🇰 ⭐ PAKISTAN TOP CHANNELS").replace(/"/g, "'");
     const safeLogo = (ch.logo || BRAND.logoPrimary).replace(/"/g, "");
     const safeEpg = (ch.epgId || `${ch.slug}.bw`).replace(/"/g, "");
 

@@ -1,6 +1,6 @@
 #EXTM3U
-#PLAYLIST:BarakatWave Official Promo HD — BarakatWave Live TV (FREE HD)
+#PLAYLIST:BarakatWave Pakistan Flagship HD — BarakatWave Live TV (FREE HD)
 #EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.channel",VALUE="barakatwave-official-hd"
 #EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
-#EXTINF:-1 tvg-id="barakatwave.promo.pk" tvg-name="BarakatWave Official Promo HD" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="Featured & Network",BarakatWave Official Promo HD
+#EXTINF:-1 tvg-id="barakatwave.promo.pk" tvg-name="BarakatWave Pakistan Flagship HD" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="🇵🇰 ⭐ PAKISTAN TOP CHANNELS",BarakatWave Pakistan Flagship HD
 https://barakatwave.vercel.app/ch/barakatwave-official-hd.m3u8

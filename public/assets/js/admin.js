@@ -5,11 +5,18 @@
 
 import {
   BRAND,
+  CATEGORIES,
   DEFAULT_SETTINGS,
   DEFAULT_CHANNELS,
   DEFAULT_BLOGS,
   DEFAULT_REVIEWS,
-  THEMES
+  THEMES,
+  decorateGroupTitle,
+  resolveCategoryMeta,
+  getCategoryPriority,
+  autoSortAndReindexChannels,
+  moveChannelToPosition,
+  insertOrUpdateChannelSmart
 } from "./default-data.js";
 import {
   subscribeAuth,
@@ -36,6 +43,8 @@ const admState = {
   reviews: [...DEFAULT_REVIEWS],
   tickets: [],
   parsedBulk: [],
+  selectedChannelIds: new Set(),
+  dragSourceId: null,
   previewHls: null
 };
 
@@ -243,7 +252,24 @@ async function loadAllAdminData() {
     const list = Array.isArray(chRaw)
       ? chRaw.filter(Boolean)
       : Object.entries(chRaw).map(([id, c]) => ({ id, ...c }));
-    if (list.length) admState.channels = list.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+    if (list.length) {
+      admState.channels = list
+        .map((c, idx) => {
+          const meta = resolveCategoryMeta(c.category, c.name, c.country, false);
+          return {
+            ...c,
+            category: meta.name,
+            categoryId: meta.id,
+            pinned: Boolean(c.pinned),
+            order: typeof c.order === "number" ? c.order : idx + 1
+          };
+        })
+        .sort((a, b) => {
+          if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+          return (a.order ?? 9999) - (b.order ?? 9999);
+        })
+        .map((c, i) => ({ ...c, order: i + 1 }));
+    }
   }
 
   if (settingsRaw && typeof settingsRaw === "object") {
@@ -270,6 +296,7 @@ async function loadAllAdminData() {
     : [];
 
   renderKpis();
+  populateEmojiGroupSelects();
   renderAdminChannelsTable();
   populateDefaultsForm();
   renderXtreamTable();
@@ -316,8 +343,109 @@ function bindOverviewActions() {
   });
 }
 
-/* ==================== TAB 2: CHANNELS & WORKING M3U8 TESTER ==================== */
+/* ==================== TAB 2: CHANNELS, SORTING, DRAG-DROP & AUTO-ADJUST ==================== */
+function populateEmojiGroupSelects(selectedValue = "") {
+  const chSel = document.getElementById("chCategorySelect");
+  const chCustomInp = document.getElementById("chCategory");
+  const grpFilter = document.getElementById("admGroupFilter");
+  const bulkSel = document.getElementById("admBulkGroupSelect");
+
+  const canonicalNames = CATEGORIES.map((c) => c.name);
+  const extraCustom = [
+    ...new Set(
+      admState.channels
+        .map((c) => c.category)
+        .filter((g) => g && !canonicalNames.includes(g))
+    )
+  ];
+  const allGroups = [...canonicalNames, ...extraCustom];
+
+  if (chSel) {
+    chSel.innerHTML = [
+      ...CATEGORIES.map(
+        (c) => `<option value="${escAttr(c.name)}">#${c.priority} — ${esc(c.name)}</option>`
+      ),
+      ...extraCustom.map(
+        (g) => `<option value="${escAttr(g)}">✨ ${esc(g)}</option>`
+      ),
+      `<option value="__CUSTOM__">➕ Custom Emoji Group...</option>`
+    ].join("");
+
+    if (selectedValue) {
+      if (allGroups.includes(selectedValue)) {
+        chSel.value = selectedValue;
+        if (chCustomInp) {
+          chCustomInp.hidden = true;
+          chCustomInp.value = selectedValue;
+        }
+      } else {
+        chSel.value = "__CUSTOM__";
+        if (chCustomInp) {
+          chCustomInp.hidden = false;
+          chCustomInp.value = selectedValue;
+        }
+      }
+    } else if (chCustomInp) {
+      chCustomInp.hidden = chSel.value !== "__CUSTOM__";
+    }
+  }
+
+  if (grpFilter) {
+    const prev = grpFilter.value || "ALL";
+    grpFilter.innerHTML = [
+      `<option value="ALL">🗂 All Emoji Groups (${admState.channels.length})</option>`,
+      ...allGroups.map((g) => {
+        const cnt = admState.channels.filter((c) => c.category === g).length;
+        return `<option value="${escAttr(g)}">${esc(g)} (${cnt})</option>`;
+      })
+    ].join("");
+    grpFilter.value = allGroups.includes(prev) ? prev : "ALL";
+  }
+
+  if (bulkSel) {
+    bulkSel.innerHTML = CATEGORIES.map(
+      (c) => `<option value="${escAttr(c.name)}">${esc(c.name)}</option>`
+    ).join("");
+  }
+}
+
 function bindChannelManager() {
+  populateEmojiGroupSelects();
+
+  const chSel = document.getElementById("chCategorySelect");
+  const chCustomInp = document.getElementById("chCategory");
+  chSel?.addEventListener("change", () => {
+    if (!chCustomInp) return;
+    if (chSel.value === "__CUSTOM__") {
+      chCustomInp.hidden = false;
+      chCustomInp.value = "";
+      chCustomInp.focus();
+    } else {
+      chCustomInp.hidden = true;
+      chCustomInp.value = chSel.value;
+    }
+  });
+
+  const runAutoDetectGroup = () => {
+    const nm = document.getElementById("chName")?.value.trim() || "";
+    const ctry = document.getElementById("chCountry")?.value.trim() || "PK";
+    if (!nm) return toast("Type a Channel Name first so we can auto-detect its Emoji Group!");
+    const detected = resolveCategoryMeta("", nm, ctry, true);
+    populateEmojiGroupSelects(detected.name);
+    toast(`✨ Auto-Detected Group: ${detected.name}`);
+  };
+
+  document.getElementById("autoDetectGroupBtn")?.addEventListener("click", runAutoDetectGroup);
+
+  document.getElementById("chName")?.addEventListener("blur", () => {
+    const isEditing = Boolean(document.getElementById("chEditId")?.value);
+    const nm = document.getElementById("chName")?.value.trim() || "";
+    if (!isEditing && nm && chSel && chSel.value !== "__CUSTOM__") {
+      const detected = resolveCategoryMeta("", nm, document.getElementById("chCountry")?.value || "PK", true);
+      populateEmojiGroupSelects(detected.name);
+    }
+  });
+
   document.getElementById("probeSingleBtn")?.addEventListener("click", async () => {
     const url = document.getElementById("chUrl")?.value.trim();
     if (!url) return toast("Paste an .m3u8 URL first!");
@@ -350,9 +478,15 @@ function bindChannelManager() {
     e.preventDefault();
     const editId = document.getElementById("chEditId").value.trim();
     const name = document.getElementById("chName").value.trim();
-    const category = document.getElementById("chCategory").value.trim() || "Live TV";
+    const selVal = document.getElementById("chCategorySelect")?.value || "";
+    const rawCat =
+      selVal === "__CUSTOM__"
+        ? decorateGroupTitle(document.getElementById("chCategory")?.value.trim() || "Custom Live TV")
+        : selVal || CATEGORIES[0].name;
     const tier = document.getElementById("chTier").value === "pro" ? "pro" : "free";
     const country = document.getElementById("chCountry").value.trim() || "PK";
+    const orderRaw = document.getElementById("chOrderInput")?.value.trim() || "";
+    const pinned = Boolean(document.getElementById("chPinnedCheck")?.checked);
     const url = document.getElementById("chUrl").value.trim();
     const logo = document.getElementById("chLogo").value.trim() || BRAND.logoPrimary;
     const backups = document.getElementById("chBackups").value
@@ -362,105 +496,449 @@ function bindChannelManager() {
     const introVideoUrl = document.getElementById("chIntroOverride").value.trim();
     const proUnlockVideoUrl = document.getElementById("chProUnlockOverride")?.value.trim() || "";
 
+    const catMeta = resolveCategoryMeta(rawCat, name, country, false);
     const slug = slugify(name) || `channel-${Date.now()}`;
-    const existingIdx = admState.channels.findIndex((c) => c.id === editId);
+    const existing = admState.channels.find((c) => c.id === editId);
     const maxStreamId = admState.channels.reduce((m, c) => Math.max(m, Number(c.streamId) || 1000), 1000);
 
     const record = {
+      ...(existing || {}),
       id: editId || `ch_${slug}_${Math.floor(100 + Math.random() * 900)}`,
-      streamId: existingIdx >= 0 ? admState.channels[existingIdx].streamId : maxStreamId + 1,
+      streamId: existing ? existing.streamId : maxStreamId + 1,
       slug,
       name,
-      category,
+      category: catMeta.name,
+      categoryId: catMeta.id,
       country,
-      language: "Urdu / English",
+      language: existing?.language || "Urdu / English",
       tier,
+      pinned,
       status: "active",
       logo,
-      epgId: `${slug}.bw`,
+      epgId: existing?.epgId || `${slug}.bw`,
       url,
       backupUrls: backups,
       introVideoUrl,
-      proUnlockVideoUrl,
-      order: existingIdx >= 0 ? admState.channels[existingIdx].order : admState.channels.length + 1
+      proUnlockVideoUrl
     };
 
-    if (existingIdx >= 0) {
-      admState.channels[existingIdx] = record;
-    } else {
-      admState.channels.push(record);
+    const parsedOrder = Number(orderRaw);
+    let explicitPos = Number.isFinite(parsedOrder) && parsedOrder >= 1 ? Math.round(parsedOrder) : null;
+    // If editing an existing channel without changing its category and order box left unchanged, keep its relative slot unless group changed
+    if (!explicitPos && existing && existing.category === record.category && Boolean(existing.pinned) === pinned) {
+      explicitPos = existing.order;
     }
+
+    admState.channels = insertOrUpdateChannelSmart(admState.channels, record, {
+      explicitPosition: explicitPos
+    });
 
     await persistAllChannels();
     resetChannelForm();
+    populateEmojiGroupSelects();
     renderAdminChannelsTable();
     renderKpis();
-    toast(`✅ Saved channel "${name}" (${tier.toUpperCase()})!`);
+    const saved = admState.channels.find((c) => c.id === record.id);
+    toast(`✅ Saved "${name}" at #${saved?.order || 1} (${catMeta.shortLabel || catMeta.name}) — All other channels auto-adjusted!`);
   });
 
+  // 1-Click Smart Priority Auto-Sort All (PK Top -> Islamic -> Drama -> News -> Movies & Others)
+  document.getElementById("smartAutoSortBtn")?.addEventListener("click", async () => {
+    admState.channels = autoSortAndReindexChannels(admState.channels, { reclassify: true });
+    await persistAllChannels();
+    populateEmojiGroupSelects();
+    renderAdminChannelsTable();
+    toast("✨ Smart Auto-Sort Complete! 1. 🇵🇰 PK Top ➔ 2. 🕌 Islamic ➔ 3. 🎭 Drama ➔ 4. 📰 News ➔ 5. 🎬 Movies & Others!");
+  });
+
+  // Sort A–Z inside Priority Groups
+  document.getElementById("admSortAzBtn")?.addEventListener("click", async () => {
+    const sorted = [...admState.channels].sort((a, b) => {
+      if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+      const pa = getCategoryPriority(a.category, a.categoryId);
+      const pb = getCategoryPriority(b.category, b.categoryId);
+      if (pa !== pb) return pa - pb;
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    });
+    admState.channels = sorted.map((c, idx) => ({ ...c, order: idx + 1 }));
+    await persistAllChannels();
+    renderAdminChannelsTable();
+    toast("🔤 Sorted A–Z inside each Priority Emoji Group & re-indexed #1..#N!");
+  });
+
+  // Filters & View Sort
   document.getElementById("admChFilter")?.addEventListener("input", renderAdminChannelsTable);
+  document.getElementById("admGroupFilter")?.addEventListener("change", renderAdminChannelsTable);
+  document.getElementById("admTierFilter")?.addEventListener("change", renderAdminChannelsTable);
+  document.getElementById("admSortSelect")?.addEventListener("change", renderAdminChannelsTable);
+
+  // Select All Checkbox
+  document.getElementById("selectAllChCheck")?.addEventListener("change", (e) => {
+    const visibleIds = getFilteredAdminChannels().map((c) => c.id);
+    if (e.target.checked) {
+      visibleIds.forEach((id) => admState.selectedChannelIds.add(id));
+    } else {
+      visibleIds.forEach((id) => admState.selectedChannelIds.delete(id));
+    }
+    renderAdminChannelsTable();
+  });
+
+  // Bulk Actions (Move to Emoji Group / Tier / Delete with Auto-Adjust)
+  document.getElementById("admBulkApplyGroupBtn")?.addEventListener("click", async () => {
+    const targetGrp = document.getElementById("admBulkGroupSelect")?.value;
+    if (!targetGrp || !admState.selectedChannelIds.size) return;
+    const catMeta = resolveCategoryMeta(targetGrp, "", "PK", false);
+    admState.channels = admState.channels.map((c) =>
+      admState.selectedChannelIds.has(c.id)
+        ? { ...c, category: catMeta.name, categoryId: catMeta.id }
+        : c
+    );
+    admState.channels = autoSortAndReindexChannels(admState.channels, { reclassify: false });
+    const count = admState.selectedChannelIds.size;
+    admState.selectedChannelIds.clear();
+    await persistAllChannels();
+    populateEmojiGroupSelects();
+    renderAdminChannelsTable();
+    toast(`🗂 Moved ${count} channels to ${catMeta.name} & auto-sorted #1..#N!`);
+  });
+
+  document.getElementById("admBulkSetFreeBtn")?.addEventListener("click", async () => {
+    if (!admState.selectedChannelIds.size) return;
+    admState.channels.forEach((c) => {
+      if (admState.selectedChannelIds.has(c.id)) c.tier = "free";
+    });
+    const count = admState.selectedChannelIds.size;
+    admState.selectedChannelIds.clear();
+    await persistAllChannels();
+    renderAdminChannelsTable();
+    renderKpis();
+    toast(`🟢 Switched ${count} channels to FREE HD!`);
+  });
+
+  document.getElementById("admBulkSetProBtn")?.addEventListener("click", async () => {
+    if (!admState.selectedChannelIds.size) return;
+    admState.channels.forEach((c) => {
+      if (admState.selectedChannelIds.has(c.id)) c.tier = "pro";
+    });
+    const count = admState.selectedChannelIds.size;
+    admState.selectedChannelIds.clear();
+    await persistAllChannels();
+    renderAdminChannelsTable();
+    renderKpis();
+    toast(`👑 Switched ${count} channels to PRO VIP!`);
+  });
+
+  document.getElementById("admBulkDeleteBtn")?.addEventListener("click", async () => {
+    if (!admState.selectedChannelIds.size) return;
+    const count = admState.selectedChannelIds.size;
+    admState.channels = admState.channels
+      .filter((c) => !admState.selectedChannelIds.has(c.id))
+      .map((c, idx) => ({ ...c, order: idx + 1 }));
+    admState.selectedChannelIds.clear();
+    await persistAllChannels();
+    populateEmojiGroupSelects();
+    renderAdminChannelsTable();
+    renderKpis();
+    toast(`Removed ${count} channels — remaining ${admState.channels.length} channels auto-adjusted (#1..#${admState.channels.length})!`);
+  });
 }
 
 function resetChannelForm() {
   document.getElementById("channelForm")?.reset();
   document.getElementById("chEditId").value = "";
+  const ordInp = document.getElementById("chOrderInput");
+  if (ordInp) ordInp.value = "";
+  const pinChk = document.getElementById("chPinnedCheck");
+  if (pinChk) pinChk.checked = false;
+  populateEmojiGroupSelects(CATEGORIES[0].name);
   setTxt("chFormHeading", "➕ Add / Edit Live Channel & Test Working M3U8");
   document.getElementById("probeSingleResult").hidden = true;
   stopMiniPreview("adminPreviewVideo", "adminMiniPreviewWrap");
 }
 
 async function persistAllChannels() {
+  admState.channels = admState.channels.map((c, i) => ({ ...c, order: i + 1 }));
   const map = {};
-  admState.channels.forEach((c, i) => {
-    map[c.id] = { ...c, order: i + 1 };
+  admState.channels.forEach((c) => {
+    map[c.id] = c;
   });
   await dbWrite("channels", map);
+  // Instant server-cache sync for Xtream API & M3U endpoints
+  fetch("/api/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: "channels", value: map })
+  }).catch(() => {});
+}
+
+function getFilteredAdminChannels() {
+  const q = (document.getElementById("admChFilter")?.value || "").trim().toLowerCase();
+  const grp = document.getElementById("admGroupFilter")?.value || "ALL";
+  const tier = document.getElementById("admTierFilter")?.value || "ALL";
+  const viewSort = document.getElementById("admSortSelect")?.value || "order";
+
+  let list = [...admState.channels];
+
+  if (grp !== "ALL") {
+    list = list.filter((c) => c.category === grp);
+  }
+  if (tier === "free") {
+    list = list.filter((c) => c.tier !== "pro");
+  } else if (tier === "pro") {
+    list = list.filter((c) => c.tier === "pro");
+  } else if (tier === "pinned") {
+    list = list.filter((c) => Boolean(c.pinned));
+  }
+
+  if (q) {
+    list = list.filter(
+      (c) =>
+        String(c.name || "").toLowerCase().includes(q) ||
+        String(c.category || "").toLowerCase().includes(q) ||
+        String(c.country || "").toLowerCase().includes(q) ||
+        String(c.url || "").toLowerCase().includes(q) ||
+        String(c.streamId || "").includes(q) ||
+        `#${c.order || ""}` === q
+    );
+  }
+
+  list.sort((a, b) => {
+    if (viewSort === "az") {
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    }
+    if (viewSort === "stream_id") {
+      return (Number(a.streamId) || 0) - (Number(b.streamId) || 0);
+    }
+    if (viewSort === "priority") {
+      if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+      const pa = getCategoryPriority(a.category, a.categoryId);
+      const pb = getCategoryPriority(b.category, b.categoryId);
+      if (pa !== pb) return pa - pb;
+      return (a.order ?? 9999) - (b.order ?? 9999);
+    }
+    if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+    return (a.order ?? 9999) - (b.order ?? 9999);
+  });
+
+  return list;
+}
+
+function updateBulkToolbarState(visibleList) {
+  const bulkBar = document.getElementById("admBulkBar");
+  const countSpan = document.getElementById("admBulkSelectedCount");
+  const selectAllChk = document.getElementById("selectAllChCheck");
+
+  // Prune deleted IDs
+  const validSet = new Set(admState.channels.map((c) => c.id));
+  for (const id of [...admState.selectedChannelIds]) {
+    if (!validSet.has(id)) admState.selectedChannelIds.delete(id);
+  }
+
+  const selCount = admState.selectedChannelIds.size;
+  if (bulkBar) bulkBar.hidden = selCount === 0;
+  if (countSpan) countSpan.textContent = String(selCount);
+  if (selectAllChk) {
+    selectAllChk.checked =
+      visibleList.length > 0 && visibleList.every((c) => admState.selectedChannelIds.has(c.id));
+  }
 }
 
 function renderAdminChannelsTable() {
   const tbody = document.getElementById("admChannelsTbody");
   if (!tbody) return;
-  const q = (document.getElementById("admChFilter")?.value || "").trim().toLowerCase();
-  const list = q
-    ? admState.channels.filter(
-        (c) => c.name.toLowerCase().includes(q) || (c.category || "").toLowerCase().includes(q)
-      )
-    : admState.channels;
+  const list = getFilteredAdminChannels();
 
   setTxt("admChCount", list.length);
+  updateBulkToolbarState(list);
+
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;" class="muted-sm">No channels match your current search/filter.</td></tr>`;
+    return;
+  }
 
   tbody.innerHTML = list
-    .map(
-      (ch) => `
-      <tr>
-        <td><code>#${ch.streamId || 1001}</code></td>
+    .map((ch) => {
+      const checked = admState.selectedChannelIds.has(ch.id) ? "checked" : "";
+      const pos = ch.order || 1;
+      return `
+      <tr draggable="true" data-row-id="${escAttr(ch.id)}" data-row-pos="${pos}">
+        <td>
+          <input type="checkbox" data-sel-ch="${escAttr(ch.id)}" ${checked} />
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="drag-handle" title="Drag to reorder — other channels auto-adjust!">⠿</span>
+            <input
+              type="number"
+              min="1"
+              max="${admState.channels.length}"
+              value="${pos}"
+              class="input-field order-num-input"
+              data-order-input="${escAttr(ch.id)}"
+              title="Type new position # and press Enter — all other channels auto-adjust!"
+            />
+            <div class="mini-move-btns">
+              <button type="button" class="mini-move-btn" data-move-top="${escAttr(ch.id)}" title="Move to #1">⏫</button>
+              <button type="button" class="mini-move-btn" data-move-up="${escAttr(ch.id)}" title="Move Up 1">⬆️</button>
+              <button type="button" class="mini-move-btn" data-move-down="${escAttr(ch.id)}" title="Move Down 1">⬇️</button>
+              <button type="button" class="mini-move-btn ${ch.pinned ? "pinned-active" : ""}" data-pin-ch="${escAttr(ch.id)}" title="Pin / Unpin Top">📌</button>
+            </div>
+          </div>
+        </td>
         <td>
           <div style="display:flex;align-items:center;gap:9px;">
             <img src="${escAttr(ch.logo || BRAND.logoPrimary)}" onerror="this.onerror=null;this.src='/assets/logo-fallback.svg';" style="width:32px;height:32px;border-radius:7px;object-fit:contain;" alt="" />
             <div>
-              <strong>${esc(ch.name)}</strong>
-              <div class="muted-sm" style="font-size:0.72rem;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(ch.url)}</div>
+              <strong>${esc(ch.name)}</strong> <code style="font-size:0.7rem;">#${ch.streamId || 1001}</code>
+              <div class="muted-sm" style="font-size:0.72rem;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(ch.url)}</div>
             </div>
           </div>
         </td>
-        <td>${esc(ch.category)}</td>
+        <td>
+          <span class="badge badge-cyan" style="font-size:0.73rem;">${esc(ch.category)}</span>
+        </td>
         <td>
           <button type="button" class="badge ${ch.tier === "pro" ? "badge-gold" : "badge-free"}" style="cursor:pointer;" data-toggle-tier="${escAttr(ch.id)}" title="Click to switch Free / PRO VIP">
             ${ch.tier === "pro" ? "👑 PRO VIP" : "🟢 FREE"}
           </button>
         </td>
         <td>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-sm btn-outline" data-edit-ch="${escAttr(ch.id)}" title="Edit Channel">✏️ Edit</button>
             <button type="button" class="btn btn-sm btn-outline" data-copy-ch="${escAttr(ch.slug)}" title="Copy Clean BarakatWave M3U8 URL">🔗 M3U8</button>
             <button type="button" class="btn btn-sm btn-outline" data-copy-xt="${escAttr(ch.streamId || 1001)}" title="Copy Xtream Test Stream Link (/live/demo/demo/...)">📺 Xtream</button>
             <button type="button" class="btn btn-sm btn-outline" data-dl-ch="${escAttr(ch.id)}" title="Download Channel .M3U8 File">⬇</button>
-            <button type="button" class="btn btn-sm btn-outline" data-edit-ch="${escAttr(ch.id)}">Edit</button>
-            <button type="button" class="btn btn-sm btn-danger" data-del-ch="${escAttr(ch.id)}">✕</button>
+            <button type="button" class="btn btn-sm btn-danger" data-del-ch="${escAttr(ch.id)}" title="Delete & Auto-Adjust Remaining">✕</button>
           </div>
         </td>
-      </tr>`
-    )
+      </tr>`;
+    })
     .join("");
+
+  // Row selection checkboxes
+  tbody.querySelectorAll("[data-sel-ch]").forEach((chk) => {
+    chk.addEventListener("change", () => {
+      const id = chk.dataset.selCh;
+      if (chk.checked) admState.selectedChannelIds.add(id);
+      else admState.selectedChannelIds.delete(id);
+      updateBulkToolbarState(list);
+    });
+  });
+
+  // Direct Position # Input -> Move & Auto-Adjust all other channels!
+  tbody.querySelectorAll("[data-order-input]").forEach((inp) => {
+    const applyOrderChange = async () => {
+      const id = inp.dataset.orderInput;
+      const current = admState.channels.find((c) => c.id === id);
+      const target = Math.max(1, Math.min(admState.channels.length, Number(inp.value) || 1));
+      if (!current || current.order === target) {
+        inp.value = current ? current.order : 1;
+        return;
+      }
+      admState.channels = moveChannelToPosition(admState.channels, id, target);
+      await persistAllChannels();
+      renderAdminChannelsTable();
+      toast(`🔢 Moved "${current.name}" to #${target} — all other channels auto-adjusted!`);
+    };
+    inp.addEventListener("change", applyOrderChange);
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        inp.blur();
+      }
+    });
+  });
+
+  // Move to #1 / Up / Down / Pin -> Auto-Adjust all other channels!
+  tbody.querySelectorAll("[data-move-top]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.moveTop;
+      const ch = admState.channels.find((c) => c.id === id);
+      if (!ch) return;
+      admState.channels = moveChannelToPosition(admState.channels, id, 1);
+      await persistAllChannels();
+      renderAdminChannelsTable();
+      toast(`⏫ Moved "${ch.name}" to #1 — remaining channels shifted cleanly!`);
+    });
+  });
+
+  tbody.querySelectorAll("[data-move-up]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.moveUp;
+      const ch = admState.channels.find((c) => c.id === id);
+      if (!ch || ch.order <= 1) return;
+      admState.channels = moveChannelToPosition(admState.channels, id, ch.order - 1);
+      await persistAllChannels();
+      renderAdminChannelsTable();
+    });
+  });
+
+  tbody.querySelectorAll("[data-move-down]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.moveDown;
+      const ch = admState.channels.find((c) => c.id === id);
+      if (!ch || ch.order >= admState.channels.length) return;
+      admState.channels = moveChannelToPosition(admState.channels, id, ch.order + 1);
+      await persistAllChannels();
+      renderAdminChannelsTable();
+    });
+  });
+
+  tbody.querySelectorAll("[data-pin-ch]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.pinCh;
+      const ch = admState.channels.find((c) => c.id === id);
+      if (!ch) return;
+      ch.pinned = !ch.pinned;
+      if (ch.pinned) {
+        admState.channels = moveChannelToPosition(admState.channels, id, 1);
+      } else {
+        admState.channels = autoSortAndReindexChannels(admState.channels, { reclassify: false });
+      }
+      await persistAllChannels();
+      renderAdminChannelsTable();
+      toast(ch.pinned ? `📌 Pinned "${ch.name}" to Top (#1)!` : `Unpinned "${ch.name}" — auto-adjusted into group!`);
+    });
+  });
+
+  // HTML5 Drag-and-Drop Row Reordering with Auto-Adjust!
+  tbody.querySelectorAll("tr[data-row-id]").forEach((row) => {
+    row.addEventListener("dragstart", (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "BUTTON") {
+        e.preventDefault();
+        return;
+      }
+      admState.dragSourceId = row.dataset.rowId;
+      row.classList.add("dragging-row");
+      e.dataTransfer?.setData("text/plain", row.dataset.rowId);
+    });
+    row.addEventListener("dragend", () => {
+      row.classList.remove("dragging-row");
+      tbody.querySelectorAll(".drag-over-row").forEach((r) => r.classList.remove("drag-over-row"));
+    });
+    row.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (admState.dragSourceId && admState.dragSourceId !== row.dataset.rowId) {
+        row.classList.add("drag-over-row");
+      }
+    });
+    row.addEventListener("dragleave", () => {
+      row.classList.remove("drag-over-row");
+    });
+    row.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      row.classList.remove("drag-over-row");
+      const sourceId = admState.dragSourceId || e.dataTransfer?.getData("text/plain");
+      const targetPos = Number(row.dataset.rowPos) || 1;
+      admState.dragSourceId = null;
+      if (!sourceId || sourceId === row.dataset.rowId) return;
+      const moved = admState.channels.find((c) => c.id === sourceId);
+      admState.channels = moveChannelToPosition(admState.channels, sourceId, targetPos);
+      await persistAllChannels();
+      renderAdminChannelsTable();
+      toast(`⠿ Dropped "${moved?.name || "Channel"}" at #${targetPos} — all other channels auto-adjusted!`);
+    });
+  });
 
   tbody.querySelectorAll("[data-toggle-tier]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -509,27 +987,36 @@ function renderAdminChannelsTable() {
       if (!ch) return;
       document.getElementById("chEditId").value = ch.id;
       document.getElementById("chName").value = ch.name || "";
-      document.getElementById("chCategory").value = ch.category || "";
+      populateEmojiGroupSelects(ch.category || CATEGORIES[0].name);
       document.getElementById("chTier").value = ch.tier === "pro" ? "pro" : "free";
       document.getElementById("chCountry").value = ch.country || "PK";
+      const ordInp = document.getElementById("chOrderInput");
+      if (ordInp) ordInp.value = ch.order || "";
+      const pinChk = document.getElementById("chPinnedCheck");
+      if (pinChk) pinChk.checked = Boolean(ch.pinned);
       document.getElementById("chUrl").value = ch.url || "";
       document.getElementById("chLogo").value = ch.logo || "";
       document.getElementById("chBackups").value = (ch.backupUrls || []).join(", ");
       document.getElementById("chIntroOverride").value = ch.introVideoUrl || "";
       const proOv = document.getElementById("chProUnlockOverride");
       if (proOv) proOv.value = ch.proUnlockVideoUrl || "";
-      setTxt("chFormHeading", `✏️ Editing Channel: ${ch.name}`);
+      setTxt("chFormHeading", `✏️ Editing #${ch.order || 1}: ${ch.name}`);
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
   });
 
   tbody.querySelectorAll("[data-del-ch]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      admState.channels = admState.channels.filter((c) => c.id !== btn.dataset.delCh);
+      const removed = admState.channels.find((c) => c.id === btn.dataset.delCh);
+      admState.channels = admState.channels
+        .filter((c) => c.id !== btn.dataset.delCh)
+        .map((c, idx) => ({ ...c, order: idx + 1 }));
+      admState.selectedChannelIds.delete(btn.dataset.delCh);
       await persistAllChannels();
+      populateEmojiGroupSelects();
       renderAdminChannelsTable();
       renderKpis();
-      toast("Channel removed");
+      toast(`Removed "${removed?.name || "Channel"}" — remaining channels auto-adjusted (#1..#${admState.channels.length})!`);
     });
   });
 }
@@ -610,15 +1097,22 @@ function bindBulkImportExport() {
     let maxStreamId = admState.channels.reduce((m, c) => Math.max(m, Number(c.streamId) || 1000), 1000);
     chosen.forEach((c) => {
       maxStreamId += 1;
+      const meta = resolveCategoryMeta(c.category, c.name, c.country, true);
       admState.channels.push({
         ...c,
+        category: meta.name,
+        categoryId: meta.id,
         tier,
         streamId: maxStreamId,
         order: admState.channels.length + 1
       });
     });
 
+    // Auto-sort entire catalog into Priority Emoji Groups & re-index #1..#N!
+    admState.channels = autoSortAndReindexChannels(admState.channels, { reclassify: false });
+
     await persistAllChannels();
+    populateEmojiGroupSelects();
     renderAdminChannelsTable();
     renderKpis();
     document.getElementById("bulkParsedWrap").hidden = true;

@@ -5,12 +5,15 @@
 
 import {
   BRAND,
+  CATEGORIES,
   DEFAULT_SETTINGS,
   DEFAULT_CHANNELS,
   DEFAULT_BLOGS,
   DEFAULT_REVIEWS,
   DEFAULT_FAQS,
-  THEMES
+  THEMES,
+  resolveCategoryMeta,
+  getCategoryPriority
 } from "./default-data.js";
 import {
   subscribeAuth,
@@ -42,6 +45,8 @@ const state = {
   favorites: new Set(JSON.parse(localStorage.getItem("bw_favorites") || "[]")),
   activeCategory: "ALL",
   searchQuery: "",
+  viewerSort: "priority",
+  wallMode: "grouped",
   currentChannel: null,
   playlist: {
     id: "",
@@ -86,7 +91,19 @@ function init() {
       if (arr.length) {
         state.channels = arr
           .filter((c) => c.status !== "inactive")
-          .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+          .map((c, idx) => {
+            const meta = resolveCategoryMeta(c.category, c.name, c.country, false);
+            return {
+              ...c,
+              category: meta.name,
+              categoryId: meta.id,
+              order: typeof c.order === "number" ? c.order : idx + 1
+            };
+          })
+          .sort((a, b) => {
+            if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+            return (a.order ?? 9999) - (b.order ?? 9999);
+          });
       }
     }
     renderCategoryChips();
@@ -339,19 +356,46 @@ function bindGuideControls() {
     renderChannelGuide();
     renderChannelCards();
   });
+
+  const sortSel = document.getElementById("viewerSortSelect");
+  sortSel?.addEventListener("change", () => {
+    state.viewerSort = sortSel.value || "priority";
+    renderChannelGuide();
+    renderChannelCards();
+  });
+
+  const grpBtn = document.getElementById("wallGroupedBtn");
+  const flatBtn = document.getElementById("wallFlatBtn");
+  grpBtn?.addEventListener("click", () => {
+    state.wallMode = "grouped";
+    grpBtn.className = "btn btn-sm btn-primary";
+    if (flatBtn) flatBtn.className = "btn btn-sm btn-outline";
+    renderChannelCards();
+  });
+  flatBtn?.addEventListener("click", () => {
+    state.wallMode = "flat";
+    flatBtn.className = "btn btn-sm btn-primary";
+    if (grpBtn) grpBtn.className = "btn btn-sm btn-outline";
+    renderChannelCards();
+  });
 }
 
 function renderCategoryChips() {
   const wrap = document.getElementById("categoryChips");
   if (!wrap) return;
-  const uniqueCats = [...new Set(state.channels.map((c) => c.category).filter(Boolean))];
+  const uniqueCats = [...new Set(state.channels.map((c) => c.category).filter(Boolean))].sort(
+    (a, b) => getCategoryPriority(a) - getCategoryPriority(b)
+  );
   const chips = [
-    { key: "ALL", label: "All" },
-    { key: "FREE", label: "Free HD" },
+    { key: "ALL", label: "🌐 All" },
+    ...uniqueCats.map((c) => {
+      const meta = CATEGORIES.find((m) => m.name === c);
+      return { key: `CAT:${c}`, label: meta ? meta.shortLabel : c };
+    }),
+    { key: "FREE", label: "🟢 Free HD" },
     { key: "PRO", label: "👑 PRO VIP" },
     { key: "FAV", label: "★ Favorites" },
-    { key: "MY_PL", label: "📋 My Playlist" },
-    ...uniqueCats.map((c) => ({ key: `CAT:${c}`, label: c }))
+    { key: "MY_PL", label: "📋 My Playlist" }
   ];
 
   wrap.innerHTML = chips
@@ -386,11 +430,12 @@ function getFilteredChannels() {
       id: `custom_${i}`,
       slug: `custom-${i}`,
       name: cs.name || `Custom Stream ${i + 1}`,
-      category: cs.category || "My Custom Channels",
+      category: cs.category || "📺 ✨ My Custom Channels",
       tier: "free",
       logo: BRAND.logoPrimary,
       url: cs.url,
-      nowPlaying: "Personal Custom M3U8 Stream"
+      nowPlaying: "Personal Custom M3U8 Stream",
+      order: 900 + i
     }));
     list = [...list.filter((c) => set.has(c.id)), ...customMapped];
   } else if (state.activeCategory.startsWith("CAT:")) {
@@ -405,9 +450,35 @@ function getFilteredChannels() {
         String(c.name || "").toLowerCase().includes(q) ||
         String(c.category || "").toLowerCase().includes(q) ||
         String(c.country || "").toLowerCase().includes(q) ||
-        String(c.language || "").toLowerCase().includes(q)
+        String(c.language || "").toLowerCase().includes(q) ||
+        String(c.streamId || "").includes(q)
     );
   }
+
+  // Apply Viewer Sort Mode
+  list.sort((a, b) => {
+    if (state.viewerSort === "az") {
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    }
+    if (state.viewerSort === "free_first") {
+      if ((a.tier === "pro") !== (b.tier === "pro")) return a.tier === "pro" ? 1 : -1;
+    } else if (state.viewerSort === "pro_first") {
+      if ((a.tier === "pro") !== (b.tier === "pro")) return a.tier === "pro" ? -1 : 1;
+    } else if (state.viewerSort === "order") {
+      if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+      return (a.order ?? 9999) - (b.order ?? 9999);
+    }
+    // Default "priority": Pinned -> Admin Order / Category Priority (PK Top -> Islamic -> Drama -> News -> Movies -> Others)
+    if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+    const pa = getCategoryPriority(a.category, a.categoryId);
+    const pb = getCategoryPriority(b.category, b.categoryId);
+    const oa = typeof a.order === "number" ? a.order : 9999;
+    const ob = typeof b.order === "number" ? b.order : 9999;
+    if (state.viewerSort === "priority" && oa === ob && pa !== pb) return pa - pb;
+    if (oa !== ob) return oa - ob;
+    if (pa !== pb) return pa - pb;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
 
   return list;
 }
@@ -433,15 +504,17 @@ function renderChannelGuide() {
   }
 
   listEl.innerHTML = filtered
-    .map((ch) => {
+    .map((ch, idx) => {
       const isActive = state.currentChannel?.id === ch.id;
       const isFav = state.favorites.has(ch.id);
+      const rankNum = ch.order || idx + 1;
       const badge =
         ch.tier === "pro"
-          ? `<span class="badge badge-gold">PRO</span>`
+          ? `<span class="badge badge-gold">👑 PRO</span>`
           : `<span class="badge badge-free">FREE</span>`;
       return `
         <div class="channel-item ${isActive ? "active" : ""}" data-play-id="${escAttr(ch.id)}">
+          <span class="ch-rank-pill">${ch.pinned ? "📌" : `#${rankNum}`}</span>
           <img src="${escAttr(ch.logo || BRAND.logoPrimary)}" onerror="this.onerror=null;this.src='/assets/logo-fallback.svg';" alt="" />
           <div class="channel-item-info">
             <div class="channel-item-name">${escHtml(ch.name)}</div>
@@ -476,27 +549,68 @@ function renderChannelCards() {
   if (!grid) return;
   const filtered = getFilteredChannels();
 
-  grid.innerHTML = filtered
-    .map((ch) => {
-      const badge =
-        ch.tier === "pro"
-          ? `<span class="badge badge-gold">👑 PRO VIP</span>`
-          : `<span class="badge badge-free">FREE HD</span>`;
-      return `
-        <div class="ch-card glass-card" data-card-play="${escAttr(ch.id)}">
-          <div class="ch-card-top">
+  const renderCardHtml = (ch) => {
+    const badge =
+      ch.tier === "pro"
+        ? `<span class="badge badge-gold">👑 PRO VIP</span>`
+        : `<span class="badge badge-free">🟢 FREE HD</span>`;
+    return `
+      <div class="ch-card glass-card" data-card-play="${escAttr(ch.id)}">
+        <div class="ch-card-top">
+          <div style="display:flex;align-items:center;gap:8px;">
             <img src="${escAttr(ch.logo || BRAND.logoPrimary)}" onerror="this.onerror=null;this.src='/assets/logo-fallback.svg';" alt="${escAttr(ch.name)}" />
-            ${badge}
+            <span class="ch-rank-pill">${ch.pinned ? "📌 #1" : `#${ch.order || 1}`}</span>
           </div>
-          <div>
-            <div style="font-weight:800;font-size:0.95rem;">${escHtml(ch.name)}</div>
-            <div class="muted-sm">${escHtml(ch.category)} &bull; ${escHtml(ch.language || "HD")}</div>
-          </div>
-          <div class="muted-sm" style="font-size:0.76rem;margin-top:auto;">▶ Click to Watch Live</div>
+          ${badge}
         </div>
-      `;
-    })
-    .join("");
+        <div>
+          <div style="font-weight:800;font-size:0.94rem;">${escHtml(ch.name)}</div>
+          <div class="muted-sm">${escHtml(ch.category)} &bull; ${escHtml(ch.language || "HD")}</div>
+        </div>
+        <div class="muted-sm" style="font-size:0.76rem;margin-top:auto;color:var(--primary);font-weight:700;">▶ Click to Watch Live</div>
+      </div>
+    `;
+  };
+
+  if (!filtered.length) {
+    grid.className = "";
+    grid.innerHTML = `<div class="glass-card" style="padding:24px;text-align:center;">No channels match this filter.</div>`;
+    return;
+  }
+
+  if (state.wallMode === "grouped" && state.activeCategory === "ALL" && !state.searchQuery) {
+    const groupMap = new Map();
+    for (const ch of filtered) {
+      const g = ch.category || "🌍 📡 World & International TV";
+      if (!groupMap.has(g)) groupMap.set(g, []);
+      groupMap.get(g).push(ch);
+    }
+    const orderedGroups = [...groupMap.entries()].sort(
+      (a, b) => getCategoryPriority(a[0]) - getCategoryPriority(b[0])
+    );
+
+    grid.className = "group-sections-stack";
+    grid.innerHTML = orderedGroups
+      .map(
+        ([grpName, items], gIdx) => `
+        <div class="group-section-block">
+          <div class="group-section-header">
+            <h3 class="group-section-title">
+              <span class="badge badge-cyan">#${gIdx + 1}</span>
+              <span>${escHtml(grpName)}</span>
+            </h3>
+            <span class="badge badge-gold">${items.length} ${items.length === 1 ? "Channel" : "Channels"}</span>
+          </div>
+          <div class="channel-cards-grid">
+            ${items.map(renderCardHtml).join("")}
+          </div>
+        </div>`
+      )
+      .join("");
+  } else {
+    grid.className = "channel-cards-grid";
+    grid.innerHTML = filtered.map(renderCardHtml).join("");
+  }
 
   grid.querySelectorAll("[data-card-play]").forEach((card) => {
     card.addEventListener("click", () => {
