@@ -1,0 +1,293 @@
+import fs from "node:fs";
+import path from "node:path";
+import {
+  DEFAULT_CHANNELS,
+  DEFAULT_SETTINGS,
+  DEFAULT_BLOGS,
+  DEFAULT_REVIEWS,
+  CATEGORIES
+} from "../../data/catalog.js";
+
+const DEFAULT_RTDB_URL = (
+  process.env.FIREBASE_DATABASE_URL ||
+  "https://barakatwave-tv-default-rtdb.firebaseio.com"
+).replace(/\/+$/, "");
+
+const LOCAL_MIRROR_FILE = "/tmp/barakatwave-rtdb-mirror.json";
+const memCache = new Map();
+
+function readLocalMirror() {
+  try {
+    if (fs.existsSync(LOCAL_MIRROR_FILE)) {
+      return JSON.parse(fs.readFileSync(LOCAL_MIRROR_FILE, "utf8"));
+    }
+  } catch {
+    // ignore corrupt mirror
+  }
+  return {};
+}
+
+function writeLocalMirror(mutator) {
+  try {
+    const current = readLocalMirror();
+    const updated = mutator(current) || current;
+    fs.writeFileSync(LOCAL_MIRROR_FILE, JSON.stringify(updated, null, 2), "utf8");
+    memCache.clear();
+    return updated;
+  } catch {
+    return {};
+  }
+}
+
+export function updateLocalMirrorNode(nodePath, value) {
+  const parts = nodePath.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
+  return writeLocalMirror((root) => {
+    if (parts.length === 0) return value || {};
+    let cur = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const k = parts[i];
+      if (!cur[k] || typeof cur[k] !== "object") cur[k] = {};
+      cur = cur[k];
+    }
+    const last = parts[parts.length - 1];
+    if (value === null || value === undefined) {
+      delete cur[last];
+    } else {
+      cur[last] = value;
+    }
+    return root;
+  });
+}
+
+function getFromLocalMirror(nodePath) {
+  const root = readLocalMirror();
+  const parts = nodePath.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
+  let cur = root;
+  for (const p of parts) {
+    if (!cur || typeof cur !== "object" || !(p in cur)) return undefined;
+    cur = cur[p];
+  }
+  return cur;
+}
+
+export async function rtdbGet(nodePath, { ttlMs = 10000, authToken = "" } = {}) {
+  const clean = nodePath.replace(/^\/+|\/+$/g, "");
+  const cacheKey = `${clean}:${authToken ? "auth" : "pub"}`;
+  const now = Date.now();
+  if (ttlMs > 0 && memCache.has(cacheKey)) {
+    const hit = memCache.get(cacheKey);
+    if (now - hit.ts < ttlMs) return hit.val;
+  }
+
+  const secret = authToken || process.env.FIREBASE_DATABASE_SECRET || "";
+  const qs = secret ? `?auth=${encodeURIComponent(secret)}` : "";
+  const url = `${DEFAULT_RTDB_URL}/${clean}.json${qs}`;
+
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 3200);
+    const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: "application/json" } });
+    clearTimeout(timer);
+    if (res.ok) {
+      const json = await res.json();
+      if (json !== null && json !== undefined) {
+        memCache.set(cacheKey, { ts: now, val: json });
+        return json;
+      }
+    }
+  } catch {
+    // Offline/sandbox fallback to local mirror + seed defaults
+  }
+
+  const mirrored = getFromLocalMirror(clean);
+  if (mirrored !== undefined) return mirrored;
+  return null;
+}
+
+export async function rtdbSet(nodePath, value, { authToken = "", method = "PUT" } = {}) {
+  const clean = nodePath.replace(/^\/+|\/+$/g, "");
+  updateLocalMirrorNode(clean, value);
+  const secret = authToken || process.env.FIREBASE_DATABASE_SECRET || "";
+  const qs = secret ? `?auth=${encodeURIComponent(secret)}` : "";
+  const url = `${DEFAULT_RTDB_URL}/${clean}.json${qs}`;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    const res = await fetch(url, {
+      method,
+      signal: ctrl.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value)
+    });
+    clearTimeout(timer);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function getSettings() {
+  const remote = await rtdbGet("settings/defaults", { ttlMs: 10000 });
+  return { ...DEFAULT_SETTINGS, ...(remote && typeof remote === "object" ? remote : {}) };
+}
+
+export async function getChannels({ includeInactive = false } = {}) {
+  const remote = await rtdbGet("channels", { ttlMs: 10000 });
+  let list = [];
+  if (remote && typeof remote === "object") {
+    list = Array.isArray(remote)
+      ? remote.filter(Boolean)
+      : Object.entries(remote).map(([key, val]) => ({ id: key, ...val }));
+  }
+  if (!list.length) {
+    list = DEFAULT_CHANNELS.map((c) => ({ ...c }));
+  }
+  list = list.map((ch, idx) => normalizeChannel(ch, idx));
+  if (!includeInactive) {
+    list = list.filter((ch) => ch.status !== "inactive" && ch.status !== "disabled");
+  }
+  list.sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999) || a.streamId - b.streamId);
+  return list;
+}
+
+export function normalizeChannel(ch, idx = 0) {
+  const slug =
+    ch.slug ||
+    String(ch.name || `channel-${idx + 1}`)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") ||
+    `channel-${idx + 1}`;
+  const streamId = Number(ch.streamId) || 1001 + idx;
+  const catName = ch.category || "Featured & Network";
+  const matchedCat = CATEGORIES.find(
+    (c) => c.name.toLowerCase() === catName.toLowerCase() || c.id === String(ch.categoryId)
+  );
+  const categoryId = String(ch.categoryId || (matchedCat ? matchedCat.id : "1"));
+  const tier = String(ch.tier || "free").toLowerCase() === "pro" ? "pro" : "free";
+  return {
+    id: ch.id || `ch_${streamId}`,
+    streamId,
+    slug,
+    name: ch.name || `Channel ${streamId}`,
+    category: catName,
+    categoryId,
+    country: ch.country || "PK",
+    language: ch.language || "Urdu / English",
+    tier,
+    featured: Boolean(ch.featured),
+    status: ch.status || "active",
+    logo: ch.logo || "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
+    epgId: ch.epgId || `${slug}.barakatwave.tv`,
+    nowPlaying: ch.nowPlaying || `Live Broadcast on ${ch.name || "BarakatWave TV"}`,
+    url: ch.url || "/media/demo-live/index.m3u8",
+    backupUrls: Array.isArray(ch.backupUrls) ? ch.backupUrls.filter(Boolean) : [],
+    introVideoUrl: ch.introVideoUrl || "",
+    headers: ch.headers && typeof ch.headers === "object" ? ch.headers : {},
+    order: typeof ch.order === "number" ? ch.order : idx + 1
+  };
+}
+
+export async function getCategoriesFromChannels(channels) {
+  const map = new Map();
+  for (const base of CATEGORIES) {
+    map.set(String(base.id), { category_id: String(base.id), category_name: base.name, parent_id: 0 });
+  }
+  let nextId = 20;
+  for (const ch of channels) {
+    const cid = String(ch.categoryId || "");
+    if (cid && !map.has(cid)) {
+      map.set(cid, { category_id: cid, category_name: ch.category || "Live TV", parent_id: 0 });
+    } else if (!cid && ch.category) {
+      const existing = [...map.values()].find((v) => v.category_name.toLowerCase() === ch.category.toLowerCase());
+      if (!existing) {
+        const idStr = String(nextId++);
+        ch.categoryId = idStr;
+        map.set(idStr, { category_id: idStr, category_name: ch.category, parent_id: 0 });
+      }
+    }
+  }
+  return [...map.values()];
+}
+
+export async function getXtreamAccount(username) {
+  if (!username) return null;
+  const cleanUser = String(username).trim().replace(/[.#$[\]/]/g, "");
+  if (!cleanUser) return null;
+
+  // Built-in demo test account so Muaaz / testers can test VLC / Smarters out-of-the-box too
+  if (cleanUser === "demo" || cleanUser === "bw_demo") {
+    return {
+      username: cleanUser,
+      password: cleanUser === "demo" ? "demo" : "Barakat123",
+      uid: "demo_uid",
+      displayName: "BarakatWave Demo Viewer",
+      plan: "free",
+      status: "Active",
+      maxConnections: 2,
+      createdAt: "2026-10-28T00:00:00Z",
+      expDate: null
+    };
+  }
+
+  const acct = await rtdbGet(`xtreamAccounts/${cleanUser}`, { ttlMs: 4000 });
+  if (acct && typeof acct === "object" && acct.username) {
+    return acct;
+  }
+  return null;
+}
+
+export async function verifyXtreamCredentials(username, password) {
+  const acct = await getXtreamAccount(username);
+  if (!acct) return null;
+  if (String(acct.password) !== String(password)) return null;
+  if (String(acct.status || "Active").toLowerCase() === "suspended") return null;
+  // Check Pro expiry if set
+  let effectivePlan = String(acct.plan || "free").toLowerCase() === "pro" ? "pro" : "free";
+  if (effectivePlan === "pro" && acct.expDate) {
+    const expSec = Number(acct.expDate);
+    if (expSec > 0 && Date.now() / 1000 > expSec) {
+      effectivePlan = "free";
+    }
+  }
+  return { ...acct, effectivePlan };
+}
+
+export async function getPlaylistById(playlistId) {
+  if (!playlistId) return null;
+  const cleanId = String(playlistId).replace(/\.m3u8?$/i, "").replace(/[.#$[\]/]/g, "");
+  const pl = await rtdbGet(`playlists/${cleanId}`, { ttlMs: 4000 });
+  return pl && typeof pl === "object" ? pl : null;
+}
+
+export async function getBlogs() {
+  const remote = await rtdbGet("blogs", { ttlMs: 15000 });
+  const bySlug = new Map();
+  for (const b of DEFAULT_BLOGS) {
+    bySlug.set(b.slug, { ...b });
+  }
+  if (remote && typeof remote === "object") {
+    for (const [k, val] of Object.entries(remote)) {
+      if (val && typeof val === "object" && val.title) {
+        const slug = val.slug || k;
+        bySlug.set(slug, { ...bySlug.get(slug), ...val, slug });
+      }
+    }
+  }
+  return [...bySlug.values()].sort(
+    (a, b) => new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime()
+  );
+}
+
+export async function getReviews() {
+  const remote = await rtdbGet("reviews", { ttlMs: 10000 });
+  if (remote && typeof remote === "object") {
+    const arr = Object.entries(remote)
+      .map(([id, r]) => ({ id, ...r }))
+      .filter((r) => r && r.comment);
+    if (arr.length) {
+      return arr.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    }
+  }
+  return DEFAULT_REVIEWS;
+}

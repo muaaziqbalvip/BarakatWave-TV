@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:Barakat Cricket Arena 4K [PRO VIP] — BarakatWave Live TV (PRO VIP (Unlock: 0306-2015326))
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.channel",VALUE="barakat-cricket-arena-4k-pro"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="barakat.cricket.pro" tvg-name="Barakat Cricket Arena 4K [PRO VIP]" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="Live Sports HD",Barakat Cricket Arena 4K [PRO VIP]
+https://barakatwave.vercel.app/ch/barakat-cricket-arena-4k-pro.m3u8

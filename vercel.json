@@ -1,0 +1,51 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "framework": null,
+  "buildCommand": null,
+  "outputDirectory": "public",
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 60,
+      "memory": 512
+    }
+  },
+  "rewrites": [
+    { "source": "/player_api.php", "destination": "/api/xtream/player_api" },
+    { "source": "/panel_api.php", "destination": "/api/xtream/player_api" },
+    { "source": "/get.php", "destination": "/api/xtream/get" },
+    { "source": "/xmltv.php", "destination": "/api/xtream/xmltv" },
+    { "source": "/live/:user/:pass/:file", "destination": "/api/live?user=:user&pass=:pass&file=:file" },
+    { "source": "/movie/:user/:pass/:file", "destination": "/api/live?user=:user&pass=:pass&file=:file" },
+    { "source": "/series/:user/:pass/:file", "destination": "/api/live?user=:user&pass=:pass&file=:file" },
+    { "source": "/ch/:slug", "destination": "/api/live?slug=:slug" },
+    { "source": "/playlist/:id", "destination": "/api/playlist?id=:id" },
+    { "source": "/blog", "destination": "/api/blog" },
+    { "source": "/blog/:slug", "destination": "/api/blog?slug=:slug" },
+    { "source": "/sitemap.xml", "destination": "/api/seo/sitemap" },
+    { "source": "/rss.xml", "destination": "/api/seo/rss" },
+    { "source": "/blog/feed.xml", "destination": "/api/seo/rss" },
+    { "source": "/llms.txt", "destination": "/api/seo/llms" },
+    { "source": "/llms-full.txt", "destination": "/api/seo/llms?full=1" },
+    { "source": "/.well-known/ai.txt", "destination": "/api/seo/llms" },
+    { "source": "/barakatwave2026mizanoraseokey.txt", "destination": "/api/seo/indexnow?verify=1" },
+    { "source": "/admin", "destination": "/admin.html" }
+  ],
+  "headers": [
+    {
+      "source": "/media/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=604800" }
+      ]
+    }
+  ]
+}

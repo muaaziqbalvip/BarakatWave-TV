@@ -1,0 +1,22 @@
+#EXTM3U x-tvg-url="https://barakatwave.vercel.app/xmltv.php"
+#PLAYLIST:BarakatWave Live TV (Free Channels) — Mizanora Projects by Muaaz Iqbal
+#EXTINF:-1 tvg-id="barakatwave.promo.pk" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="Featured & Network",BarakatWave Official Promo HD
+https://barakatwave.vercel.app/ch/barakatwave-official-hd.m3u8
+#EXTINF:-1 tvg-id="quran.makkah.sa" tvg-logo="https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/Kaaba_icon.svg/240px-Kaaba_icon.svg.png" group-title="Islamic 24/7",Makkah Al-Quran Al-Kareem TV HD
+https://barakatwave.vercel.app/ch/makkah-al-quran-al-kareem-hd.m3u8
+#EXTINF:-1 tvg-id="sunnah.madinah.sa" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="Islamic 24/7",Madinah Al-Sunnah TV HD
+https://barakatwave.vercel.app/ch/madinah-al-sunnah-al-nabawiyah-hd.m3u8
+#EXTINF:-1 tvg-id="aljazeera.en" tvg-logo="https://upload.wikimedia.org/wikipedia/en/thumb/f/f2/Aljazeera_eng.svg/240px-Aljazeera_eng.svg.png" group-title="World & Regional News",Al Jazeera English HD
+https://barakatwave.vercel.app/ch/al-jazeera-english-hd.m3u8
+#EXTINF:-1 tvg-id="trtworld.hd" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="World & Regional News",TRT World HD
+https://barakatwave.vercel.app/ch/trt-world-hd.m3u8
+#EXTINF:-1 tvg-id="dw.english" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="World & Regional News",DW English News HD
+https://barakatwave.vercel.app/ch/dw-news-english-hd.m3u8
+#EXTINF:-1 tvg-id="redbull.tv" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="Live Sports HD",Red Bull Action Sports TV HD
+https://barakatwave.vercel.app/ch/red-bull-sports-tv-hd.m3u8
+#EXTINF:-1 tvg-id="nasa.public" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="Science & Documentary",NASA Space & Earth Live HD
+https://barakatwave.vercel.app/ch/nasa-space-live-hd.m3u8
+#EXTINF:-1 tvg-id="france24.en" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="World & Regional News",France 24 English HD
+https://barakatwave.vercel.app/ch/france-24-english-hd.m3u8
+#EXTINF:-1 tvg-id="nhk.world" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="Science & Documentary",NHK World Asia HD
+https://barakatwave.vercel.app/ch/nhk-world-japan-hd.m3u8

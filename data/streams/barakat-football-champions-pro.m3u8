@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:Barakat Champions Football UHD [PRO VIP] — BarakatWave Live TV (PRO VIP (Unlock: 0306-2015326))
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.channel",VALUE="barakat-football-champions-pro"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="barakat.football.pro" tvg-name="Barakat Champions Football UHD [PRO VIP]" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="Live Sports HD",Barakat Champions Football UHD [PRO VIP]
+https://barakatwave.vercel.app/ch/barakat-football-champions-pro.m3u8

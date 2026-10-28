@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:NASA Space & Earth Live HD — BarakatWave Live TV (FREE HD)
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.channel",VALUE="nasa-space-live-hd"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="nasa.public" tvg-name="NASA Space & Earth Live HD" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="Science & Documentary",NASA Space & Earth Live HD
+https://barakatwave.vercel.app/ch/nasa-space-live-hd.m3u8
