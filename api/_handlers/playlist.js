@@ -3,9 +3,9 @@ import {
   handleOptions,
   parseQuery,
   sendText
-} from "./_lib/origin.js";
-import { getChannels, getPlaylistById } from "./_lib/rtdb.js";
-import { BRAND } from "../data/catalog.js";
+} from "../_lib/origin.js";
+import { getChannels, getPlaylistById } from "../_lib/rtdb.js";
+import { BRAND } from "../../data/catalog.js";
 
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;

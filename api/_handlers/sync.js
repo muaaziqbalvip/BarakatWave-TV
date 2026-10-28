@@ -1,5 +1,5 @@
-import { handleOptions, parseBody, sendJson } from "./_lib/origin.js";
-import { updateLocalMirrorNode } from "./_lib/rtdb.js";
+import { handleOptions, parseBody, sendJson } from "../_lib/origin.js";
+import { updateLocalMirrorNode } from "../_lib/rtdb.js";
 
 /**
  * Mirrors client Firebase RTDB updates to the in-process / local cache so

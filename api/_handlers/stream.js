@@ -3,17 +3,17 @@ import {
   handleOptions,
   parseQuery,
   sendText
-} from "./_lib/origin.js";
+} from "../_lib/origin.js";
 import {
   getChannels,
   getSettings,
   verifyXtreamCredentials
-} from "./_lib/rtdb.js";
+} from "../_lib/rtdb.js";
 import {
   buildChannelLiveMediaM3u8,
   buildLoopingLiveM3u8,
   loadClipSegments
-} from "./_lib/hls.js";
+} from "../_lib/hls.js";
 
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
