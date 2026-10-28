@@ -2,5 +2,5 @@
 #PLAYLIST:Al Jazeera English HD — BarakatWave Live TV (FREE HD)
 #EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.channel",VALUE="al-jazeera-english-hd"
 #EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
-#EXTINF:-1 tvg-id="aljazeera.en" tvg-name="Al Jazeera English HD" tvg-logo="https://upload.wikimedia.org/wikipedia/en/thumb/f/f2/Aljazeera_eng.svg/240px-Aljazeera_eng.svg.png" group-title="World & Regional News",Al Jazeera English HD
+#EXTINF:-1 tvg-id="aljazeera.en" tvg-name="Al Jazeera English HD" tvg-logo="https://upload.wikimedia.org/wikipedia/en/thumb/f/f2/Aljazeera_eng.svg/240px-Aljazeera_eng.svg.png" group-title="📰 🔴 LIVE NEWS NETWORKS",Al Jazeera English HD
 https://barakatwave.vercel.app/ch/al-jazeera-english-hd.m3u8

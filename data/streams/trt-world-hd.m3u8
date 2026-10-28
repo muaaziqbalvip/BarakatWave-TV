@@ -1,6 +1,6 @@
 #EXTM3U
-#PLAYLIST:TRT World HD — BarakatWave Live TV (FREE HD)
+#PLAYLIST:TRT World News HD — BarakatWave Live TV (FREE HD)
 #EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.channel",VALUE="trt-world-hd"
 #EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
-#EXTINF:-1 tvg-id="trtworld.hd" tvg-name="TRT World HD" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="World & Regional News",TRT World HD
+#EXTINF:-1 tvg-id="trtworld.hd" tvg-name="TRT World News HD" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="📰 🔴 LIVE NEWS NETWORKS",TRT World News HD
 https://barakatwave.vercel.app/ch/trt-world-hd.m3u8

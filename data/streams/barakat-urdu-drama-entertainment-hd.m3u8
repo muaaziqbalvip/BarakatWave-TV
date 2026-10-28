@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:Barakat Urdu Drama & Family HD — BarakatWave Live TV (FREE HD)
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.channel",VALUE="barakat-urdu-drama-entertainment-hd"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="barakat.drama.pk" tvg-name="Barakat Urdu Drama & Family HD" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="🎭 📺 DRAMA & ENTERTAINMENT HD",Barakat Urdu Drama & Family HD
+https://barakatwave.vercel.app/ch/barakat-urdu-drama-entertainment-hd.m3u8

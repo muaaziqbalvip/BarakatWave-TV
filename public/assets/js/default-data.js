@@ -10,7 +10,13 @@ export const {
   DEFAULT_CHANNELS,
   DEFAULT_BLOGS,
   DEFAULT_REVIEWS,
-  DEFAULT_FAQS
+  DEFAULT_FAQS,
+  decorateGroupTitle,
+  resolveCategoryMeta,
+  getCategoryPriority,
+  autoSortAndReindexChannels,
+  moveChannelToPosition,
+  insertOrUpdateChannelSmart
 } = catalog;
 
 export const THEMES = [

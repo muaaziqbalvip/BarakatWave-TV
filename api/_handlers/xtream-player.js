@@ -86,6 +86,8 @@ export default async function handler(req, res) {
   }
 
   if (action === "get_live_streams") {
+    // Ensure custom category_ids are resolved consistently with get_live_categories
+    await getCategoriesFromChannels(channels);
     const filterCat = params.category_id ? String(params.category_id) : "";
     const filtered = filterCat
       ? channels.filter((c) => String(c.categoryId) === filterCat)
@@ -93,12 +95,15 @@ export default async function handler(req, res) {
 
     const streams = filtered.map((ch, idx) => {
       const isLockedForUser = ch.tier === "pro" && acct.effectivePlan !== "pro";
+      const cleanBaseName = ch.name.replace(/\s*\[PRO.*?\]/i, "").trim();
+      const catIcon = ch.categoryIcon || "📺";
+      const pinPrefix = ch.pinned ? "📌 " : "";
       const displayName =
         ch.tier === "pro"
           ? isLockedForUser
-            ? `🔒 ${ch.name.replace(/\s*\[PRO.*?\]/i, "")} [PRO - Unlock: 0306-2015326]`
-            : `👑 ${ch.name}`
-          : ch.name;
+            ? `🔒 👑 ${cleanBaseName} [PRO VIP • WhatsApp 0306-2015326]`
+            : `👑 ${catIcon} ${cleanBaseName} [PRO VIP]`
+          : `${pinPrefix}🟢 ${catIcon} ${cleanBaseName}`;
 
       return {
         num: idx + 1,

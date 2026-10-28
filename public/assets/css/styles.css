@@ -1667,3 +1667,153 @@ select.input-field {
     background: var(--bg-soft);
   }
 }
+
+/* ==========================================================================
+   Priority Emoji Category Sections, Channel # Badges & Admin Reorder Studio
+   ========================================================================== */
+
+.ch-rank-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 7px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  background: var(--bg-soft);
+  color: var(--primary);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.group-sections-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.group-section-block {
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.group-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 13px;
+  margin-bottom: 15px;
+  border-bottom: 1px solid var(--border);
+}
+
+.group-section-title {
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Admin Reorderable Table & Toolbar */
+.adm-sort-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+
+.adm-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.5fr) repeat(auto-fit, minmax(160px, 1fr));
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.adm-bulk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--gold-bg);
+  border: 1px solid var(--border-strong);
+  margin-bottom: 12px;
+}
+
+.drag-handle {
+  cursor: grab;
+  user-select: none;
+  font-size: 1.05rem;
+  color: var(--text-muted);
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.drag-handle:hover {
+  background: var(--bg-soft);
+  color: var(--primary);
+}
+
+tr.dragging-row {
+  opacity: 0.45;
+}
+
+tr.drag-over-row td {
+  border-top: 2px solid var(--primary) !important;
+  background: var(--bg-hover) !important;
+}
+
+.order-num-input {
+  width: 58px;
+  text-align: center;
+  font-weight: 800;
+  padding: 5px 6px !important;
+  border-radius: 8px !important;
+  font-size: 0.8rem !important;
+}
+
+.mini-move-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.mini-move-btn {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 3px 6px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.mini-move-btn:hover {
+  border-color: var(--primary);
+  background: var(--bg-soft);
+}
+
+.mini-move-btn.pinned-active {
+  background: var(--gold-bg);
+  color: var(--gold-text);
+  border-color: var(--border-strong);
+}
+

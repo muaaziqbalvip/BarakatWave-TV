@@ -48,45 +48,408 @@ export const DEFAULT_SETTINGS = {
 };
 
 export const CATEGORIES = [
-  { id: "1", slug: "featured", name: "Featured & Network" },
-  { id: "2", slug: "islamic", name: "Islamic 24/7" },
-  { id: "3", slug: "pakistan", name: "Pakistan Live" },
-  { id: "4", slug: "india", name: "India & South Asia" },
-  { id: "5", slug: "sports", name: "Live Sports HD" },
-  { id: "6", slug: "news", name: "World & Regional News" },
-  { id: "7", slug: "entertainment", name: "Entertainment & Drama" },
-  { id: "8", slug: "documentary", name: "Science & Documentary" }
+  {
+    id: "1",
+    priority: 1,
+    slug: "pakistan-top",
+    icon: "🇵🇰",
+    name: "🇵🇰 ⭐ Pakistan Top Channels",
+    xtreamTitle: "🇵🇰 ⭐ PAKISTAN TOP CHANNELS",
+    shortLabel: "🇵🇰 Pakistan Top"
+  },
+  {
+    id: "2",
+    priority: 2,
+    slug: "islamic",
+    icon: "🕌",
+    name: "🕌 🌙 Islamic & Spiritual HD",
+    xtreamTitle: "🕌 🌙 ISLAMIC & SPIRITUAL HD",
+    shortLabel: "🕌 Islamic HD"
+  },
+  {
+    id: "3",
+    priority: 3,
+    slug: "drama-entertainment",
+    icon: "🎭",
+    name: "🎭 📺 Drama & Entertainment HD",
+    xtreamTitle: "🎭 📺 DRAMA & ENTERTAINMENT HD",
+    shortLabel: "🎭 Drama & Ent."
+  },
+  {
+    id: "4",
+    priority: 4,
+    slug: "news",
+    icon: "📰",
+    name: "📰 🔴 Live News Networks",
+    xtreamTitle: "📰 🔴 LIVE NEWS NETWORKS",
+    shortLabel: "📰 Live News"
+  },
+  {
+    id: "5",
+    priority: 5,
+    slug: "movies",
+    icon: "🎬",
+    name: "🎬 🍿 Movies & Cinema HD",
+    xtreamTitle: "🎬 🍿 MOVIES & CINEMA HD",
+    shortLabel: "🎬 Movies HD"
+  },
+  {
+    id: "6",
+    priority: 6,
+    slug: "sports",
+    icon: "🏏",
+    name: "🏏 🏆 Live Sports & Cricket 4K",
+    xtreamTitle: "🏏 🏆 LIVE SPORTS & CRICKET 4K",
+    shortLabel: "🏏 Sports 4K"
+  },
+  {
+    id: "7",
+    priority: 7,
+    slug: "kids-docs",
+    icon: "🧸",
+    name: "🧸 📚 Kids, Knowledge & Docs",
+    xtreamTitle: "🧸 📚 KIDS, KNOWLEDGE & DOCS",
+    shortLabel: "🧸 Kids & Docs"
+  },
+  {
+    id: "8",
+    priority: 8,
+    slug: "regional",
+    icon: "🇮🇳",
+    name: "🇮🇳 ✨ Regional & South Asia HD",
+    xtreamTitle: "🇮🇳 ✨ REGIONAL & SOUTH ASIA HD",
+    shortLabel: "🇮🇳 Regional HD"
+  },
+  {
+    id: "9",
+    priority: 9,
+    slug: "world",
+    icon: "🌍",
+    name: "🌍 📡 World & International TV",
+    xtreamTitle: "🌍 📡 WORLD & INTERNATIONAL TV",
+    shortLabel: "🌍 World & Others"
+  }
 ];
 
+/**
+ * Legacy category alias map so existing RTDB channels upgrade seamlessly to rich Emoji Groups!
+ */
+const LEGACY_CATEGORY_MAP = {
+  "featured & network": "1",
+  "pakistan live": "1",
+  "pakistan top": "1",
+  "islamic 24/7": "2",
+  "entertainment & drama": "3",
+  "world & regional news": "4",
+  "movies & cinema": "5",
+  "live sports hd": "6",
+  "science & documentary": "7",
+  "india & south asia": "8"
+};
+
+/**
+ * Decorate any custom group title with a clean emoji icon if it doesn't already have one.
+ */
+export function decorateGroupTitle(rawGroup) {
+  const trimmed = String(rawGroup || "").trim();
+  if (!trimmed) return CATEGORIES[0].name;
+  // Already starts with non-ASCII emoji/symbol
+  if (/^[^\x00-\x7F]/.test(trimmed)) return trimmed;
+  return `📺 ✨ ${trimmed}`;
+}
+
+/**
+ * Intelligently resolve a channel into one of the 9 priority Emoji Categories
+ * (1: PK Top -> 2: Islamic -> 3: Drama/Ent -> 4: News -> 5: Movies -> 6: Sports -> 7: Kids/Docs -> 8: Regional -> 9: World)
+ * while preserving explicit custom Admin categories unless forceAutoClassify = true!
+ */
+export function resolveCategoryMeta(rawCategory = "", channelName = "", country = "", forceAutoClassify = false) {
+  const catRaw = String(rawCategory || "").trim();
+  const catLower = catRaw.toLowerCase();
+  const nameLower = String(channelName || "").toLowerCase();
+  const countryUpper = String(country || "").trim().toUpperCase();
+
+  if (!forceAutoClassify && catRaw) {
+    const exact = CATEGORIES.find(
+      (c) =>
+        c.name.toLowerCase() === catLower ||
+        c.xtreamTitle.toLowerCase() === catLower ||
+        c.shortLabel.toLowerCase() === catLower ||
+        c.slug === catLower
+    );
+    if (exact) return exact;
+
+    if (LEGACY_CATEGORY_MAP[catLower]) {
+      return CATEGORIES.find((c) => c.id === LEGACY_CATEGORY_MAP[catLower]) || CATEGORIES[0];
+    }
+  }
+
+  const hay = `${nameLower} ${catLower}`;
+
+  // Priority 1 explicit Pakistan Top / Flagship Network check
+  if (
+    /barakatwave|pakistan top|pk top|ptv home|ptv global|pakistan national|pak flagship/.test(hay) ||
+    (!forceAutoClassify && /pakistan/.test(catLower) && !/news|sport|drama|movie|islam/.test(catLower))
+  ) {
+    return CATEGORIES[0]; // 1: 🇵🇰 ⭐ Pakistan Top Channels
+  }
+
+  // Priority 2: Islamic & Spiritual
+  if (
+    /islam|quran|makkah|mecca|madina|medina|sunnah|madani|peace tv|qtv|ary qtv|naat|paigham|hadi|noor tv|takbeer|haram|deen|rohani|ahlebait/.test(
+      hay
+    )
+  ) {
+    return CATEGORIES[1]; // 2: 🕌 🌙 Islamic & Spiritual HD
+  }
+
+  // Priority 6 check before Drama/PK so PTV Sports / A Sports go to Sports (unless PK Top forced)
+  if (
+    /sport|cricket|football|soccer|tennis|wwe|ufc|f1|racing|red bull|ptv sports|a sports|ten sports|geo super|fast sports|star sports|willow|bein|espn|sky sports/.test(
+      hay
+    )
+  ) {
+    return CATEGORIES[5]; // 6: 🏏 🏆 Live Sports & Cricket 4K
+  }
+
+  // Priority 5: Movies & Cinema
+  if (
+    /movie|cinema|film|filmax|filmazia|hbo|star gold|zee cinema|sony max|b4u movies|bollywood|hollywood|box office|action movies/.test(
+      hay
+    )
+  ) {
+    return CATEGORIES[4]; // 5: 🎬 🍿 Movies & Cinema HD
+  }
+
+  // Priority 4: Live News
+  if (
+    /\bnews\b|headlines|bulletin|geo news|ary news|samaa|dunya|express news|92 news|bol news|hum news|dawn news|gnn|24 news|abb takk|sunno|al jazeera|aljazeera|trt world|\bdw\b|france 24|bbc|cnn|sky news|aaj tak|ndtv/.test(
+      hay
+    )
+  ) {
+    return CATEGORIES[3]; // 4: 📰 🔴 Live News Networks
+  }
+
+  // Priority 3: Basic Drama & Entertainment
+  if (
+    /drama|entertainment|hum tv|hum sitara|hum masala|ary digital|ary zindagi|geo ent|geo kahani|green ent|express ent|urdu 1|a plus|tv one|play ent|aur life|mizanora family|family|music|comedy|showbiz|zee tv|star plus|colors|sony sab/.test(
+      hay
+    )
+  ) {
+    return CATEGORIES[2]; // 3: 🎭 📺 Drama & Entertainment HD
+  }
+
+  // Priority 7: Kids, Knowledge & Documentary
+  if (
+    /kid|cartoon|nick|pogo|disney|hungama|baby|anim|science|documentary|docs|discovery|nat geo|national geographic|animal planet|history|nasa|nhk|knowledge|edu/.test(
+      hay
+    )
+  ) {
+    return CATEGORIES[6]; // 7: 🧸 📚 Kids, Knowledge & Docs
+  }
+
+  // Priority 1 fallback: Any remaining Pakistani channel goes straight to 🇵🇰 Pakistan Top Channels!
+  if (countryUpper === "PK" || /\bpakistan\b|\bpak\b|\burdu\b|\bptv\b/.test(hay)) {
+    return CATEGORIES[0]; // 1: 🇵🇰 ⭐ Pakistan Top Channels
+  }
+
+  // Priority 8: Regional & South Asia
+  if (
+    countryUpper === "IN" ||
+    /india|hindi|punjabi|pashto|sindhi|balochi|saraiki|bangla|tamil|telugu|south asia|regional|khyber|apna|kashish|mehran/.test(
+      hay
+    )
+  ) {
+    return CATEGORIES[7]; // 8: 🇮🇳 ✨ Regional & South Asia HD
+  }
+
+  // Custom group name provided by Admin that didn't match standard keywords -> preserve with Emoji!
+  if (!forceAutoClassify && catRaw && catLower !== "imported live tv" && catLower !== "live tv") {
+    const decorated = decorateGroupTitle(catRaw);
+    return {
+      id: "99",
+      priority: 9.5,
+      slug: catLower.replace(/[^a-z0-9]+/g, "-"),
+      icon: "📺",
+      name: decorated,
+      xtreamTitle: decorated.toUpperCase(),
+      shortLabel: decorated
+    };
+  }
+
+  return CATEGORIES[8]; // 9: 🌍 📡 World & International TV
+}
+
+export function getCategoryPriority(categoryName = "", categoryId = "") {
+  const byId = CATEGORIES.find((c) => c.id === String(categoryId));
+  if (byId) return byId.priority;
+  const lower = String(categoryName || "").trim().toLowerCase();
+  const byName = CATEGORIES.find(
+    (c) =>
+      c.name.toLowerCase() === lower ||
+      c.xtreamTitle.toLowerCase() === lower ||
+      c.shortLabel.toLowerCase() === lower
+  );
+  if (byName) return byName.priority;
+  if (LEGACY_CATEGORY_MAP[lower]) {
+    const mapped = CATEGORIES.find((c) => c.id === LEGACY_CATEGORY_MAP[lower]);
+    if (mapped) return mapped.priority;
+  }
+  return 10;
+}
+
+/**
+ * Smart Auto-Sort & Re-Index All Channels:
+ * 1) Pinned channels first
+ * 2) Exact Group Priority:
+ *    #1 🇵🇰 Pakistan Top -> #2 🕌 Islamic -> #3 🎭 Drama & Entertainment ->
+ *    #4 📰 Live News -> #5 🎬 Movies & Cinema -> #6 🏏 Sports -> #7 🧸 Kids/Docs -> #8 🇮🇳 Regional -> #9 🌍 Others
+ * 3) Within each group: Pakistani/Urdu feeds first, then Featured, then existing order / A-Z
+ * 4) Auto-adjusts every channel's `order` cleanly to 1, 2, 3, ..., N!
+ */
+export function autoSortAndReindexChannels(channels, { reclassify = true } = {}) {
+  const prepared = (channels || []).map((ch, idx) => {
+    const meta = resolveCategoryMeta(ch.category, ch.name, ch.country, reclassify);
+    return {
+      ...ch,
+      category: meta.name,
+      categoryId: meta.id,
+      _priority: meta.priority,
+      _origIdx: typeof ch.order === "number" ? ch.order : idx + 1
+    };
+  });
+
+  prepared.sort((a, b) => {
+    if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+    if (a._priority !== b._priority) return a._priority - b._priority;
+    const aPk = String(a.country || "").toUpperCase().includes("PK") ? 0 : 1;
+    const bPk = String(b.country || "").toUpperCase().includes("PK") ? 0 : 1;
+    if (aPk !== bPk) return aPk - bPk;
+    if (Boolean(a.featured) !== Boolean(b.featured)) return a.featured ? -1 : 1;
+    if (a._origIdx !== b._origIdx) return a._origIdx - b._origIdx;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+
+  return prepared.map(({ _priority, _origIdx, ...clean }, i) => ({
+    ...clean,
+    order: i + 1
+  }));
+}
+
+/**
+ * Move any channel to an exact 1-based position (1..N) and automatically adjust all other channels!
+ */
+export function moveChannelToPosition(channels, channelId, targetPosOneBased) {
+  const list = [...(channels || [])].sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+  const fromIdx = list.findIndex((c) => c.id === channelId);
+  if (fromIdx < 0) return list.map((c, i) => ({ ...c, order: i + 1 }));
+
+  const [item] = list.splice(fromIdx, 1);
+  const clampedIdx = Math.max(0, Math.min(list.length, (Number(targetPosOneBased) || 1) - 1));
+  list.splice(clampedIdx, 0, item);
+  return list.map((c, i) => ({ ...c, order: i + 1 }));
+}
+
+/**
+ * Insert or update a channel cleanly:
+ * - If explicitPos > 0: places channel at explicitPos and shifts all others automatically!
+ * - If new channel with no explicitPos: inserts right at the end of its matching priority category
+ *   and re-numbers all channels 1..N automatically!
+ */
+export function insertOrUpdateChannelSmart(channels, record, { isNew = false, explicitPos = 0 } = {}) {
+  const meta = resolveCategoryMeta(record.category, record.name, record.country, false);
+  const enriched = {
+    ...record,
+    category: meta.name,
+    categoryId: meta.id
+  };
+
+  let list = [...(channels || [])].sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+  const existingIdx = list.findIndex((c) => c.id === enriched.id);
+
+  if (existingIdx >= 0) {
+    list[existingIdx] = { ...list[existingIdx], ...enriched };
+    if (explicitPos > 0) {
+      return moveChannelToPosition(list, enriched.id, explicitPos);
+    }
+    return list.map((c, i) => ({ ...c, order: i + 1 }));
+  }
+
+  // Brand-new channel
+  if (explicitPos > 0) {
+    list.push(enriched);
+    return moveChannelToPosition(list, enriched.id, explicitPos);
+  }
+
+  // Auto-slot right into its matching category priority group!
+  const targetPrio = getCategoryPriority(enriched.category, enriched.categoryId);
+  let insertAt = list.length;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const p = getCategoryPriority(list[i].category, list[i].categoryId);
+    if (p <= targetPrio) {
+      insertAt = i + 1;
+      break;
+    }
+    if (p > targetPrio) {
+      insertAt = i;
+    }
+  }
+  list.splice(insertAt, 0, enriched);
+  return list.map((c, i) => ({ ...c, order: i + 1 }));
+}
+
 export const DEFAULT_CHANNELS = [
+  // ==================== 1. 🇵🇰 PAKISTAN TOP CHANNELS (FIRST) ====================
   {
     id: "ch_bw_promo",
     streamId: 1001,
     slug: "barakatwave-official-hd",
-    name: "BarakatWave Official Promo HD",
-    category: "Featured & Network",
+    name: "BarakatWave Pakistan Flagship HD",
+    category: "🇵🇰 ⭐ Pakistan Top Channels",
     categoryId: "1",
     country: "PK",
-    language: "English / Urdu",
+    language: "Urdu / English",
     tier: "free",
+    pinned: true,
     featured: true,
     status: "active",
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
     epgId: "barakatwave.promo.pk",
-    nowPlaying: "24/7 Network Showcase • Mizanora Projects by Muaaz Iqbal",
+    nowPlaying: "24/7 Flagship Network • Mizanora Projects by Muaaz Iqbal",
     url: "/media/demo-live/index.m3u8",
     backupUrls: [],
     order: 1
   },
   {
+    id: "ch_pro_pk_gold",
+    streamId: 2002,
+    slug: "pakistan-super-entertainment-pro",
+    name: "Pakistan Gold National HD [PRO VIP]",
+    category: "🇵🇰 ⭐ Pakistan Top Channels",
+    categoryId: "1",
+    country: "PK",
+    language: "Urdu",
+    tier: "pro",
+    featured: true,
+    status: "active",
+    logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
+    epgId: "pk.super.pro",
+    nowPlaying: "Pakistan Top Prime Shows, National Specials & Headlines",
+    url: "https://tv-trtworld.medya.trt.com.tr/master.m3u8",
+    backupUrls: ["/media/demo-live/index.m3u8"],
+    order: 2
+  },
+
+  // ==================== 2. 🕌 ISLAMIC & SPIRITUAL HD (SECOND) ====================
+  {
     id: "ch_makkah_live",
     streamId: 1002,
     slug: "makkah-al-quran-al-kareem-hd",
     name: "Makkah Al-Quran Al-Kareem TV HD",
-    category: "Islamic 24/7",
+    category: "🕌 🌙 Islamic & Spiritual HD",
     categoryId: "2",
     country: "SA",
-    language: "Arabic",
+    language: "Arabic / Urdu",
     tier: "free",
     featured: true,
     status: "active",
@@ -98,17 +461,17 @@ export const DEFAULT_CHANNELS = [
       "https://media2.streambrothers.com:1936/8122/8122/playlist.m3u8",
       "/media/demo-live/index.m3u8"
     ],
-    order: 2
+    order: 3
   },
   {
     id: "ch_madinah_live",
     streamId: 1003,
     slug: "madinah-al-sunnah-al-nabawiyah-hd",
     name: "Madinah Al-Sunnah TV HD",
-    category: "Islamic 24/7",
+    category: "🕌 🌙 Islamic & Spiritual HD",
     categoryId: "2",
     country: "SA",
-    language: "Arabic",
+    language: "Arabic / Urdu",
     tier: "free",
     featured: true,
     status: "active",
@@ -117,15 +480,57 @@ export const DEFAULT_CHANNELS = [
     nowPlaying: "Live Masjid An-Nabawi Broadcast 24/7",
     url: "https://win.holol.com/live/sunnah/playlist.m3u8",
     backupUrls: ["/media/demo-live/index.m3u8"],
-    order: 3
+    order: 4
   },
+
+  // ==================== 3. 🎭 DRAMA & ENTERTAINMENT HD (THIRD) ====================
+  {
+    id: "ch_pk_drama_ent",
+    streamId: 1011,
+    slug: "barakat-urdu-drama-entertainment-hd",
+    name: "Barakat Urdu Drama & Family HD",
+    category: "🎭 📺 Drama & Entertainment HD",
+    categoryId: "3",
+    country: "PK",
+    language: "Urdu",
+    tier: "free",
+    featured: true,
+    status: "active",
+    logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
+    epgId: "barakat.drama.pk",
+    nowPlaying: "Pakistani Superhit Family Dramas & Evening Serials",
+    url: "/media/demo-live/index.m3u8",
+    backupUrls: [],
+    order: 5
+  },
+  {
+    id: "ch_pro_drama_royal",
+    streamId: 2005,
+    slug: "mizanora-family-royal-hd-pro",
+    name: "Mizanora Family Drama Royal HD [PRO VIP]",
+    category: "🎭 📺 Drama & Entertainment HD",
+    categoryId: "3",
+    country: "PK",
+    language: "Urdu / English",
+    tier: "pro",
+    featured: true,
+    status: "active",
+    logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
+    epgId: "mizanora.royal.pro",
+    nowPlaying: "Prime-Time Pakistani Dramas & Halal Family Entertainment",
+    url: "/media/demo-live/index.m3u8",
+    backupUrls: [],
+    order: 6
+  },
+
+  // ==================== 4. 📰 LIVE NEWS NETWORKS (FOURTH) ====================
   {
     id: "ch_aljazeera_en",
     streamId: 1004,
     slug: "al-jazeera-english-hd",
     name: "Al Jazeera English HD",
-    category: "World & Regional News",
-    categoryId: "6",
+    category: "📰 🔴 Live News Networks",
+    categoryId: "4",
     country: "QA",
     language: "English",
     tier: "free",
@@ -136,15 +541,15 @@ export const DEFAULT_CHANNELS = [
     nowPlaying: "Global Breaking News & Live Coverage",
     url: "https://live-hls-web-aje.getaj.net/AJE/index.m3u8",
     backupUrls: ["/media/demo-live/index.m3u8"],
-    order: 4
+    order: 7
   },
   {
     id: "ch_trt_world",
     streamId: 1005,
     slug: "trt-world-hd",
-    name: "TRT World HD",
-    category: "World & Regional News",
-    categoryId: "6",
+    name: "TRT World News HD",
+    category: "📰 🔴 Live News Networks",
+    categoryId: "4",
     country: "TR",
     language: "English",
     tier: "free",
@@ -155,15 +560,15 @@ export const DEFAULT_CHANNELS = [
     nowPlaying: "International Headlines & South Asia Focus",
     url: "https://tv-trtworld.medya.trt.com.tr/master.m3u8",
     backupUrls: ["/media/demo-live/index.m3u8"],
-    order: 5
+    order: 8
   },
   {
     id: "ch_dw_english",
     streamId: 1006,
     slug: "dw-news-english-hd",
-    name: "DW English News HD",
-    category: "World & Regional News",
-    categoryId: "6",
+    name: "DW World News HD",
+    category: "📰 🔴 Live News Networks",
+    categoryId: "4",
     country: "DE",
     language: "English",
     tier: "free",
@@ -174,53 +579,15 @@ export const DEFAULT_CHANNELS = [
     nowPlaying: "World News, Tech & Documentaries",
     url: "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8",
     backupUrls: ["/media/demo-live/index.m3u8"],
-    order: 6
-  },
-  {
-    id: "ch_redbull_sports",
-    streamId: 1007,
-    slug: "red-bull-sports-tv-hd",
-    name: "Red Bull Action Sports TV HD",
-    category: "Live Sports HD",
-    categoryId: "5",
-    country: "INT",
-    language: "English",
-    tier: "free",
-    featured: true,
-    status: "active",
-    logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
-    epgId: "redbull.tv",
-    nowPlaying: "Motorsport, Rally & Global Live Championships",
-    url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
-    order: 7
-  },
-  {
-    id: "ch_nasa_tv",
-    streamId: 1008,
-    slug: "nasa-space-live-hd",
-    name: "NASA Space & Earth Live HD",
-    category: "Science & Documentary",
-    categoryId: "8",
-    country: "US",
-    language: "English",
-    tier: "free",
-    featured: false,
-    status: "active",
-    logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
-    epgId: "nasa.public",
-    nowPlaying: "ISS Earth Views & Mission Control",
-    url: "https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
-    order: 8
+    order: 9
   },
   {
     id: "ch_france24",
     streamId: 1009,
     slug: "france-24-english-hd",
-    name: "France 24 English HD",
-    category: "World & Regional News",
-    categoryId: "6",
+    name: "France 24 Live News HD",
+    category: "📰 🔴 Live News Networks",
+    categoryId: "4",
     country: "FR",
     language: "English",
     tier: "free",
@@ -231,72 +598,36 @@ export const DEFAULT_CHANNELS = [
     nowPlaying: "24/7 International Live Bulletin",
     url: "https://live.france24.com/hls/live/2037218-b/F24_EN_HI_HLS/master_5000.m3u8",
     backupUrls: ["/media/demo-live/index.m3u8"],
-    order: 9
-  },
-  {
-    id: "ch_nhk_world",
-    streamId: 1010,
-    slug: "nhk-world-japan-hd",
-    name: "NHK World Asia HD",
-    category: "Science & Documentary",
-    categoryId: "8",
-    country: "JP",
-    language: "English",
-    tier: "free",
-    featured: false,
-    status: "active",
-    logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
-    epgId: "nhk.world",
-    nowPlaying: "Asian Culture, Technology & News",
-    url: "https://nhkwlive-ojp.akamaized.net/hls/live/2003459/nhkwlive-ojp-en/index.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
     order: 10
   },
+
+  // ==================== 5. 🎬 MOVIES & CINEMA HD (FIFTH) ====================
   {
-    id: "ch_pro_cricket_4k",
-    streamId: 2001,
-    slug: "barakat-cricket-arena-4k-pro",
-    name: "Barakat Cricket Arena 4K [PRO VIP]",
-    category: "Live Sports HD",
+    id: "ch_bw_cinema_hd",
+    streamId: 1012,
+    slug: "barakat-cinema-movies-hd",
+    name: "Barakat Cinema & Telefilms HD",
+    category: "🎬 🍿 Movies & Cinema HD",
     categoryId: "5",
     country: "PK",
-    language: "Urdu / English / Hindi",
-    tier: "pro",
+    language: "Urdu / English",
+    tier: "free",
     featured: true,
     status: "active",
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
-    epgId: "barakat.cricket.pro",
-    nowPlaying: "Pakistan vs India Classics & Live T20/ODI 60fps Feed",
-    url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
+    epgId: "barakat.cinema.pk",
+    nowPlaying: "24/7 Family Telefilms, Classics & World Cinema",
+    url: "/media/demo-live/index.m3u8",
+    backupUrls: [],
     order: 11
-  },
-  {
-    id: "ch_pro_pk_gold",
-    streamId: 2002,
-    slug: "pakistan-super-entertainment-pro",
-    name: "Pakistan Super Drama & News HD [PRO VIP]",
-    category: "Pakistan Live",
-    categoryId: "3",
-    country: "PK",
-    language: "Urdu",
-    tier: "pro",
-    featured: true,
-    status: "active",
-    logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
-    epgId: "pk.super.pro",
-    nowPlaying: "Prime-Time Pakistani Dramas, Talk Shows & Headlines",
-    url: "https://tv-trtworld.medya.trt.com.tr/master.m3u8",
-    backupUrls: ["/media/demo-live/index.m3u8"],
-    order: 12
   },
   {
     id: "ch_pro_india_cinema",
     streamId: 2003,
     slug: "subcontinent-cinema-gold-pro",
-    name: "Subcontinent Cinema & Masala 4K [PRO VIP]",
-    category: "India & South Asia",
-    categoryId: "4",
+    name: "Subcontinent Blockbuster Movies 4K [PRO VIP]",
+    category: "🎬 🍿 Movies & Cinema HD",
+    categoryId: "5",
     country: "IN",
     language: "Hindi / Urdu",
     tier: "pro",
@@ -304,18 +635,58 @@ export const DEFAULT_CHANNELS = [
     status: "active",
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
     epgId: "in.cinema.pro",
-    nowPlaying: "24/7 Blockbuster Premiers & Family Entertainment",
+    nowPlaying: "24/7 Blockbuster Premiers & Superhit Cinema",
     url: "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8",
     backupUrls: ["/media/demo-live/index.m3u8"],
+    order: 12
+  },
+
+  // ==================== 6. 🏏 LIVE SPORTS & CRICKET 4K (SIXTH) ====================
+  {
+    id: "ch_pro_cricket_4k",
+    streamId: 2001,
+    slug: "barakat-cricket-arena-4k-pro",
+    name: "Barakat Cricket Arena 4K [PRO VIP]",
+    category: "🏏 🏆 Live Sports & Cricket 4K",
+    categoryId: "6",
+    country: "PK",
+    language: "Urdu / English",
+    tier: "pro",
+    featured: true,
+    status: "active",
+    logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
+    epgId: "barakat.cricket.pro",
+    nowPlaying: "Pakistan Cricket Live, PSL & ICC 60fps Feed",
+    url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
+    backupUrls: ["/media/demo-live/index.m3u8"],
     order: 13
+  },
+  {
+    id: "ch_redbull_sports",
+    streamId: 1007,
+    slug: "red-bull-sports-tv-hd",
+    name: "Red Bull Action Sports TV HD",
+    category: "🏏 🏆 Live Sports & Cricket 4K",
+    categoryId: "6",
+    country: "INT",
+    language: "English",
+    tier: "free",
+    featured: true,
+    status: "active",
+    logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
+    epgId: "redbull.tv",
+    nowPlaying: "Motorsport, Rally & Global Live Championships",
+    url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
+    backupUrls: ["/media/demo-live/index.m3u8"],
+    order: 14
   },
   {
     id: "ch_pro_sports_max",
     streamId: 2004,
     slug: "barakat-football-champions-pro",
     name: "Barakat Champions Football UHD [PRO VIP]",
-    category: "Live Sports HD",
-    categoryId: "5",
+    category: "🏏 🏆 Live Sports & Cricket 4K",
+    categoryId: "6",
     country: "INT",
     language: "English / Arabic",
     tier: "pro",
@@ -326,26 +697,47 @@ export const DEFAULT_CHANNELS = [
     nowPlaying: "European League Nights & Live Match Studio",
     url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
     backupUrls: ["/media/demo-live/index.m3u8"],
-    order: 14
+    order: 15
   },
+
+  // ==================== 7. 🧸 KIDS, KNOWLEDGE & DOCS (SEVENTH) ====================
   {
-    id: "ch_pro_drama_royal",
-    streamId: 2005,
-    slug: "mizanora-family-royal-hd-pro",
-    name: "Mizanora Family Royal HD [PRO VIP]",
-    category: "Entertainment & Drama",
+    id: "ch_nasa_tv",
+    streamId: 1008,
+    slug: "nasa-space-live-hd",
+    name: "NASA Space & Earth Live HD",
+    category: "🧸 📚 Kids, Knowledge & Docs",
     categoryId: "7",
-    country: "PK",
-    language: "Urdu / English",
-    tier: "pro",
+    country: "US",
+    language: "English",
+    tier: "free",
     featured: false,
     status: "active",
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
-    epgId: "mizanora.royal.pro",
-    nowPlaying: "Curated Halal Family Entertainment & Specials",
-    url: "/media/demo-live/index.m3u8",
-    backupUrls: [],
-    order: 15
+    epgId: "nasa.public",
+    nowPlaying: "ISS Earth Views & Space Science Live",
+    url: "https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8",
+    backupUrls: ["/media/demo-live/index.m3u8"],
+    order: 16
+  },
+  {
+    id: "ch_nhk_world",
+    streamId: 1010,
+    slug: "nhk-world-japan-hd",
+    name: "NHK World Knowledge & Docs HD",
+    category: "🧸 📚 Kids, Knowledge & Docs",
+    categoryId: "7",
+    country: "JP",
+    language: "English",
+    tier: "free",
+    featured: false,
+    status: "active",
+    logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
+    epgId: "nhk.world",
+    nowPlaying: "Asian Culture, Science & Technology Documentaries",
+    url: "https://nhkwlive-ojp.akamaized.net/hls/live/2003459/nhkwlive-ojp-en/index.m3u8",
+    backupUrls: ["/media/demo-live/index.m3u8"],
+    order: 17
   }
 ];
 

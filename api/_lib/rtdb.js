@@ -4,7 +4,10 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_BLOGS,
   DEFAULT_REVIEWS,
-  CATEGORIES
+  CATEGORIES,
+  resolveCategoryMeta,
+  decorateGroupTitle,
+  getCategoryPriority
 } from "../../data/catalog.js";
 
 const DEFAULT_RTDB_URL = (
@@ -208,7 +211,16 @@ export async function getChannels({ includeInactive = false } = {}) {
   if (!includeInactive) {
     list = list.filter((ch) => ch.status !== "inactive" && ch.status !== "disabled");
   }
-  list.sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999) || a.streamId - b.streamId);
+  list.sort((a, b) => {
+    if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+    const oa = typeof a.order === "number" ? a.order : 9999;
+    const ob = typeof b.order === "number" ? b.order : 9999;
+    if (oa !== ob) return oa - ob;
+    const pa = getCategoryPriority(a.category, a.categoryId);
+    const pb = getCategoryPriority(b.category, b.categoryId);
+    if (pa !== pb) return pa - pb;
+    return a.streamId - b.streamId;
+  });
   return list;
 }
 
@@ -221,22 +233,22 @@ export function normalizeChannel(ch, idx = 0) {
       .replace(/^-+|-+$/g, "") ||
     `channel-${idx + 1}`;
   const streamId = Number(ch.streamId) || 1001 + idx;
-  const catName = ch.category || "Featured & Network";
-  const matchedCat = CATEGORIES.find(
-    (c) => c.name.toLowerCase() === catName.toLowerCase() || c.id === String(ch.categoryId)
-  );
-  const categoryId = String(ch.categoryId || (matchedCat ? matchedCat.id : "1"));
+  const catMeta = resolveCategoryMeta(ch.category, ch.name, ch.country, false);
+  const categoryId = String(catMeta.id || ch.categoryId || "1");
   const tier = String(ch.tier || "free").toLowerCase() === "pro" ? "pro" : "free";
   return {
     id: ch.id || `ch_${streamId}`,
     streamId,
     slug,
     name: ch.name || `Channel ${streamId}`,
-    category: catName,
+    category: catMeta.name,
+    xtreamGroup: catMeta.xtreamTitle || decorateGroupTitle(catMeta.name).toUpperCase(),
+    categoryIcon: catMeta.icon || "📺",
     categoryId,
     country: ch.country || "PK",
     language: ch.language || "Urdu / English",
     tier,
+    pinned: Boolean(ch.pinned),
     featured: Boolean(ch.featured),
     status: ch.status || "active",
     logo: ch.logo || "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
@@ -255,23 +267,40 @@ export function normalizeChannel(ch, idx = 0) {
 export async function getCategoriesFromChannels(channels) {
   const map = new Map();
   for (const base of CATEGORIES) {
-    map.set(String(base.id), { category_id: String(base.id), category_name: base.name, parent_id: 0 });
+    map.set(String(base.id), {
+      category_id: String(base.id),
+      category_name: base.xtreamTitle || base.name,
+      parent_id: 0,
+      _priority: base.priority
+    });
   }
-  let nextId = 20;
-  for (const ch of channels) {
+
+  let nextCustomId = 20;
+  for (const ch of channels || []) {
     const cid = String(ch.categoryId || "");
-    if (cid && !map.has(cid)) {
-      map.set(cid, { category_id: cid, category_name: ch.category || "Live TV", parent_id: 0 });
-    } else if (!cid && ch.category) {
-      const existing = [...map.values()].find((v) => v.category_name.toLowerCase() === ch.category.toLowerCase());
-      if (!existing) {
-        const idStr = String(nextId++);
-        ch.categoryId = idStr;
-        map.set(idStr, { category_id: idStr, category_name: ch.category, parent_id: 0 });
-      }
+    if (cid && cid !== "99" && map.has(cid)) continue;
+
+    const customTitle = decorateGroupTitle(ch.xtreamGroup || ch.category || "Live TV");
+    const existing = [...map.values()].find(
+      (v) => v.category_name.toLowerCase() === customTitle.toLowerCase()
+    );
+    if (existing) {
+      ch.categoryId = existing.category_id;
+    } else {
+      const idStr = cid && cid !== "99" ? cid : String(nextCustomId++);
+      ch.categoryId = idStr;
+      map.set(idStr, {
+        category_id: idStr,
+        category_name: customTitle,
+        parent_id: 0,
+        _priority: 20 + Number(idStr)
+      });
     }
   }
-  return [...map.values()];
+
+  return [...map.values()]
+    .sort((a, b) => (a._priority ?? 99) - (b._priority ?? 99))
+    .map(({ _priority, ...clean }) => clean);
 }
 
 export async function getXtreamAccount(username) {

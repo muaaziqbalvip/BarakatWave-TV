@@ -9,7 +9,7 @@ import { BRAND } from "../../data/catalog.js";
 
 export function generateChannelM3u8Content(channel, siteUrl) {
   const safeName = String(channel.name || "Channel").replace(/"/g, "'");
-  const safeGroup = String(channel.category || "Live TV").replace(/"/g, "'");
+  const safeGroup = String(channel.xtreamGroup || channel.category || "🇵🇰 ⭐ PAKISTAN TOP CHANNELS").replace(/"/g, "'");
   const safeLogo = String(channel.logo || BRAND.logoPrimary).replace(/"/g, "");
   const tierBadge = channel.tier === "pro" ? "PRO VIP (Unlock: 0306-2015326)" : "FREE HD";
 
@@ -44,7 +44,8 @@ export function buildGitHubFilesMap(channels, folder = "data/streams", siteUrl =
       content: perChannelContent
     });
 
-    const infLine = `#EXTINF:-1 tvg-id="${ch.epgId}" tvg-logo="${ch.logo}" group-title="${ch.category}",${ch.name}`;
+    const grp = (ch.xtreamGroup || ch.category || "🇵🇰 ⭐ PAKISTAN TOP CHANNELS").replace(/"/g, "'");
+    const infLine = `#EXTINF:-1 tvg-id="${ch.epgId}" tvg-logo="${ch.logo}" group-title="${grp}",${ch.name}`;
     const streamLink = `${siteUrl}/ch/${ch.slug}.m3u8`;
     allLines.push(infLine, streamLink);
     if (ch.tier === "free") {

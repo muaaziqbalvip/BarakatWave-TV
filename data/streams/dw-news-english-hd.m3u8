@@ -1,6 +1,6 @@
 #EXTM3U
-#PLAYLIST:DW English News HD — BarakatWave Live TV (FREE HD)
+#PLAYLIST:DW World News HD — BarakatWave Live TV (FREE HD)
 #EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.channel",VALUE="dw-news-english-hd"
 #EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
-#EXTINF:-1 tvg-id="dw.english" tvg-name="DW English News HD" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="World & Regional News",DW English News HD
+#EXTINF:-1 tvg-id="dw.english" tvg-name="DW World News HD" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="📰 🔴 LIVE NEWS NETWORKS",DW World News HD
 https://barakatwave.vercel.app/ch/dw-news-english-hd.m3u8
