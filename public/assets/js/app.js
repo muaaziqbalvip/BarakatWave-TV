@@ -46,8 +46,14 @@ const state = {
   channels: [...DEFAULT_CHANNELS],
   movies: [...DEFAULT_MOVIES],
   series: [...DEFAULT_SERIES],
+  baseCatalogMovies: [...DEFAULT_MOVIES],
+  baseCatalogSeries: [...DEFAULT_SERIES],
+  rtdbMoviesOverride: null,
+  rtdbSeriesOverride: null,
   cinemaType: "all",
   cinemaCategory: "ALL",
+  cinemaYear: "ALL",
+  cinemaLimit: 60,
   cinemaQuery: "",
   settings: { ...DEFAULT_SETTINGS },
   blogs: [...DEFAULT_BLOGS],
@@ -149,28 +155,19 @@ function init() {
   }, null);
 
   dbWatch("movies", (val) => {
-    if (val && typeof val === "object") {
-      const arr = Array.isArray(val)
-        ? val.filter(Boolean)
-        : Object.entries(val).map(([id, m]) => ({ id, ...m }));
-      if (arr.length) {
-        state.movies = arr.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
-      }
-    }
+    state.rtdbMoviesOverride = val && typeof val === "object" ? val : null;
+    recomputeMergedCinemaState();
     renderCinemaHub();
   }, null);
 
   dbWatch("series", (val) => {
-    if (val && typeof val === "object") {
-      const arr = Array.isArray(val)
-        ? val.filter(Boolean)
-        : Object.entries(val).map(([id, s]) => ({ id, ...s }));
-      if (arr.length) {
-        state.series = arr.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
-      }
-    }
+    state.rtdbSeriesOverride = val && typeof val === "object" ? val : null;
+    recomputeMergedCinemaState();
     renderCinemaHub();
   }, null);
+
+  // Hydrate full 1,570+ (2000–2026) IMDb Movies & Series catalog asynchronously (gzipped, non-blocking!)
+  hydrateFullImdbCatalog();
 
   // Initial immediate render using built-in curated data (0ms first meaningful UI)
   renderCategoryChips();
@@ -1379,12 +1376,81 @@ function renderFaqs() {
   ).join("");
 }
 
-/* ==================== IMDb MOVIES & SERIES CINEMA HUB ==================== */
+/* ==================== IMDb MOVIES & SERIES CINEMA HUB (2000–2026) ==================== */
+async function hydrateFullImdbCatalog() {
+  try {
+    const res = await fetch("/api/imdb?action=catalog");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (Array.isArray(data.movies) && data.movies.length) {
+      state.baseCatalogMovies = data.movies;
+    }
+    if (Array.isArray(data.series) && data.series.length) {
+      state.baseCatalogSeries = data.series;
+    }
+    recomputeMergedCinemaState();
+    populateCinemaYearSelect();
+    renderCinemaHub();
+  } catch {
+    // keep built-in seed fallback
+  }
+}
+
+function recomputeMergedCinemaState() {
+  const mergeByImdb = (baseArr, rtdbObj) => {
+    const map = new Map();
+    for (const item of baseArr) {
+      map.set(String(item.imdbId || item.id).toLowerCase(), { ...item });
+    }
+    if (rtdbObj && typeof rtdbObj === "object") {
+      const overrides = Array.isArray(rtdbObj)
+        ? rtdbObj.filter(Boolean)
+        : Object.entries(rtdbObj).map(([id, v]) => ({ id, ...v }));
+      for (const ov of overrides) {
+        const key = String(ov.imdbId || ov.id || "").toLowerCase();
+        if (!key) continue;
+        if (ov._deleted) {
+          map.delete(key);
+        } else if (map.has(key)) {
+          const prev = map.get(key);
+          map.set(key, {
+            ...prev,
+            ...ov,
+            category: ov.customCategory ? ov.category : prev.category,
+            categoryId: ov.customCategory ? ov.categoryId : prev.categoryId
+          });
+        } else {
+          map.set(key, { ...ov, _adminCustom: true });
+        }
+      }
+    }
+    return [...map.values()];
+  };
+
+  state.movies = mergeByImdb(state.baseCatalogMovies, state.rtdbMoviesOverride);
+  state.series = mergeByImdb(state.baseCatalogSeries, state.rtdbSeriesOverride);
+}
+
+function populateCinemaYearSelect() {
+  const sel = document.getElementById("cinemaYearFilter");
+  if (!sel) return;
+  const current = state.cinemaYear || "ALL";
+  const opts = ['<option value="ALL">📅 All Years (2000–2026)</option>'];
+  for (let yr = 2026; yr >= 2000; yr--) {
+    opts.push(`<option value="${yr}">${yr} Releases</option>`);
+  }
+  sel.innerHTML = opts.join("");
+  sel.value = current;
+}
+
 function bindCinemaHub() {
+  populateCinemaYearSelect();
+
   document.querySelectorAll("#cinemaTypeTabs [data-cin-type]").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.cinemaType = btn.dataset.cinType || "all";
       state.cinemaCategory = "ALL";
+      state.cinemaLimit = 60;
       document.querySelectorAll("#cinemaTypeTabs [data-cin-type]").forEach((b) => {
         b.className = b === btn ? "btn btn-sm btn-primary" : "btn btn-sm btn-outline";
       });
@@ -1392,9 +1458,22 @@ function bindCinemaHub() {
     });
   });
 
+  const yearSel = document.getElementById("cinemaYearFilter");
+  yearSel?.addEventListener("change", () => {
+    state.cinemaYear = yearSel.value || "ALL";
+    state.cinemaLimit = 60;
+    renderCinemaHub();
+  });
+
   const searchInp = document.getElementById("cinemaSearchInput");
   searchInp?.addEventListener("input", () => {
     state.cinemaQuery = searchInp.value.trim();
+    state.cinemaLimit = 60;
+    renderCinemaHub();
+  });
+
+  document.getElementById("cinemaLoadMoreBtn")?.addEventListener("click", () => {
+    state.cinemaLimit += 60;
     renderCinemaHub();
   });
 
@@ -1439,12 +1518,17 @@ function getCombinedCinemaItems() {
     list = list.filter((x) => x.category === state.cinemaCategory);
   }
 
+  if (state.cinemaYear && state.cinemaYear !== "ALL") {
+    list = list.filter((x) => String(x.year || "").startsWith(state.cinemaYear));
+  }
+
   if (state.cinemaQuery) {
     const q = state.cinemaQuery.toLowerCase();
     list = list.filter(
       (x) =>
         String(x.title || "").toLowerCase().includes(q) ||
         String(x.imdbId || "").toLowerCase().includes(q) ||
+        String(x.year || "").toLowerCase().includes(q) ||
         String(x.cast || "").toLowerCase().includes(q) ||
         String(x.director || "").toLowerCase().includes(q) ||
         String((x.genres || []).join(" ")).toLowerCase().includes(q)
@@ -1456,6 +1540,8 @@ function getCombinedCinemaItems() {
 function renderCinemaHub() {
   const chipsEl = document.getElementById("cinemaCategoryChips");
   const gridEl = document.getElementById("cinemaCardsGrid");
+  const moreWrap = document.getElementById("cinemaLoadMoreWrap");
+  const moreBtn = document.getElementById("cinemaLoadMoreBtn");
   if (!gridEl) return;
 
   const baseCategories =
@@ -1476,6 +1562,7 @@ function renderCinemaHub() {
     chipsEl.querySelectorAll("[data-cin-cat]").forEach((btn) => {
       btn.addEventListener("click", () => {
         state.cinemaCategory = btn.dataset.cinCat || "ALL";
+        state.cinemaLimit = 60;
         renderCinemaHub();
       });
     });
@@ -1483,11 +1570,22 @@ function renderCinemaHub() {
 
   const items = getCombinedCinemaItems();
   if (!items.length) {
+    if (moreWrap) moreWrap.hidden = true;
     gridEl.innerHTML = `<div class="glass-card" style="grid-column:1/-1;padding:28px;text-align:center;">No Movies or Series match your filter. Try pasting any <code>tt...</code> IMDb ID above!</div>`;
     return;
   }
 
-  gridEl.innerHTML = items
+  const visibleItems = items.slice(0, state.cinemaLimit || 60);
+  if (moreWrap && moreBtn) {
+    if (items.length > visibleItems.length) {
+      moreWrap.hidden = false;
+      moreBtn.textContent = `⬇ Load More IMDb Titles (${visibleItems.length} of ${items.length} shown)`;
+    } else {
+      moreWrap.hidden = true;
+    }
+  }
+
+  gridEl.innerHTML = visibleItems
     .map((item) => {
       const isSeries = item._mediaType === "series" || item.type === "series";
       const rating = Number(item.imdbRating || 8.0).toFixed(1);
@@ -1525,7 +1623,7 @@ function renderCinemaHub() {
   gridEl.querySelectorAll("[data-open-cin]").forEach((card) => {
     card.addEventListener("click", () => {
       const key = card.dataset.openCin;
-      const found = items.find((x) => (x.id || x.imdbId) === key);
+      const found = visibleItems.find((x) => (x.id || x.imdbId) === key);
       if (found) openCinemaDetailModal(found);
     });
   });

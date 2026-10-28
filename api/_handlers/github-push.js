@@ -4,6 +4,7 @@ import {
   parseBody,
   sendJson
 } from "../_lib/origin.js";
+import { checkRateLimit } from "../_lib/security.js";
 import { getChannels, normalizeChannel } from "../_lib/rtdb.js";
 import { BRAND } from "../../data/catalog.js";
 
@@ -68,14 +69,25 @@ export function buildGitHubFilesMap(channels, folder = "data/streams", siteUrl =
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
   if (req.method !== "POST") {
-    return sendJson(res, 405, { ok: false, error: "Method not allowed" });
+    return sendJson(res, 405, { ok: false, error: "Method not allowed" }, "no-store", req);
+  }
+
+  const rl = checkRateLimit(req, "github_push", 15, 60_000);
+  if (!rl.allowed) {
+    res.setHeader("Retry-After", String(rl.retryAfterSec));
+    return sendJson(res, 429, { ok: false, error: "Too many GitHub push requests. Please wait a minute." }, "no-store", req);
   }
 
   const body = await parseBody(req);
   const token = String(body.githubToken || process.env.GITHUB_TOKEN || "").trim();
   const repo = String(body.repo || process.env.GITHUB_REPO || "muaaziqbalvip/BarakatWave-TV").trim();
   const branch = String(body.branch || process.env.GITHUB_BRANCH || "main").trim();
-  const folder = String(body.folder || "data/streams").trim();
+  const rawFolder = String(body.folder || "data/streams")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/\.\.+/g, "")
+    .replace(/^\/+|\/+$/g, "");
+  const folder = !rawFolder || rawFolder.startsWith(".") ? "data/streams" : rawFolder;
   const siteUrl = getCanonicalBaseUrl();
 
   const channels =

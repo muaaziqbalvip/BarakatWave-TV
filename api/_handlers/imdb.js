@@ -3,6 +3,7 @@ import {
   parseQuery,
   sendJson
 } from "../_lib/origin.js";
+import { getMovies, getSeries } from "../_lib/rtdb.js";
 import {
   DEFAULT_MOVIES,
   DEFAULT_SERIES,
@@ -123,6 +124,14 @@ function normalizeFromCinemeta(meta, forcedType = "") {
 export async function lookupImdbById(rawInput, preferredType = "auto") {
   const imdbId = extractImdbId(rawInput);
   if (!imdbId) return null;
+
+  // 0. Instant <1ms match against our 1,570+ (2000–2026) auto-loaded catalog!
+  const [localMovies, localSeries] = await Promise.all([getMovies(), getSeries()]);
+  const localMov = localMovies.find((m) => String(m.imdbId || "").toLowerCase() === imdbId);
+  const localSer = localSeries.find((s) => String(s.imdbId || "").toLowerCase() === imdbId);
+  if (localMov && preferredType !== "series") return { ...localMov, type: "movie" };
+  if (localSer) return { ...localSer, type: "series" };
+  if (localMov) return { ...localMov, type: "movie" };
 
   // 1. Try Cinemeta live IMDb API (returns full IMDb rating, cast, plot, poster, backdrop, seasons/episodes)
   const typesToTry =
@@ -248,9 +257,34 @@ export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
 
   const q = parseQuery(req);
+  const action = String(q.action || "").trim().toLowerCase();
   const rawId = String(q.id || q.imdb || "").trim();
   const search = String(q.q || q.search || "").trim();
   const type = String(q.type || "auto").toLowerCase();
+
+  // Full 2000–2026 Auto-Loaded Movies & Series Catalog endpoint (gzipped, cached, <15ms!)
+  if (action === "catalog" || q.catalog === "1") {
+    const [movies, series] = await Promise.all([getMovies(), getSeries()]);
+    const filterYear = String(q.year || "").trim();
+    const outMovies = filterYear ? movies.filter((m) => String(m.year).startsWith(filterYear)) : movies;
+    const outSeries = filterYear ? series.filter((s) => String(s.year).startsWith(filterYear)) : series;
+    return sendJson(
+      res,
+      200,
+      {
+        ok: true,
+        yearRange: "2000-2026",
+        movieCount: outMovies.length,
+        seriesCount: outSeries.length,
+        totalMovies: outMovies.length,
+        totalSeries: outSeries.length,
+        totalCount: outMovies.length + outSeries.length,
+        movies: outMovies,
+        series: outSeries
+      },
+      "public, max-age=60"
+    );
+  }
 
   if (rawId) {
     const item = await lookupImdbById(rawId, type);

@@ -19,6 +19,7 @@ import {
   metahubPoster,
   metahubBackdrop
 } from "../../data/imdb-seed.js";
+import { getAutoHarvestedImdb } from "./cinemeta-auto.js";
 
 const DEFAULT_RTDB_URL = (
   process.env.FIREBASE_DATABASE_URL ||
@@ -31,6 +32,7 @@ const FIREBASE_WEB_API_KEY =
 const LOCAL_MIRROR_FILE = "/tmp/barakatwave-rtdb-mirror.json";
 const memCache = new Map();
 let cachedAnonToken = { token: "", expiresAt: 0, failedAt: 0 };
+let mergedCatalogCache = { movies: null, moviesAt: 0, series: null, seriesAt: 0 };
 
 function readLocalMirror() {
   try {
@@ -49,6 +51,7 @@ function writeLocalMirror(mutator) {
     const updated = mutator(current) || current;
     fs.writeFileSync(LOCAL_MIRROR_FILE, JSON.stringify(updated, null, 2), "utf8");
     memCache.clear();
+    mergedCatalogCache = { movies: null, moviesAt: 0, series: null, seriesAt: 0 };
     return updated;
   } catch {
     return {};
@@ -397,63 +400,161 @@ export async function getReviews() {
 }
 
 export async function getMovies() {
-  const remote = await rtdbGet("movies", { ttlMs: 5000 });
-  let list = [];
+  const now = Date.now();
+  if (mergedCatalogCache.movies && now - mergedCatalogCache.moviesAt < 15_000) {
+    return mergedCatalogCache.movies;
+  }
+
+  const remote = await rtdbGet("movies", { ttlMs: 12_000 });
+  const harvested = getAutoHarvestedImdb().movies || [];
+
+  // Merge order: Admin Custom RTDB Titles (top) + Built-in 2000–2026 IMDb Catalog (1,134+) + Live Cinemeta 2000–2026 Auto-Harvest
+  const byImdb = new Map();
+  for (const m of DEFAULT_MOVIES) {
+    byImdb.set(m.imdbId.toLowerCase(), { ...m });
+  }
+  for (const hm of harvested) {
+    const k = String(hm.imdbId || "").toLowerCase();
+    if (k && !byImdb.has(k)) byImdb.set(k, { ...hm });
+  }
+
   if (remote && typeof remote === "object") {
-    list = Array.isArray(remote)
+    const remList = Array.isArray(remote)
       ? remote.filter(Boolean)
       : Object.entries(remote).map(([id, m]) => ({ id, ...m }));
+    for (const rm of remList) {
+      const k = String(rm.imdbId || rm.id || "").toLowerCase();
+      if (!k) continue;
+      if (rm._deleted) {
+        byImdb.delete(k);
+        continue;
+      }
+      const prev = byImdb.get(k);
+      if (prev) {
+        // Preserve freshly updated 2000–2026 category metadata while applying Admin streamUrl/tier/title overrides
+        byImdb.set(k, {
+          ...prev,
+          ...rm,
+          category: rm.customCategory ? rm.category : prev.category,
+          categoryId: rm.customCategory ? rm.categoryId : prev.categoryId,
+          streamUrl: String(rm.streamUrl ?? prev.streamUrl ?? "").trim(),
+          tier: rm.tier || prev.tier || "free"
+        });
+      } else {
+        byImdb.set(k, { ...rm, _adminCustom: true });
+      }
+    }
   }
-  if (!list.length) {
-    list = DEFAULT_MOVIES.map((m) => ({ ...m }));
+
+  let nextAutoStreamId = 6500;
+  const usedStreamIds = new Set();
+  const normalized = [];
+  let idx = 0;
+
+  for (const m of byImdb.values()) {
+    const imdbId = String(m.imdbId || `tt000${5001 + idx}`).trim().toLowerCase();
+    let sid = Number(m.streamId) || 5001 + idx;
+    while (usedStreamIds.has(sid)) sid = nextAutoStreamId++;
+    usedStreamIds.add(sid);
+
+    const cat =
+      VOD_CATEGORIES.find((c) => c.id === String(m.categoryId) || c.name === m.category) ||
+      inferVodCategory(m);
+
+    normalized.push({
+      ...m,
+      id: m.id || `mov_${imdbId}`,
+      streamId: sid,
+      imdbId,
+      title: m.title || `IMDb Movie (${imdbId})`,
+      year: String(m.year || "2024"),
+      imdbRating: String(m.imdbRating || "7.8"),
+      runtime: String(m.runtime || "125 min"),
+      genres: Array.isArray(m.genres)
+        ? m.genres
+        : String(m.genres || "Drama")
+            .split(",")
+            .map((s) => s.trim()),
+      category: cat.name,
+      categoryId: String(cat.id),
+      poster: m.poster || metahubPoster(imdbId),
+      backdrop: m.backdrop || metahubBackdrop(imdbId),
+      tier: String(m.tier || "free").toLowerCase() === "pro" ? "pro" : "free",
+      streamUrl: String(m.streamUrl || "").trim(),
+      order: m._adminCustom ? -1000 + idx : idx + 1
+    });
+    idx++;
   }
-  return list
-    .map((m, idx) => {
-      const imdbId = String(m.imdbId || `tt000${5001 + idx}`).trim();
-      const cat = VOD_CATEGORIES.find(
-        (c) => c.id === String(m.categoryId) || c.name === m.category
-      ) || inferVodCategory(m);
-      return {
-        ...m,
-        id: m.id || `mov_${imdbId}`,
-        streamId: Number(m.streamId) || 5001 + idx,
-        imdbId,
-        title: m.title || `IMDb Movie (${imdbId})`,
-        year: String(m.year || "2024"),
-        imdbRating: String(m.imdbRating || "8.0"),
-        runtime: String(m.runtime || "135 min"),
-        genres: Array.isArray(m.genres) ? m.genres : String(m.genres || "Drama").split(",").map((s) => s.trim()),
-        category: m.category || cat.name,
-        categoryId: String(m.categoryId || cat.id),
-        poster: m.poster || metahubPoster(imdbId),
-        backdrop: m.backdrop || metahubBackdrop(imdbId),
-        tier: String(m.tier || "free").toLowerCase() === "pro" ? "pro" : "free",
-        streamUrl: String(m.streamUrl || "").trim(),
-        order: typeof m.order === "number" ? m.order : idx + 1
-      };
-    })
-    .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+
+  normalized.sort((a, b) => (a.order ?? 99999) - (b.order ?? 99999));
+  mergedCatalogCache.movies = normalized;
+  mergedCatalogCache.moviesAt = now;
+  return normalized;
 }
 
 export async function getSeries() {
-  const remote = await rtdbGet("series", { ttlMs: 5000 });
-  let list = [];
+  const now = Date.now();
+  if (mergedCatalogCache.series && now - mergedCatalogCache.seriesAt < 15_000) {
+    return mergedCatalogCache.series;
+  }
+
+  const remote = await rtdbGet("series", { ttlMs: 12_000 });
+  const harvested = getAutoHarvestedImdb().series || [];
+
+  const byImdb = new Map();
+  for (const s of DEFAULT_SERIES) {
+    byImdb.set(s.imdbId.toLowerCase(), { ...s });
+  }
+  for (const hs of harvested) {
+    const k = String(hs.imdbId || "").toLowerCase();
+    if (k && !byImdb.has(k)) byImdb.set(k, { ...hs });
+  }
+
   if (remote && typeof remote === "object") {
-    list = Array.isArray(remote)
+    const remList = Array.isArray(remote)
       ? remote.filter(Boolean)
       : Object.entries(remote).map(([id, s]) => ({ id, ...s }));
+    for (const rs of remList) {
+      const k = String(rs.imdbId || rs.id || "").toLowerCase();
+      if (!k) continue;
+      if (rs._deleted) {
+        byImdb.delete(k);
+        continue;
+      }
+      const prev = byImdb.get(k);
+      if (prev) {
+        byImdb.set(k, {
+          ...prev,
+          ...rs,
+          category: rs.customCategory ? rs.category : prev.category,
+          categoryId: rs.customCategory ? rs.categoryId : prev.categoryId,
+          streamUrl: String(rs.streamUrl ?? prev.streamUrl ?? "").trim(),
+          episodes: Array.isArray(rs.episodes) && rs.episodes.length ? rs.episodes : prev.episodes,
+          tier: rs.tier || prev.tier || "free"
+        });
+      } else {
+        byImdb.set(k, { ...rs, _adminCustom: true });
+      }
+    }
   }
-  if (!list.length) {
-    list = DEFAULT_SERIES.map((s) => ({ ...s }));
-  }
-  return list
-    .map((s, idx) => {
-      const imdbId = String(s.imdbId || `tt000${7001 + idx}`).trim();
-      const seriesId = Number(s.seriesId) || 7001 + idx;
-      const cat = SERIES_CATEGORIES.find(
-        (c) => c.id === String(s.categoryId) || c.name === s.category
-      ) || inferSeriesCategory(s);
-      const episodes = Array.isArray(s.episodes) && s.episodes.length
+
+  let nextAutoSeriesId = 15000;
+  const usedSeriesIds = new Set();
+  const normalized = [];
+  let idx = 0;
+
+  for (const s of byImdb.values()) {
+    const imdbId = String(s.imdbId || `tt000${10001 + idx}`).trim().toLowerCase();
+    let seriesId = Number(s.seriesId) || 10001 + idx;
+    while (usedSeriesIds.has(seriesId)) seriesId = nextAutoSeriesId++;
+    usedSeriesIds.add(seriesId);
+
+    const cat =
+      SERIES_CATEGORIES.find((c) => c.id === String(s.categoryId) || c.name === s.category) ||
+      inferSeriesCategory(s);
+
+    const episodes =
+      Array.isArray(s.episodes) && s.episodes.length
         ? s.episodes
         : [
             {
@@ -466,28 +567,39 @@ export async function getSeries() {
               streamUrl: ""
             }
           ];
-      return {
-        ...s,
-        id: s.id || `ser_${imdbId}`,
-        seriesId,
-        imdbId,
-        title: s.title || `IMDb Series (${imdbId})`,
-        year: String(s.year || "2024"),
-        imdbRating: String(s.imdbRating || "8.5"),
-        runtime: String(s.runtime || "45 min"),
-        genres: Array.isArray(s.genres) ? s.genres : String(s.genres || "Drama").split(",").map((g) => g.trim()),
-        category: s.category || cat.name,
-        categoryId: String(s.categoryId || cat.id),
-        poster: s.poster || metahubPoster(imdbId),
-        backdrop: s.backdrop || metahubBackdrop(imdbId),
-        tier: String(s.tier || "free").toLowerCase() === "pro" ? "pro" : "free",
-        streamUrl: String(s.streamUrl || "").trim(),
-        episodes,
-        seasonsCount: Number(s.seasonsCount) || new Set(episodes.map((e) => Number(e.season) || 1)).size || 1,
-        order: typeof s.order === "number" ? s.order : idx + 1
-      };
-    })
-    .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+
+    normalized.push({
+      ...s,
+      id: s.id || `ser_${imdbId}`,
+      seriesId,
+      imdbId,
+      title: s.title || `IMDb Series (${imdbId})`,
+      year: String(s.year || "2024"),
+      imdbRating: String(s.imdbRating || "8.2"),
+      runtime: String(s.runtime || "45 min"),
+      genres: Array.isArray(s.genres)
+        ? s.genres
+        : String(s.genres || "Drama")
+            .split(",")
+            .map((g) => g.trim()),
+      category: cat.name,
+      categoryId: String(cat.id),
+      poster: s.poster || metahubPoster(imdbId),
+      backdrop: s.backdrop || metahubBackdrop(imdbId),
+      tier: String(s.tier || "free").toLowerCase() === "pro" ? "pro" : "free",
+      streamUrl: String(s.streamUrl || "").trim(),
+      episodes,
+      seasonsCount:
+        Number(s.seasonsCount) || new Set(episodes.map((e) => Number(e.season) || 1)).size || 1,
+      order: s._adminCustom ? -1000 + idx : idx + 1
+    });
+    idx++;
+  }
+
+  normalized.sort((a, b) => (a.order ?? 99999) - (b.order ?? 99999));
+  mergedCatalogCache.series = normalized;
+  mergedCatalogCache.seriesAt = now;
+  return normalized;
 }
 
 export function getVodCategoriesList(movies = []) {

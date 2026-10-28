@@ -1,14 +1,22 @@
 /**
- * BarakatWave Live TV — Universal RFC 8216 HLS Manifest Parser, Rewriter & Pre-Roll Stitcher
+ * BarakatWave Live TV — Universal RFC 8216 HLS Manifest Parser, Classifier & Pre-Roll Stitcher v2.3
  * Engineered under Mizanora Projects by Muaaz Iqbal
  *
  * Guarantees across Televizo, IPTV Smarters Pro, TiviMate, XCIPTV, OTT Navigator, VLC & Web:
- *  1) Pure-Intro Phase 1 -> Bridge Phase 2 -> Live Phase 3 so Live-Edge players (like Televizo /
- *     ExoPlayer) ALWAYS play the Intro Video from 0.0s first and transition seamlessly to Live TV!
- *  2) Automatic Channel Offline Broadcast Video whenever an upstream live channel fails or is down!
- *  3) Continuous PRO VIP Unlock Broadcast (0306-2015326) & Coming Soon VOD Broadcast!
- *  4) Uses .ts URLs inside manifests (mapped to .m2ts on disk) for 100% ExoPlayer TS compatibility!
+ *  1) Smart IPTV Panel & Custom-Port (:5789, :8080, :25461, /live/auto/, IP-token) Detection:
+ *     Hands IP-bound / custom-port streams (like https://live.nowiretv.com:5789/live/auto/3383.m3u8)
+ *     directly to Televizo/ExoPlayer via 302 so tokens match the viewer's own IP 100%!
+ *  2) RFC 8216 Invariant `seq = K + (U - U0)` 3-Phase Intro -> Live Stitcher for public CDN &
+ *     studio streams — zero MEDIA-SEQUENCE scrambling across playlist reloads!
+ *  3) Full 301/302 Redirect `finalUrl` tracking + custom-port TLS support via `upstream.js`!
+ *  4) Automatic Channel Offline Standby Video whenever a channel is genuinely 404 / 5xx / dead!
  */
+
+import {
+  hasIpBoundTokensInManifest,
+  isClientDirectIptvUrl,
+  upstreamFetch
+} from "./upstream.js";
 
 const BUILTIN_LOCAL_CLIPS = {
   "/media/welcome/index.m3u8": [
@@ -43,13 +51,20 @@ const BUILTIN_LOCAL_CLIPS = {
   ]
 };
 
-// Map local .mp4 aliases (e.g. /media/welcome/video.mp4) to their corresponding HLS .ts segments for HLS stitcher!
 const LOCAL_MP4_TO_HLS = {
   "/media/welcome/video.mp4": "/media/welcome/index.m3u8",
   "/media/channel-offline/video.mp4": "/media/channel-offline/index.m3u8",
   "/media/coming-soon/video.mp4": "/media/coming-soon/index.m3u8",
   "/media/pro-unlock/video.mp4": "/media/pro-unlock/index.m3u8"
 };
+
+// Warm caches for blazing-fast (< 2ms) repeated tunes and RFC 8216 sequence stability
+const deliveryModeCache = new Map();
+const sessionSeqAnchors = new Map();
+
+export function clearDeliveryCache() {
+  deliveryModeCache.clear();
+}
 
 function getBuiltinClipSegments(cleanPath, baseUrl) {
   const mappedPath = LOCAL_MP4_TO_HLS[cleanPath] || cleanPath;
@@ -63,7 +78,121 @@ function getBuiltinClipSegments(cleanPath, baseUrl) {
 }
 
 /**
+ * Classify how `live.js` should deliver a channel to Televizo / IPTV Smarters / TiviMate / VLC:
+ *  - "direct": 302-redirect player straight to `url` (for :5789, :8080, /live/auto/, IP-token, or geo-restricted streams)
+ *  - "stitch": 3-Phase Televizo Intro -> Live Channel HLS stitcher
+ *  - "offline": Continuous Channel Offline Standby Video
+ */
+export async function classifyChannelDelivery(channel, settings = {}, { skipIntro = false } = {}) {
+  if (!channel || channel.status === "offline") {
+    return { mode: "offline", url: "" };
+  }
+
+  const candidates = [channel.url, ...(channel.backupUrls || [])].map((u) => String(u || "").trim()).filter(Boolean);
+  if (!candidates.length) {
+    return { mode: "offline", url: "" };
+  }
+
+  const introEnabled = !skipIntro && settings.welcomeVideoEnabled !== false;
+
+  for (const src of candidates) {
+    // 1. Local built-in broadcast stream -> instant 0ms stitch (or direct local media)
+    if (src.startsWith("/")) {
+      return { mode: "stitch", url: src };
+    }
+
+    if (!/^https?:\/\//i.test(src)) continue;
+
+    // Explicit Admin directPlay flag
+    if (channel.directPlay === true) {
+      return { mode: "direct", url: src };
+    }
+
+    const cacheKey = `${src}|${introEnabled ? "1" : "0"}`;
+    const now = Date.now();
+    const cached = deliveryModeCache.get(cacheKey);
+    if (cached && now - cached.ts < 45_000) {
+      return cached.val;
+    }
+
+    // 2. Fast-path for custom IPTV panel ports (:5789, :8080, :25461, :8880, :8443), /live/auto/, or IP-token URLs:
+    //    Verify quickly (1.5s cap) that it's not an explicit 404/dead domain; otherwise hand directly to Televizo
+    //    so client IP tokens, multi-bitrate auto variants, and port :5789 TLS work natively on the viewer's device!
+    if (isClientDirectIptvUrl(src)) {
+      const quick = await upstreamFetch(src, {
+        timeoutMs: 1500,
+        maxBytes: 16_384,
+        headers: channel.headers || {}
+      });
+
+      if (quick.blocked || !quick.dnsAlive || quick.status === 404 || quick.status === 410 || quick.status >= 500) {
+        continue; // Genuinely dead -> try backupUrl or fall through to offline
+      }
+
+      const decision = { mode: "direct", url: src };
+      deliveryModeCache.set(cacheKey, { ts: now, val: decision });
+      return decision;
+    }
+
+    // 3. Standard HTTP/HTTPS (:80 / :443) stream inspection
+    const res = await upstreamFetch(src, {
+      timeoutMs: 2800,
+      maxBytes: 131_072,
+      headers: channel.headers || {}
+    });
+
+    // Blocked private IP, nonexistent domain, explicit 404/410/5xx, or local refused port -> dead candidate
+    if (
+      res.blocked ||
+      !res.dnsAlive ||
+      res.status === 404 ||
+      res.status === 410 ||
+      res.status >= 500
+    ) {
+      continue;
+    }
+
+    // Datacenter/AWS IP blocked (401/403/451) or raw MPEG-TS stream on a live domain -> let viewer's residential IP play directly!
+    if (res.isBinaryTs || res.status === 401 || res.status === 403 || res.status === 451) {
+      const decision = { mode: "direct", url: src };
+      deliveryModeCache.set(cacheKey, { ts: now, val: decision });
+      return decision;
+    }
+
+    // Valid #EXTM3U response
+    if (res.ok && res.text && res.text.includes("#EXTM3U")) {
+      // If redirected to an IP-tokenized edge URL or segments carry per-IP tokens -> direct 302 handoff!
+      if (!introEnabled || hasIpBoundTokensInManifest(res.text, res.finalUrl)) {
+        const decision = { mode: "direct", url: src };
+        deliveryModeCache.set(cacheKey, { ts: now, val: decision });
+        return decision;
+      }
+
+      const decision = { mode: "stitch", url: src };
+      deliveryModeCache.set(cacheKey, { ts: now, val: decision });
+      return decision;
+    }
+
+    // If connection timed out or TLS handshake was reset by an ASN/WAF firewall on an external domain whose DNS is alive,
+    // try backup first; if it's the last candidate, allow direct client playback from the viewer's residential IP!
+    if (
+      res.status === 0 &&
+      res.dnsAlive &&
+      (res.errorCode === "ETIMEDOUT" || res.errorCode === "ECONNRESET") &&
+      src === candidates[candidates.length - 1]
+    ) {
+      const decision = { mode: "direct", url: src };
+      deliveryModeCache.set(cacheKey, { ts: now, val: decision });
+      return decision;
+    }
+  }
+
+  return { mode: "offline", url: "" };
+}
+
+/**
  * Parse an HLS media or master playlist text into structured segments + metadata.
+ * Resolves all relative URLs against `sourcePlaylistUrl` (the post-redirect `finalUrl`!).
  */
 export function parseMediaPlaylist(m3uText, sourcePlaylistUrl, baseUrl, useProxy = false) {
   const lines = String(m3uText || "")
@@ -87,13 +216,19 @@ export function parseMediaPlaylist(m3uText, sourcePlaylistUrl, baseUrl, useProxy
     const line = lines[i];
     if (line.startsWith("#EXT-X-STREAM-INF:")) {
       isMaster = true;
-      const next = lines[i + 1];
-      if (next && !next.startsWith("#")) {
+      const bwMatch = line.match(/BANDWIDTH=(\d+)/i);
+      const bandwidth = bwMatch ? parseInt(bwMatch[1], 10) : 1_500_000;
+      const isAudioOnly = /CODECS="[^"]*"/i.test(line) && !/avc1|hev1|hvc1|vp09|av01/i.test(line);
+      let j = i + 1;
+      while (j < lines.length && lines[j].startsWith("#")) j++;
+      if (j < lines.length) {
         variants.push({
           inf: line,
-          url: resolveUrl(next, sourcePlaylistUrl)
+          bandwidth,
+          isAudioOnly,
+          url: resolveUrl(lines[j], sourcePlaylistUrl)
         });
-        i++;
+        i = j;
       }
       continue;
     }
@@ -119,7 +254,9 @@ export function parseMediaPlaylist(m3uText, sourcePlaylistUrl, baseUrl, useProxy
     } else if (!line.startsWith("#")) {
       const abs = resolveUrl(line, sourcePlaylistUrl);
       const finalUrl = useProxy ? `${baseUrl}/api/proxy?u=${encodeURIComponent(abs)}` : abs;
+      const upstreamSeq = mediaSequence + segments.length;
       segments.push({
+        upstreamSeq,
         duration: pendingInf ? pendingInf.duration : 2.0,
         infLine: pendingInf ? pendingInf.raw : "#EXTINF:2.000,",
         url: finalUrl,
@@ -159,9 +296,18 @@ function rewriteAttributeUri(line, sourcePlaylistUrl, baseUrl, useProxy) {
   });
 }
 
+function selectBestVariant(variants) {
+  if (!variants || !variants.length) return null;
+  const videoVariants = variants.filter((v) => !v.isAudioOnly);
+  const pool = videoVariants.length ? videoVariants : variants;
+  // Prefer crisp 720p/1080p stream up to 4.5 Mbps for fast mobile + TV startup, or highest below cap
+  const sorted = [...pool].sort((a, b) => a.bandwidth - b.bandwidth);
+  const underCap = sorted.filter((v) => v.bandwidth <= 4_500_000);
+  return underCap.length ? underCap[underCap.length - 1] : sorted[0];
+}
+
 /**
- * Load a built-in /media/*.m3u8 OR Admin-configured remote .m3u8 / .ts clip
- * into HLS segment descriptors so Admin custom videos work everywhere!
+ * Load a built-in /media/*.m3u8 OR Admin-configured remote .m3u8 / .ts clip into HLS segments.
  */
 export async function loadClipSegments(
   videoUrl,
@@ -172,7 +318,6 @@ export async function loadClipSegments(
   const target = String(videoUrl || fallbackLocalPath).trim() || fallbackLocalPath;
   const clipDur = Math.max(2, Math.min(45, Number(defaultClipDurationSec) || 8));
 
-  // Case 1: Local path on BarakatWave origin
   if (target.startsWith("/")) {
     const cleanRelPath = "/" + target.split("?")[0].replace(/^\/+/, "");
     const builtin = getBuiltinClipSegments(cleanRelPath, baseUrl);
@@ -189,19 +334,17 @@ export async function loadClipSegments(
     }
     if (cleanRelPath.endsWith(".m3u8")) {
       const fullLocalUrl = `${baseUrl}${cleanRelPath}`;
-      const txt = await fetchTextWithTimeout(fullLocalUrl, 2500);
-      if (txt) {
-        const parsed = parseMediaPlaylist(txt, fullLocalUrl, baseUrl, false);
+      const res = await upstreamFetch(fullLocalUrl, { timeoutMs: 2500, allowLocalOrigin: true });
+      if (res.ok && res.text) {
+        const parsed = parseMediaPlaylist(res.text, res.finalUrl || fullLocalUrl, baseUrl, false);
         if (parsed.segments.length) return parsed.segments;
       }
     }
   }
 
-  // Case 2: Remote Admin Video URL (.m3u8, .ts/.m2ts, or custom URL)
   if (/^https?:\/\//i.test(target)) {
     const cleanPath = target.split("?")[0].toLowerCase();
-
-    if (/\.(ts|mts|m2ts)$/.test(cleanPath)) {
+    if (/\.(ts|mts|m2ts|mp4|m4v|webm|mov)$/.test(cleanPath)) {
       return [
         {
           duration: clipDur,
@@ -211,38 +354,25 @@ export async function loadClipSegments(
       ];
     }
 
-    if (/\.(mp4|m4v|webm|mov)$/.test(cleanPath)) {
-      return [
-        {
-          duration: clipDur,
-          infLine: `#EXTINF:${clipDur.toFixed(3)},`,
-          url: target
+    const res = await upstreamFetch(target, { timeoutMs: 3500 });
+    if (res.ok && res.text && res.text.includes("#EXTM3U")) {
+      let parsed = parseMediaPlaylist(res.text, res.finalUrl || target, baseUrl, false);
+      if (parsed.isMaster && parsed.variants.length) {
+        const best = selectBestVariant(parsed.variants);
+        const sub = await upstreamFetch(best.url, { timeoutMs: 3500 });
+        if (sub.ok && sub.text && sub.text.includes("#EXTM3U")) {
+          parsed = parseMediaPlaylist(sub.text, sub.finalUrl || best.url, baseUrl, false);
         }
-      ];
-    }
-
-    try {
-      const fetched = await fetchTextWithTimeout(target, 3500);
-      if (fetched && fetched.includes("#EXTM3U")) {
-        let parsed = parseMediaPlaylist(fetched, target, baseUrl, false);
-        if (parsed.isMaster && parsed.variants.length) {
-          const subTxt = await fetchTextWithTimeout(parsed.variants[0].url, 3500);
-          if (subTxt && subTxt.includes("#EXTM3U")) {
-            parsed = parseMediaPlaylist(subTxt, parsed.variants[0].url, baseUrl, false);
-          }
-        }
-        if (parsed.segments.length) return parsed.segments;
-      } else if (fetched !== null) {
-        return [
-          {
-            duration: clipDur,
-            infLine: `#EXTINF:${clipDur.toFixed(3)},`,
-            url: target
-          }
-        ];
       }
-    } catch {
-      // fall back to built-in HD bumper below
+      if (parsed.segments.length) return parsed.segments;
+    } else if (res.ok) {
+      return [
+        {
+          duration: clipDur,
+          infLine: `#EXTINF:${clipDur.toFixed(3)},`,
+          url: target
+        }
+      ];
     }
   }
 
@@ -318,21 +448,8 @@ export function buildFiniteVodM3u8(segments) {
 }
 
 /**
- * Televizo-Verified 3-Phase RFC 8216 Live HLS Pre-Roll + Channel Offline Failover Stitcher:
- *
- *  - Phase 1 (Pure Intro: elapsed < introHoldSec, e.g. 0..5.5s):
- *      Emits ONLY Intro segments (no live segments at the bottom yet!) so Live-Edge IPTV apps
- *      like Televizo, TiviMate, IPTV Smarters & VLC CANNOT skip past the Intro to the live edge!
- *      Because there is NO #EXT-X-ENDLIST and TARGETDURATION=2, Televizo polls again in ~2s!
- *
- *  - Phase 2 (Seamless Bridge: introHoldSec <= elapsed < introTotalSec + 7.5s):
- *      Keeps Intro segments at MEDIA-SEQUENCE:0 + appends #EXT-X-DISCONTINUITY + Live Channel
- *      segments (or Channel Offline Fallback segments if the channel stream is down!).
- *      Televizo finishes the final Intro segment and crosses #EXT-X-DISCONTINUITY straight into Live TV!
- *
- *  - Phase 3 (Steady Live Broadcast: elapsed >= introTotalSec + 7.5s):
- *      Slides Intro off (#EXT-X-DISCONTINUITY-SEQUENCE increments by 1) and streams pure Live TV
- *      (or Channel Offline Fallback if upstream fails) 24/7 with strictly monotonic sequence!
+ * Televizo-Verified 3-Phase RFC 8216 Live HLS Pre-Roll + Channel Offline Failover Stitcher
+ * with Invariant `seq = K + (U - U0)` Upstream Sequence Anchoring!
  */
 export async function buildChannelLiveMediaM3u8({
   channel,
@@ -363,14 +480,11 @@ export async function buildChannelLiveMediaM3u8({
   const nowSec = Date.now() / 1000;
   const elapsed = sessionStartSec > 0 ? Math.max(0, nowSec - sessionStartSec) : 999999;
 
-  // Phase 1 holds ONLY Intro segments on screen for ~65% of intro duration (e.g. 5.2s of an 8s intro)
-  // so Televizo/ExoPlayer starts right at seg0.ts and plays the full Intro before polling Phase 2!
   const introHoldSec = Math.max(2.5, Math.min(introTotalSec - 2.2, introTotalSec * 0.68));
   const isPhase1PureIntro = !forceBridge && introEnabled && K > 0 && elapsed < introHoldSec;
   const isPhase2Bridge =
     !isPhase1PureIntro && introEnabled && K > 0 && (forceBridge || elapsed < introTotalSec + 7.5);
 
-  // FAST PATH FOR PHASE 1 (Pure Intro): 0ms instant response — don't even wait on slow upstream yet!
   if (isPhase1PureIntro) {
     const introMaxTarget = Math.max(2, ...introSegments.map((s) => Math.ceil(s.duration || 2)));
     const out = [
@@ -389,7 +503,6 @@ export async function buildChannelLiveMediaM3u8({
     return out.join("\n") + "\n";
   }
 
-  // Resolve live channel source (local built-in or remote live HLS)
   let isLocalLoop = false;
   let localLoopSegs = [];
   let liveSegments = [];
@@ -407,7 +520,11 @@ export async function buildChannelLiveMediaM3u8({
         break;
       }
     } else if (/^https?:\/\//i.test(src)) {
-      const needProxy = Boolean(channel.useProxy || (channel.headers && Object.keys(channel.headers).length));
+      const needProxy = Boolean(
+        channel.useProxy ||
+          (channel.headers && Object.keys(channel.headers).length) ||
+          isClientDirectIptvUrl(src)
+      );
       const resolved = await fetchLiveMediaSegments(src, baseUrl, channel.headers || {}, needProxy);
       if (resolved && resolved.segments.length) {
         liveSegments = resolved.segments;
@@ -419,8 +536,7 @@ export async function buildChannelLiveMediaM3u8({
     }
   }
 
-  // AUTOMATIC CHANNEL OFFLINE FALLBACK VIDEO:
-  // Whenever a channel's stream URLs fail / 404 / timeout, play the Admin's Channel Offline Video!
+  // Automatic Channel Offline Standby Video when all upstream URLs are genuinely offline
   if (!isLocalLoop && !liveSegments.length) {
     localLoopSegs = await loadClipSegments(
       offlineUrl,
@@ -432,17 +548,15 @@ export async function buildChannelLiveMediaM3u8({
     liveTargetDur = Math.max(2, Math.ceil(Math.max(...localLoopSegs.map((s) => s.duration || 2))));
   }
 
-  // If no intro was configured for this session, serve pure live stream (or offline fallback) directly
   if (!introEnabled || K === 0 || sessionStartSec <= 0) {
     if (isLocalLoop) {
       return buildLoopingLiveM3u8(localLoopSegs, 6);
     }
     const tail = liveSegments.slice(-6);
-    const seqStart = liveMediaSeq + Math.max(0, liveSegments.length - tail.length);
+    const seqStart = tail[0]?.upstreamSeq ?? liveMediaSeq;
     return serializeLiveWindow(tail, Math.max(liveTargetDur, 4), seqStart, liveDiscSeq);
   }
 
-  // Local 24/7 channel OR Channel Offline Fallback with Intro -> Direct Live handoff
   if (isLocalLoop) {
     const N = localLoopSegs.length;
     const maxTarget = Math.max(
@@ -484,15 +598,32 @@ export async function buildChannelLiveMediaM3u8({
     );
   }
 
-  // Remote Live HLS Channel with Intro -> Direct Live Channel handoff!
-  const chosenLive = liveSegments.slice(-5);
+  // ==================== RFC 8216 INVARIANT REMOTE LIVE CHANNEL HANDOFF ====================
+  // Anchor U0 (first live segment sequence seen in this session) so every upstream segment U
+  // ALWAYS maps to the exact same sequence number `K + (U - U0)` across Phase 2 & Phase 3!
+  if (sessionSeqAnchors.size > 2000) {
+    const firstKey = sessionSeqAnchors.keys().next().value;
+    if (firstKey) sessionSeqAnchors.delete(firstKey);
+  }
+
+  const tailWindow = liveSegments.slice(-6);
+  const anchorKey = `${channel.streamId || channel.id}:${sessionStartSec}`;
+  if (!sessionSeqAnchors.has(anchorKey)) {
+    const initialU0 = tailWindow[0]?.upstreamSeq ?? liveMediaSeq;
+    sessionSeqAnchors.set(anchorKey, initialU0);
+  }
+  const U0 = sessionSeqAnchors.get(anchorKey);
+
   const maxTarget = Math.max(
     liveTargetDur,
     ...introSegments.map((s) => Math.ceil(s.duration || 2)),
     4
   );
 
-  if (isPhase2Bridge) {
+  // Keep Intro attached ONLY while tailWindow still starts at U0 during Phase 2;
+  // the instant upstream advances past U0 (or Phase 3 begins), slide cleanly to `K + (U - U0)`!
+  const firstTailU = tailWindow[0]?.upstreamSeq ?? U0;
+  if (isPhase2Bridge && firstTailU === U0) {
     const out = [
       "#EXTM3U",
       "#EXT-X-VERSION:3",
@@ -507,7 +638,7 @@ export async function buildChannelLiveMediaM3u8({
       out.push(seg.url);
     }
     out.push("#EXT-X-DISCONTINUITY");
-    for (const seg of chosenLive) {
+    for (const seg of tailWindow) {
       if (seg.discontinuity) out.push("#EXT-X-DISCONTINUITY");
       if (seg.keyLine) out.push(seg.keyLine);
       if (seg.mapLine) out.push(seg.mapLine);
@@ -517,13 +648,12 @@ export async function buildChannelLiveMediaM3u8({
     return out.join("\n") + "\n";
   }
 
-  // Phase 3: Pure Live Channel forever with monotonic session sequence
-  const avgDur =
-    chosenLive.reduce((a, s) => a + (s.duration || 4), 0) / Math.max(1, chosenLive.length) || 4;
-  const fallbackStep = Math.max(0, Math.floor((elapsed - introTotalSec) / avgDur));
-  const monotonicSeq = K + fallbackStep;
+  const validLive = tailWindow.filter((s) => (s.upstreamSeq ?? firstTailU) >= U0);
+  const finalWindow = validLive.length ? validLive : tailWindow;
+  const winStartU = finalWindow[0]?.upstreamSeq ?? firstTailU;
+  const invariantSeq = winStartU >= U0 ? K + (winStartU - U0) : K + Math.max(1, Math.floor(elapsed));
 
-  return serializeLiveWindow(chosenLive, maxTarget, monotonicSeq, 1 + liveDiscSeq);
+  return serializeLiveWindow(finalWindow, maxTarget, invariantSeq, 1 + liveDiscSeq);
 }
 
 function serializeLiveWindow(segments, targetDuration, mediaSeq, discSeq) {
@@ -545,43 +675,32 @@ function serializeLiveWindow(segments, targetDuration, mediaSeq, discSeq) {
   return out.join("\n") + "\n";
 }
 
-async function fetchLiveMediaSegments(url, baseUrl, customHeaders = {}, useProxy = false) {
+export async function fetchLiveMediaSegments(url, baseUrl, customHeaders = {}, useProxy = false) {
   try {
-    const text = await fetchTextWithTimeout(url, 3800, customHeaders);
-    if (!text || !text.includes("#EXTM3U")) return null;
-    let parsed = parseMediaPlaylist(text, url, baseUrl, useProxy);
-    if (parsed.isMaster && parsed.variants.length) {
-      const chosen = parsed.variants[Math.min(parsed.variants.length - 1, 1)] || parsed.variants[0];
-      const subText = await fetchTextWithTimeout(chosen.url, 3800, customHeaders);
-      if (subText && subText.includes("#EXTM3U")) {
-        parsed = parseMediaPlaylist(subText, chosen.url, baseUrl, useProxy);
-      }
-    }
-    return parsed.segments.length ? parsed : null;
-  } catch {
-    return null;
-  }
-}
+    let curUrl = url;
+    for (let depth = 0; depth < 3; depth++) {
+      const res = await upstreamFetch(curUrl, {
+        timeoutMs: 3800,
+        maxBytes: 196_608,
+        headers: customHeaders
+      });
+      if (!res.ok || !res.text || !res.text.includes("#EXTM3U")) return null;
 
-export async function fetchTextWithTimeout(url, timeoutMs = 4000, extraHeaders = {}) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      signal: ctrl.signal,
-      headers: {
-        "User-Agent":
-          extraHeaders["User-Agent"] ||
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BarakatWaveTV/2.2",
-        Accept: "*/*",
-        ...extraHeaders
+      const effectiveBase = res.finalUrl || curUrl;
+      const proxyNeeded = useProxy || hasIpBoundTokensInManifest(res.text, effectiveBase);
+      const parsed = parseMediaPlaylist(res.text, effectiveBase, baseUrl, proxyNeeded);
+
+      if (parsed.isMaster && parsed.variants.length) {
+        const chosen = selectBestVariant(parsed.variants);
+        if (!chosen) return null;
+        curUrl = chosen.url;
+        continue;
       }
-    });
-    if (!res.ok) return null;
-    return await res.text();
+
+      return parsed.segments.length ? parsed : null;
+    }
+    return null;
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }

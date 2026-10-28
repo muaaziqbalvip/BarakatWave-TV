@@ -318,18 +318,43 @@ export class BarakatPlayer {
   async playLiveCandidates(channel, token) {
     const rawList = [channel.url, ...(channel.backupUrls || [])].filter(Boolean);
     const expanded = [];
+    const isHttpsPage = typeof window !== "undefined" && window.location?.protocol === "https:";
 
     for (const src of rawList) {
-      expanded.push({ url: src, label: "Direct HD" });
-      if (/^https?:\/\//i.test(src)) {
-        const refParam =
-          channel.headers && channel.headers.Referer
-            ? `&ref=${encodeURIComponent(channel.headers.Referer)}`
-            : "";
-        expanded.push({
-          url: `/api/proxy?u=${encodeURIComponent(src)}${refParam}`,
-          label: "Relay HD"
-        });
+      const isRemote = /^https?:\/\//i.test(src);
+      const isInsecureHttpOnHttps = isHttpsPage && /^http:\/\//i.test(src);
+      let hasCustomPort = false;
+      if (isRemote) {
+        try {
+          const u = new URL(src);
+          hasCustomPort = Boolean(u.port && u.port !== "80" && u.port !== "443");
+        } catch {
+          // ignore
+        }
+      }
+
+      const refParam =
+        channel.headers && channel.headers.Referer
+          ? `&ref=${encodeURIComponent(channel.headers.Referer)}`
+          : "";
+      const relayCandidate = isRemote
+        ? { url: `/api/proxy?u=${encodeURIComponent(src)}${refParam}`, label: "Relay HD", timeoutMs: 8500 }
+        : null;
+      const directCandidate = {
+        url: src,
+        label: "Direct HD",
+        timeoutMs: hasCustomPort ? 4500 : 6500
+      };
+
+      if (isInsecureHttpOnHttps && relayCandidate) {
+        // Browsers block mixed-content http:// XHR on https:// pages -> try TLS Relay Proxy first
+        expanded.push(relayCandidate);
+      } else if (hasCustomPort && relayCandidate) {
+        // Custom IPTV ports (:5789 etc.): try Direct HD with fast 4.5s failover -> TLS-tolerant Relay HD
+        expanded.push(directCandidate, relayCandidate);
+      } else {
+        expanded.push(directCandidate);
+        if (relayCandidate) expanded.push(relayCandidate);
       }
     }
     let idx = 0;
@@ -349,7 +374,7 @@ export class BarakatPlayer {
           settled = true;
           tryNext();
         }
-      }, 9000);
+      }, candidate.timeoutMs || 6500);
 
       this.attachSource(candidate.url, {
         loop: candidate.url.startsWith("/media/"),
@@ -397,9 +422,11 @@ export class BarakatPlayer {
         lowLatencyMode: isLive,
         backBufferLength: 30,
         maxBufferLength: 20,
-        manifestLoadingTimeOut: 7000,
-        levelLoadingTimeOut: 7000,
-        fragLoadingTimeOut: 10000
+        manifestLoadingTimeOut: 5500,
+        manifestLoadingMaxRetry: 0,
+        levelLoadingTimeOut: 6000,
+        levelLoadingMaxRetry: 1,
+        fragLoadingTimeOut: 8500
       });
       this.hls = hls;
 

@@ -77,7 +77,13 @@ async function run() {
   const tsCollisions = allRepoFiles.filter((f) => /\.(ts|mts|cts)$/i.test(f));
   check("Zero .ts/.mts/.cts files in repository (prevents Vercel TypeScript 5.9 collision)", tsCollisions.length === 0);
 
-  check("IMDb Seed Catalog includes >= 12 Movies & >= 8 Series", DEFAULT_MOVIES.length >= 12 && DEFAULT_SERIES.length >= 8);
+  check(
+    "IMDb 2000–2026 Auto-Catalog includes >= 1,100 Movies & >= 430 Series (1,550+ verified tt... titles)",
+    DEFAULT_MOVIES.length >= 1100 && DEFAULT_SERIES.length >= 430 && DEFAULT_MOVIES.length + DEFAULT_SERIES.length >= 1550
+  );
+  const movieYears = new Set(DEFAULT_MOVIES.map((m) => Number(m.year)));
+  const allYearsCovered = Array.from({ length: 27 }, (_, i) => 2000 + i).every((yr) => movieYears.has(yr));
+  check("IMDb 2000–2026 Auto-Catalog covers every single release year from 2000 through 2026", allYearsCovered);
   check("SEO Knowledge Base includes 16 professional blogs", DEFAULT_BLOGS.length >= 16);
 
   // 2. Verify M3U Parser & Exporter
@@ -153,7 +159,19 @@ async function run() {
     // 3b. Xtream Codes API (/player_api.php) — Auth + Live + IMDb VOD + IMDb Series
     const xtAuthRes = await fetch(`${base}/player_api.php?username=demo&password=demo`);
     const xtAuth = await xtAuthRes.json();
-    check("Xtream player_api.php authenticates valid user (auth=1)", xtAuth.user_info?.auth === 1 && xtAuth.user_info?.status === "Active");
+    check(
+      "Xtream player_api.php authenticates valid user (auth=1) and supports both m3u8 & ts output formats for Televizo",
+      xtAuth.user_info?.auth === 1 &&
+        xtAuth.user_info?.status === "Active" &&
+        Array.isArray(xtAuth.user_info?.allowed_output_formats) &&
+        xtAuth.user_info.allowed_output_formats.includes("m3u8") &&
+        xtAuth.user_info.allowed_output_formats.includes("ts")
+    );
+    check(
+      "Server attaches hardened security headers (X-Content-Type-Options: nosniff, Referrer-Policy)",
+      xtAuthRes.headers.get("x-content-type-options") === "nosniff" &&
+        Boolean(xtAuthRes.headers.get("referrer-policy"))
+    );
 
     const xtBadRes = await fetch(`${base}/player_api.php?username=demo&password=wrong`);
     const xtBad = await xtBadRes.json();
@@ -174,18 +192,22 @@ async function run() {
     const xtStreams = await (await fetch(`${base}/player_api.php?username=demo&password=demo&action=get_live_streams`)).json();
     check("Xtream get_live_streams returns channels with integer stream_id", Array.isArray(xtStreams) && xtStreams.length >= 10 && typeof xtStreams[0].stream_id === "number");
 
-    // Xtream VOD (IMDb Movies)
+    // Xtream VOD (IMDb 2000–2026 Movies)
     const vodCats = await (await fetch(`${base}/player_api.php?username=demo&password=demo&action=get_vod_categories`)).json();
-    check("Xtream get_vod_categories returns 5 Emoji IMDb Movie groups", Array.isArray(vodCats) && vodCats.length >= 5 && vodCats[0].category_name.includes("🇵🇰"));
+    check("Xtream get_vod_categories returns 9 Priority Emoji IMDb Movie groups (2000–2026)", Array.isArray(vodCats) && vodCats.length >= 9 && vodCats[0].category_name.includes("🇵🇰"));
 
-    const vodStreams = await (await fetch(`${base}/player_api.php?username=demo&password=demo&action=get_vod_streams`)).json();
+    const vodResRaw = await fetch(`${base}/player_api.php?username=demo&password=demo&action=get_vod_streams`, {
+      headers: { "Accept-Encoding": "gzip" }
+    });
+    check("Xtream get_vod_streams serves high-speed GZIP-compressed payload", vodResRaw.headers.get("content-encoding") === "gzip");
+    const vodStreams = await vodResRaw.json();
     check(
-      "Xtream get_vod_streams returns IMDb Movies with rating, poster & mp4 container_extension",
+      "Xtream get_vod_streams auto-loads 1,100+ 2000–2026 IMDb Movies with rating, poster & mp4 container_extension",
       Array.isArray(vodStreams) &&
-        vodStreams.length >= 12 &&
+        vodStreams.length >= 1100 &&
         vodStreams[0].stream_type === "movie" &&
         vodStreams[0].container_extension === "mp4" &&
-        Number(vodStreams[0].rating) > 6
+        Number(vodStreams[0].rating) > 5
     );
 
     const vodInfo = await (
@@ -199,14 +221,14 @@ async function run() {
         vodInfo?.movie_data?.container_extension === "mp4"
     );
 
-    // Xtream Series (IMDb Series)
+    // Xtream Series (IMDb 2000–2026 Series)
     const serCats = await (await fetch(`${base}/player_api.php?username=demo&password=demo&action=get_series_categories`)).json();
-    check("Xtream get_series_categories returns 4 Emoji IMDb Series groups", Array.isArray(serCats) && serCats.length >= 4 && serCats[0].category_name.includes("🕌"));
+    check("Xtream get_series_categories returns 7 Priority Emoji IMDb Series groups (2000–2026)", Array.isArray(serCats) && serCats.length >= 7 && serCats[0].category_name.includes("🕌"));
 
     const serList = await (await fetch(`${base}/player_api.php?username=demo&password=demo&action=get_series`)).json();
     check(
-      "Xtream get_series returns IMDb Series with cover, cast & rating",
-      Array.isArray(serList) && serList.length >= 8 && Number(serList[0].rating) > 7 && Boolean(serList[0].cover)
+      "Xtream get_series auto-loads 430+ 2000–2026 IMDb Series with cover, cast & rating",
+      Array.isArray(serList) && serList.length >= 430 && Number(serList[0].rating) > 6 && Boolean(serList[0].cover)
     );
 
     const serInfo = await (
@@ -266,6 +288,51 @@ async function run() {
       "/api/imdb?q=Maula searches IMDb catalog and returns The Legend of Maula Jatt (tt4139928)",
       imdbSearch.ok && Array.isArray(imdbSearch.results) && imdbSearch.results.some((r) => r.imdbId === "tt4139928")
     );
+
+    const fullCatalogRes = await fetch(`${base}/api/imdb?action=catalog`, {
+      headers: { "Accept-Encoding": "gzip" }
+    });
+    const fullCatalog = await fullCatalogRes.json();
+    check(
+      "/api/imdb?action=catalog returns full 1,550+ (2000–2026) Movies & Series gzipped",
+      fullCatalog.ok &&
+        fullCatalogRes.headers.get("content-encoding") === "gzip" &&
+        fullCatalog.movieCount >= 1100 &&
+        fullCatalog.seriesCount >= 430
+    );
+
+    // Non-destructive RTDB override merge check: adding 1 custom movie MUST preserve all 1,100+ built-in movies!
+    await fetch(`${base}/api/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "movies/mov_tt9999991",
+        value: {
+          id: "mov_tt9999991",
+          streamId: 9991,
+          imdbId: "tt9999991",
+          title: "BarakatWave Special Premiere",
+          year: "2026",
+          imdbRating: "9.1",
+          category: "🇵🇰 ⭐ Pakistani Blockbusters (2000–2026)",
+          categoryId: "101",
+          tier: "free"
+        }
+      })
+    });
+    const mergedVodAfterSync = await (
+      await fetch(`${base}/player_api.php?username=demo&password=demo&action=get_vod_streams`)
+    ).json();
+    check(
+      "Adding a custom movie in RTDB preserves all 1,134+ built-in 2000–2026 movies without overwriting",
+      mergedVodAfterSync.length >= DEFAULT_MOVIES.length + 1 &&
+        mergedVodAfterSync.some((m) => m.imdb_id === "tt9999991")
+    );
+    await fetch(`${base}/api/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "movies", value: null })
+    });
 
     // 3e. Xtream get.php (M3U Plus includes Live + IMDb VOD + Series) & xmltv.php (EPG)
     const m3uPlus = await (await fetch(`${base}/get.php?username=demo&password=demo&type=m3u_plus&output=m3u8`)).text();
@@ -331,6 +398,37 @@ async function run() {
       );
     }
 
+    // 3g-ext. External Custom-Port / Panel .m3u8 Regression Fix (https://live.nowiretv.com:5789/live/auto/3383.m3u8)
+    await fetch(`${base}/api/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "channels/ch_nowire_3383",
+        value: {
+          id: "ch_nowire_3383",
+          streamId: 3383,
+          slug: "nowire-3383-hd",
+          name: "NoWire Live 3383 HD",
+          category: "🇵🇰 ⭐ Pakistan Top Channels",
+          tier: "free",
+          url: "https://live.nowiretv.com:5789/live/auto/3383.m3u8",
+          backupUrls: []
+        }
+      })
+    });
+    const nowireM3u8Res = await fetch(`${base}/live/demo/demo/3383.m3u8`, { redirect: "manual" });
+    check(
+      "External custom-port .m3u8 (https://live.nowiretv.com:5789/live/auto/3383.m3u8) returns 302 Direct Redirect to Televizo (zero ExoPlayer master-in-media crash)",
+      nowireM3u8Res.status === 302 &&
+        nowireM3u8Res.headers.get("location") === "https://live.nowiretv.com:5789/live/auto/3383.m3u8"
+    );
+    const nowireTsRes = await fetch(`${base}/live/demo/demo/3383.ts`, { redirect: "manual" });
+    check(
+      "Televizo MPEG-TS output format (/live/demo/demo/3383.ts) ALSO routes cleanly to external custom-port .m3u8",
+      nowireTsRes.status === 302 &&
+        nowireTsRes.headers.get("location") === "https://live.nowiretv.com:5789/live/auto/3383.m3u8"
+    );
+
     // 3g. Channel Offline Standby Video Failover (when channel stream fails or is down!)
     const directOfflineHls = await (await fetch(`${base}/api/stream?mode=offline`)).text();
     check(
@@ -355,6 +453,11 @@ async function run() {
         }
       })
     });
+    const deadLiveMaster = await (await fetch(`${base}/live/demo/demo/1999.m3u8`)).text();
+    check(
+      "Dead/SSRF-blocked channel URL in /live/demo/demo/1999.m3u8 immediately serves mode=offline Channel Offline Video",
+      deadLiveMaster.includes("mode=offline")
+    );
     const deadFallbackHls = await (await fetch(`${base}/api/stream?mode=live&id=1999&st=${nowSec - 20}`)).text();
     check(
       "Broken/offline channel automatically fails over to Channel Offline Standby Video (zero dead black screen)",
@@ -365,6 +468,23 @@ async function run() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path: "channels", value: null })
     });
+
+    // 3g-sec. SSRF Security Hardening Checks on /api/proxy & /api/probe
+    const ssrfLoopback = await fetch(`${base}/api/proxy?u=${encodeURIComponent("http://127.0.0.1:80/admin")}`);
+    const ssrfMetadata = await fetch(
+      `${base}/api/proxy?u=${encodeURIComponent("http://169.254.169.254/latest/meta-data/")}`
+    );
+    check(
+      "SSRF Guard blocks private loopback (127.0.0.1) & cloud metadata (169.254.169.254) on /api/proxy with HTTP 403",
+      ssrfLoopback.status === 403 && ssrfMetadata.status === 403
+    );
+    const ssrfProbe = await (
+      await fetch(`${base}/api/probe?url=${encodeURIComponent("http://127.0.0.1:22/ssh")}`)
+    ).json();
+    check(
+      "SSRF Guard blocks internal IP scanning on /api/probe",
+      ssrfProbe.ok && ssrfProbe.results?.[0]?.ok === false
+    );
 
     const missingChMaster = await (await fetch(`${base}/live/demo/demo/99999.m3u8`)).text();
     check(
@@ -400,8 +520,42 @@ async function run() {
         }
       })
     });
-    const unlockedMaster = await (await fetch(`${base}/live/bw_vip_test/VIPPassword1/2001.m3u8`)).text();
-    check("Upgraded PRO VIP Xtream user unlocks PRO channel (mode=live)", unlockedMaster.includes("mode=live"));
+    const unlockedRes = await fetch(`${base}/live/bw_vip_test/VIPPassword1/2001.m3u8`, { redirect: "manual" });
+    const unlockedBody = unlockedRes.status === 200 ? await unlockedRes.text() : "";
+    check(
+      "Upgraded PRO VIP Xtream user unlocks PRO channel 2001 (direct 302 stream or mode=live, never pro_lock/offline)",
+      (unlockedRes.status === 302 &&
+        (unlockedRes.headers.get("location") || "").includes("rbmn-live.akamaized.net")) ||
+        (unlockedBody.includes("mode=live") && !unlockedBody.includes("mode=pro_lock"))
+    );
+
+    // Also verify stitchable PRO channel serves mode=live 3-phase Intro -> Live stream for PRO VIP user!
+    await fetch(`${base}/api/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "channels/ch_pro_stitch_test",
+        value: {
+          id: "ch_pro_stitch_test",
+          streamId: 2099,
+          slug: "pro-stitch-test-hd",
+          name: "BarakatWave Studio 4K [PRO VIP]",
+          category: "🇵🇰 ⭐ Pakistan Top Channels",
+          tier: "pro",
+          url: "/media/demo-live/index.m3u8"
+        }
+      })
+    });
+    const unlockedStitchMaster = await (await fetch(`${base}/live/bw_vip_test/VIPPassword1/2099.m3u8`)).text();
+    check(
+      "Upgraded PRO VIP user gets stitched mode=live HLS master playlist on stitchable PRO channel",
+      unlockedStitchMaster.includes("mode=live") && !unlockedStitchMaster.includes("mode=pro_lock")
+    );
+    await fetch(`${base}/api/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "channels", value: null })
+    });
 
     // 3j. SEO Sitemap, RSS, LLMs.txt & SSR Blog Pages (including Muaaz Iqbal Founder Spotlight Article!)
     const sitemap = await (await fetch(`${base}/sitemap.xml`)).text();

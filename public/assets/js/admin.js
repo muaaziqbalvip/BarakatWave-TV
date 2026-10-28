@@ -286,19 +286,52 @@ async function loadAllAdminData() {
     }
   }
 
-  if (movRaw && typeof movRaw === "object") {
-    const mList = Array.isArray(movRaw)
-      ? movRaw.filter(Boolean)
-      : Object.entries(movRaw).map(([id, m]) => ({ id, ...m }));
-    if (mList.length) admState.movies = mList.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+  // Hydrate full 1,570+ (2000–2026) IMDb Movies & Series catalog + merge RTDB overrides cleanly!
+  let baseMovies = [...DEFAULT_MOVIES];
+  let baseSeries = [...DEFAULT_SERIES];
+  try {
+    const catRes = await fetch("/api/imdb?action=catalog");
+    if (catRes.ok) {
+      const catJson = await catRes.json();
+      if (Array.isArray(catJson.movies) && catJson.movies.length) baseMovies = catJson.movies;
+      if (Array.isArray(catJson.series) && catJson.series.length) baseSeries = catJson.series;
+    }
+  } catch {
+    // keep built-in seed fallback
   }
 
-  if (serRaw && typeof serRaw === "object") {
-    const sList = Array.isArray(serRaw)
-      ? serRaw.filter(Boolean)
-      : Object.entries(serRaw).map(([id, s]) => ({ id, ...s }));
-    if (sList.length) admState.series = sList.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
-  }
+  const mergeAdminImdb = (baseArr, rawObj) => {
+    const map = new Map();
+    for (const item of baseArr) {
+      map.set(String(item.imdbId || item.id).toLowerCase(), { ...item });
+    }
+    if (rawObj && typeof rawObj === "object") {
+      const overrides = Array.isArray(rawObj)
+        ? rawObj.filter(Boolean)
+        : Object.entries(rawObj).map(([id, v]) => ({ id, ...v }));
+      for (const ov of overrides) {
+        const key = String(ov.imdbId || ov.id || "").toLowerCase();
+        if (!key) continue;
+        if (ov._deleted) {
+          map.delete(key);
+        } else if (map.has(key)) {
+          const prev = map.get(key);
+          map.set(key, {
+            ...prev,
+            ...ov,
+            category: ov.customCategory ? ov.category : prev.category,
+            categoryId: ov.customCategory ? ov.categoryId : prev.categoryId
+          });
+        } else {
+          map.set(key, { ...ov, _adminCustom: true });
+        }
+      }
+    }
+    return [...map.values()];
+  };
+
+  admState.movies = mergeAdminImdb(baseMovies, movRaw);
+  admState.series = mergeAdminImdb(baseSeries, serRaw);
 
   if (settingsRaw && typeof settingsRaw === "object") {
     admState.settings = { ...DEFAULT_SETTINGS, ...settingsRaw };
@@ -358,26 +391,14 @@ function bindOverviewActions() {
       const id = c.id || `ch_${1001 + idx}`;
       chObj[id] = { ...c, id, order: idx + 1 };
     });
-    const movObj = {};
-    admState.movies.forEach((m, idx) => {
-      const id = m.id || `mov_${m.imdbId || 5001 + idx}`;
-      movObj[id] = { ...m, id, order: idx + 1 };
-    });
-    const serObj = {};
-    admState.series.forEach((s, idx) => {
-      const id = s.id || `ser_${s.imdbId || 7001 + idx}`;
-      serObj[id] = { ...s, id, order: idx + 1 };
-    });
     const blogObj = {};
     admState.blogs.forEach((b) => {
       blogObj[b.slug] = b;
     });
     await dbWrite("channels", chObj);
-    await dbWrite("movies", movObj);
-    await dbWrite("series", serObj);
     await dbWrite("settings/defaults", admState.settings);
     await dbWrite("blogs", blogObj);
-    toast(`✅ Synced ${admState.channels.length} Channels, ${admState.movies.length} IMDb Movies, ${admState.series.length} Series & ${admState.blogs.length} SEO Blogs to RTDB!`);
+    toast(`✅ Synced ${admState.channels.length} Channels & ${admState.blogs.length} Blogs to RTDB! (${admState.movies.length + admState.series.length} 2000–2026 IMDb Titles Auto-Active!)`);
   });
 
   document.getElementById("quickPingSeoBtn")?.addEventListener("click", () => {
@@ -1157,6 +1178,7 @@ function bindImdbStudio() {
         genres,
         category: catMeta.name,
         categoryId: catMeta.id,
+        customCategory: true,
         director,
         cast,
         plot,
@@ -1164,15 +1186,15 @@ function bindImdbStudio() {
         backdrop,
         tier,
         streamUrl,
-        order: existingIdx >= 0 ? admState.movies[existingIdx].order : admState.movies.length + 1
+        order: existingIdx >= 0 ? admState.movies[existingIdx].order : 0
       };
       if (existingIdx >= 0) admState.movies[existingIdx] = rec;
-      else admState.movies.push(rec);
-      await persistMoviesAndSeries();
+      else admState.movies.unshift(rec);
+      await persistSingleImdbItem("movie", rec);
     } else {
       const catMeta = SERIES_CATEGORIES.find((c) => c.name === category) || SERIES_CATEGORIES[0];
       const existingIdx = admState.series.findIndex((s) => s.id === editKey || s.imdbId === imdbId);
-      const maxSeriesId = admState.series.reduce((acc, s) => Math.max(acc, Number(s.seriesId) || 7000), 7000);
+      const maxSeriesId = admState.series.reduce((acc, s) => Math.max(acc, Number(s.seriesId) || 10000), 10000);
       const seriesId = existingIdx >= 0 ? admState.series[existingIdx].seriesId : maxSeriesId + 1;
       const episodes =
         admState.pendingImdbEpisodes ||
@@ -1198,6 +1220,7 @@ function bindImdbStudio() {
         genres,
         category: catMeta.name,
         categoryId: catMeta.id,
+        customCategory: true,
         director,
         cast,
         plot,
@@ -1207,11 +1230,11 @@ function bindImdbStudio() {
         streamUrl,
         episodes,
         seasonsCount: new Set(episodes.map((ep) => Number(ep.season) || 1)).size || 1,
-        order: existingIdx >= 0 ? admState.series[existingIdx].order : admState.series.length + 1
+        order: existingIdx >= 0 ? admState.series[existingIdx].order : 0
       };
       if (existingIdx >= 0) admState.series[existingIdx] = rec;
-      else admState.series.push(rec);
-      await persistMoviesAndSeries();
+      else admState.series.unshift(rec);
+      await persistSingleImdbItem("series", rec);
     }
 
     resetImdbForm();
@@ -1233,17 +1256,17 @@ function bindImdbStudio() {
         const item = await fetchImdbTitle(id, "auto");
         if (item.type === "series") {
           const exists = admState.series.findIndex((s) => s.imdbId === item.imdbId);
-          const maxSid = admState.series.reduce((m, s) => Math.max(m, Number(s.seriesId) || 7000), 7000);
+          const maxSid = admState.series.reduce((m, s) => Math.max(m, Number(s.seriesId) || 10000), 10000);
           const rec = {
             ...item,
             id: `ser_${item.imdbId}`,
             seriesId: exists >= 0 ? admState.series[exists].seriesId : maxSid + 1,
             tier: "free",
-            streamUrl: "",
-            order: exists >= 0 ? admState.series[exists].order : admState.series.length + 1
+            streamUrl: ""
           };
           if (exists >= 0) admState.series[exists] = rec;
-          else admState.series.push(rec);
+          else admState.series.unshift(rec);
+          await persistSingleImdbItem("series", rec);
         } else {
           const exists = admState.movies.findIndex((m) => m.imdbId === item.imdbId);
           const maxSid = admState.movies.reduce((acc, m) => Math.max(acc, Number(m.streamId) || 5000), 5000);
@@ -1252,11 +1275,11 @@ function bindImdbStudio() {
             id: `mov_${item.imdbId}`,
             streamId: exists >= 0 ? admState.movies[exists].streamId : maxSid + 1,
             tier: "free",
-            streamUrl: "",
-            order: exists >= 0 ? admState.movies[exists].order : admState.movies.length + 1
+            streamUrl: ""
           };
           if (exists >= 0) admState.movies[exists] = rec;
-          else admState.movies.push(rec);
+          else admState.movies.unshift(rec);
+          await persistSingleImdbItem("movie", rec);
         }
         addedCount++;
       } catch {
@@ -1264,7 +1287,6 @@ function bindImdbStudio() {
       }
     }
 
-    await persistMoviesAndSeries();
     document.getElementById("admBulkImdbIds").value = "";
     renderAdminImdbTable();
     renderKpis();
@@ -1286,33 +1308,15 @@ function resetImdbForm() {
   setTxt("imdbFormHeading", "🎬 Add / Edit Movie or TV Series via IMDb ID");
 }
 
-async function persistMoviesAndSeries() {
-  const movObj = {};
-  admState.movies = admState.movies.map((m, idx) => {
-    const id = m.id || `mov_${m.imdbId || 5001 + idx}`;
-    const updated = { ...m, id, order: idx + 1 };
-    movObj[id] = updated;
-    return updated;
-  });
-
-  const serObj = {};
-  admState.series = admState.series.map((s, idx) => {
-    const id = s.id || `ser_${s.imdbId || 7001 + idx}`;
-    const updated = { ...s, id, order: idx + 1 };
-    serObj[id] = updated;
-    return updated;
-  });
-
-  await Promise.all([dbWrite("movies", movObj), dbWrite("series", serObj)]);
+async function persistSingleImdbItem(kind, rec) {
+  const rootNode = kind === "series" ? "series" : "movies";
+  const nodeKey = rec.id || `${kind === "series" ? "ser" : "mov"}_${rec.imdbId}`;
+  const path = `${rootNode}/${nodeKey}`;
+  await dbWrite(path, rec);
   fetch("/api/sync", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: "movies", value: movObj })
-  }).catch(() => {});
-  fetch("/api/sync", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: "series", value: serObj })
+    body: JSON.stringify({ path, value: rec })
   }).catch(() => {});
 }
 
@@ -1336,6 +1340,7 @@ function renderAdminImdbTable() {
       (x) =>
         String(x.title || "").toLowerCase().includes(q) ||
         String(x.imdbId || "").toLowerCase().includes(q) ||
+        String(x.year || "").toLowerCase().includes(q) ||
         String(x.category || "").toLowerCase().includes(q)
     );
   }
@@ -1347,7 +1352,9 @@ function renderAdminImdbTable() {
     return;
   }
 
-  tbody.innerHTML = combined
+  const visibleRows = combined.slice(0, 80);
+
+  tbody.innerHTML = visibleRows
     .map(
       (item) => `
       <tr>
@@ -1357,7 +1364,7 @@ function renderAdminImdbTable() {
         </td>
         <td>
           <div style="display:flex;align-items:center;gap:9px;">
-            <img src="${escAttr(item.poster || BRAND.logoPrimary)}" onerror="this.onerror=null;this.src='/assets/logo-fallback.svg';" style="width:34px;height:48px;border-radius:6px;object-fit:cover;" alt="" />
+            <img src="${escAttr(item.poster || BRAND.logoPrimary)}" onerror="this.onerror=null;this.src='/assets/logo-fallback.svg';" style="width:34px;height:48px;border-radius:6px;object-fit:cover;" alt="" loading="lazy" />
             <div>
               <strong>${esc(item.title)}</strong> <span class="muted-sm">(${esc(item.year || "")})</span>
               <div class="muted-sm" style="font-size:0.72rem;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(item.cast || "")}</div>
@@ -1388,7 +1395,10 @@ function renderAdminImdbTable() {
         </td>
       </tr>`
     )
-    .join("");
+    .join("") +
+    (combined.length > visibleRows.length
+      ? `<tr><td colspan="6" style="text-align:center;padding:12px;" class="muted-sm">Showing top <strong>${visibleRows.length}</strong> of <strong>${combined.length}</strong> auto-indexed 2000–2026 IMDb titles — use Search above to jump to any title, year, or <code>tt...</code> ID instantly!</td></tr>`
+      : "");
 
   tbody.querySelectorAll("[data-imdb-tier]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -1398,7 +1408,7 @@ function renderAdminImdbTable() {
       const found = arr.find((x) => x.id === id);
       if (!found) return;
       found.tier = found.tier === "pro" ? "free" : "pro";
-      await persistMoviesAndSeries();
+      await persistSingleImdbItem(kind, found);
       renderAdminImdbTable();
       toast(`Switched "${found.title}" to ${found.tier.toUpperCase()}`);
     });
@@ -1439,12 +1449,16 @@ function renderAdminImdbTable() {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.imdbDel;
       const kind = btn.dataset.imdbKind;
+      const arr = kind === "series" ? admState.series : admState.movies;
+      const existing = arr.find((x) => x.id === id);
       if (kind === "series") {
         admState.series = admState.series.filter((s) => s.id !== id);
       } else {
         admState.movies = admState.movies.filter((m) => m.id !== id);
       }
-      await persistMoviesAndSeries();
+      if (existing) {
+        await persistSingleImdbItem(kind, { id, imdbId: existing.imdbId, _deleted: true });
+      }
       renderAdminImdbTable();
       renderKpis();
       toast("Removed IMDb title from catalog");
@@ -2153,11 +2167,24 @@ function openMiniVideoPreview(videoId, wrapId, url) {
 
   const isMp4 = /\.(mp4|webm|ogg)(\?|$)/i.test(url);
   if (!isMp4 && window.Hls && window.Hls.isSupported()) {
-    const hls = new window.Hls();
-    admState.previewHls = hls;
-    hls.loadSource(url);
-    hls.attachMedia(video);
-    hls.on(window.Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+    let triedRelay = false;
+    const attach = (srcUrl) => {
+      if (admState.previewHls) {
+        admState.previewHls.destroy();
+      }
+      const hls = new window.Hls({ manifestLoadingTimeOut: 6000 });
+      admState.previewHls = hls;
+      hls.loadSource(srcUrl);
+      hls.attachMedia(video);
+      hls.on(window.Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+      hls.on(window.Hls.Events.ERROR, (_, data) => {
+        if (data.fatal && !triedRelay && /^https?:\/\//i.test(url)) {
+          triedRelay = true;
+          attach(`/api/proxy?u=${encodeURIComponent(url)}`);
+        }
+      });
+    };
+    attach(url);
   } else {
     video.src = url;
     video.play().catch(() => {});
