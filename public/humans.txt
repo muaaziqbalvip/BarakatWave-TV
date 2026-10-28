@@ -1,0 +1,13 @@
+/* TEAM & FOUNDER */
+Founder, Lead Architect & Innovator: Muaaz Iqbal
+Parent Ecosystem: Mizanora Projects (https://mizanora.vercel.app)
+Location: Kasur, Punjab, Pakistan
+GitHub: https://github.com/muaaziqbalvip
+Official PRO VIP Contact & WhatsApp: 0306-2015326 (+92 306 2015326)
+
+/* SITE */
+Platform: BarakatWave Live TV
+Canonical URL: https://barakatwave.vercel.app
+Repository: https://github.com/muaaziqbalvip/BarakatWave-TV
+Technology: HTML5, CSS3 Theme Engine, ES Modules, hls.js, Firebase Auth & Realtime Database (13.1.0), Vercel Serverless HLS Stitcher, Xtream Codes v2.9 API
+Last Updated: 2026-10-28

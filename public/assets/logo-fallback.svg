@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="bwBg" x1="0" y1="0" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#07192F"/>
+      <stop offset="100%" stop-color="#040A14"/>
+    </linearGradient>
+    <linearGradient id="bwWave" x1="20" y1="100" x2="180" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00D4FF"/>
+      <stop offset="55%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#F5B942"/>
+    </linearGradient>
+    <linearGradient id="bwGold" x1="40" y1="30" x2="160" y2="170" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFE08A"/>
+      <stop offset="100%" stop-color="#D4AF37"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="184" height="184" rx="44" fill="url(#bwBg)" stroke="url(#bwGold)" stroke-width="4"/>
+  <path d="M52 68C68 50 92 44 116 52C102 52 88 62 84 78C80 94 90 110 106 114C84 118 60 104 52 82" fill="url(#bwGold)" opacity="0.92"/>
+  <polygon points="126,64 130,74 141,74 132,81 135,91 126,85 117,91 120,81 111,74 122,74" fill="#FFE08A"/>
+  <path d="M28 132C50 112 72 152 98 130C124 108 146 146 172 124" stroke="url(#bwWave)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M34 152C58 134 80 166 106 148C130 132 148 158 168 144" stroke="#00D4FF" stroke-opacity="0.65" stroke-width="5" stroke-linecap="round"/>
+</svg>

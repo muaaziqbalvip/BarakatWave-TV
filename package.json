@@ -1,0 +1,24 @@
+{
+  "name": "barakatwave-tv",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "BarakatWave Live TV — Next-Gen HLS Streaming Network, Free Personal Xtream Codes Server, Custom M3U8 Playlist Builder & Admin Broadcast Engine. A Mizanora Project by Muaaz Iqbal.",
+  "author": "Muaaz Iqbal <muaaziqbal.vip@gmail.com> (Mizanora Projects)",
+  "homepage": "https://barakatwave.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/muaaziqbalvip/BarakatWave-TV.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.x"
+  },
+  "scripts": {
+    "dev": "node scripts/dev-server.mjs",
+    "start": "node scripts/dev-server.mjs",
+    "generate:m3u": "node scripts/generate-streams.mjs",
+    "test": "node scripts/self-test.mjs",
+    "check": "node scripts/self-test.mjs"
+  }
+}

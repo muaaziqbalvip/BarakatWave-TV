@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="barakat">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Command Center | BarakatWave Live TV — Mizanora Projects by Muaaz Iqbal</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" type="image/png" href="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" />
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("bw_theme");
+        if (saved) document.documentElement.setAttribute("data-theme", saved);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="/assets/css/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="/" class="brand-link">
+        <img
+          src="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png"
+          onerror="this.onerror=null;this.src='/assets/logo-fallback.svg';"
+          alt="BarakatWave"
+          class="brand-logo"
+        />
+        <div>
+          <span class="brand-title">BarakatWave Admin Studio</span>
+          <span class="brand-sub">Mizanora Broadcast Engine &bull; Muaaz Iqbal</span>
+        </div>
+      </a>
+
+      <div class="header-actions">
+        <div class="theme-switcher" id="adminThemeSwitcher"></div>
+        <a href="/" class="btn btn-sm btn-outline">📺 Open Live TV Site</a>
+        <span class="badge badge-gold" id="adminIdentityBadge" hidden>ADMIN</span>
+        <button class="btn btn-sm btn-danger" id="adminLogoutBtn" hidden>Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- ==================== ADMIN AUTH GATE ==================== -->
+    <section id="adminAuthGate" style="max-width:480px;margin:48px auto;">
+      <div class="glass-card" style="padding:28px;">
+        <div style="text-align:center;margin-bottom:16px;">
+          <img
+            src="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png"
+            onerror="this.onerror=null;this.src='/assets/logo-fallback.svg';"
+            alt="BarakatWave"
+            style="width:64px;height:64px;border-radius:16px;object-fit:contain;"
+          />
+          <h1 style="font-size:1.35rem;margin:10px 0 4px;">🔐 Admin Command Center</h1>
+          <p class="muted-sm" style="margin:0;">Sign in with Owner Google or Gmail + Password to manage Channels, M3U8 GitHub Push, Video Defaults, Xtream PRO &amp; Blogs.</p>
+        </div>
+
+        <button class="btn btn-lg btn-outline" id="adminGoogleBtn" style="width:100%;font-weight:800;">
+          Continue with Google (Admin)
+        </button>
+
+        <div class="divider-or">OR ADMIN EMAIL + PASSWORD</div>
+
+        <form id="adminLoginForm" class="form-stack">
+          <input type="email" id="admEmail" class="input-field" placeholder="muaaziqbal.vip@gmail.com" required />
+          <input type="password" id="admPass" class="input-field" placeholder="Admin Password" required />
+          <div id="admAuthErr" style="color:#fca5a5;font-size:0.82rem;" hidden></div>
+          <div style="display:flex;gap:8px;">
+            <button type="submit" class="btn btn-primary" style="flex:1;">Sign In</button>
+            <button type="button" class="btn btn-outline" id="admRegisterBtn" title="Create owner login if first time">Register Owner</button>
+          </div>
+        </form>
+
+        <div id="admPreviewBox" style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--border);" hidden>
+          <p class="muted-sm" style="margin:0 0 8px;font-size:0.76rem;">
+            💡 Running on temporary sandbox preview URL: click below to open Admin Studio in Preview Owner Mode:
+          </p>
+          <button type="button" class="btn btn-sm btn-gold" id="admPreviewBtn" style="width:100%;">⚡ Enter Preview Owner Admin</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Non-admin Claim / Notice Box -->
+    <section id="adminClaimSection" style="max-width:540px;margin:48px auto;" hidden>
+      <div class="glass-card" style="padding:26px;text-align:center;">
+        <h2>👑 Owner Admin Verification</h2>
+        <p class="muted-sm" id="adminClaimText">Checking admin registry in Firebase Realtime Database...</p>
+        <button class="btn btn-gold" id="claimFirstAdminBtn" hidden>Claim Super Admin Ownership</button>
+      </div>
+    </section>
+
+    <!-- ==================== MAIN ADMIN WORKSPACE ==================== -->
+    <div class="admin-shell" id="adminWorkspace" hidden>
+      <aside class="admin-sidebar glass-card">
+        <button class="admin-nav-btn active" data-adm-tab="overview">📊 Overview</button>
+        <button class="admin-nav-btn" data-adm-tab="channels">📺 Channels &amp; M3U8</button>
+        <button class="admin-nav-btn" data-adm-tab="import">📥 Bulk M3U Import/Export</button>
+        <button class="admin-nav-btn" data-adm-tab="github">🐙 GitHub M3U8 Push</button>
+        <button class="admin-nav-btn" data-adm-tab="defaults">🎬 Video Defaults &amp; PRO</button>
+        <button class="admin-nav-btn" data-adm-tab="xtream">⚡ Xtream &amp; PRO Users</button>
+        <button class="admin-nav-btn" data-adm-tab="seo">🚀 Blogs &amp; Search Console</button>
+        <button class="admin-nav-btn" data-adm-tab="support">🎫 Tickets, Reviews &amp; Rules</button>
+      </aside>
+
+      <div id="adminPanels">
+        <!-- TAB 1: OVERVIEW -->
+        <section data-adm-panel="overview">
+          <div class="kpi-grid">
+            <div class="kpi-card glass-card">
+              <div class="muted-sm">Live Channels</div>
+              <div class="kpi-num" id="kpiChannels">0</div>
+              <div class="muted-sm" id="kpiChannelsSub">0 Free • 0 PRO</div>
+            </div>
+            <div class="kpi-card glass-card">
+              <div class="muted-sm">Xtream Servers</div>
+              <div class="kpi-num" id="kpiXtream">0</div>
+              <div class="muted-sm" id="kpiXtreamSub">0 PRO VIP Active</div>
+            </div>
+            <div class="kpi-card glass-card">
+              <div class="muted-sm">SEO Blog Guides</div>
+              <div class="kpi-num" id="kpiBlogs">0</div>
+              <div class="muted-sm">Indexed in Sitemap.xml</div>
+            </div>
+            <div class="kpi-card glass-card">
+              <div class="muted-sm">Support &amp; Reviews</div>
+              <div class="kpi-num" id="kpiTickets">0</div>
+              <div class="muted-sm" id="kpiReviewsSub">0 Reviews</div>
+            </div>
+          </div>
+
+          <div class="glass-card" style="padding:22px;">
+            <h2 style="margin-top:0;">🚀 BarakatWave Broadcast Control Actions</h2>
+            <p class="muted-sm">Sync default catalog to Firebase Realtime Database, push `.m3u8` channel files to GitHub, or ping Google/IndexNow search engines.</p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <button class="btn btn-primary" id="seedRtdbBtn">🔄 Sync Seed Channels &amp; Blogs to Firebase RTDB</button>
+              <button class="btn btn-gold" data-jump-adm="github">🐙 Push Channel M3U8s to GitHub</button>
+              <button class="btn btn-outline" data-jump-adm="defaults">🎬 Configure Intro &amp; PRO Videos</button>
+              <button class="btn btn-outline" id="quickPingSeoBtn">🌐 Ping IndexNow Search Engines</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB 2: CHANNELS & M3U8 MANAGER -->
+        <section data-adm-panel="channels" hidden>
+          <div class="glass-card" style="padding:22px;margin-bottom:18px;">
+            <h2 style="margin-top:0;" id="chFormHeading">➕ Add / Edit Live Channel &amp; Test Working M3U8</h2>
+            <form id="channelForm" class="form-stack">
+              <input type="hidden" id="chEditId" />
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;">
+                <div class="form-group">
+                  <label>Channel Name *</label>
+                  <input type="text" id="chName" class="input-field" placeholder="e.g. PTV Sports HD" required />
+                </div>
+                <div class="form-group">
+                  <label>Category / Group *</label>
+                  <input type="text" id="chCategory" class="input-field" placeholder="e.g. Live Sports HD" value="Live Sports HD" required />
+                </div>
+                <div class="form-group">
+                  <label>Access Tier (Free vs PRO VIP) *</label>
+                  <select id="chTier" class="input-field">
+                    <option value="free">🟢 FREE Channel (Open to All)</option>
+                    <option value="pro">👑 PRO VIP Channel (Locked with Unlock Video)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Country / Language</label>
+                  <input type="text" id="chCountry" class="input-field" placeholder="PK / Urdu" value="PK" />
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;">
+                <div class="form-group">
+                  <label>Primary Working .M3U8 Stream URL *</label>
+                  <input type="text" id="chUrl" class="input-field" placeholder="https://example.com/live/index.m3u8" required />
+                </div>
+                <button type="button" class="btn btn-gold" id="probeSingleBtn">⚡ Test Working M3U8</button>
+              </div>
+
+              <div id="probeSingleResult" class="cred-box" hidden></div>
+
+              <!-- Live Mini Test Player -->
+              <div id="adminMiniPreviewWrap" class="cred-box" hidden>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                  <strong>🎬 Live Stream Verification Preview</strong>
+                  <button type="button" class="btn btn-sm btn-outline" id="closeMiniPreviewBtn">Close Preview</button>
+                </div>
+                <video id="adminPreviewVideo" controls playsinline style="width:100%;max-height:240px;background:#000;border-radius:10px;"></video>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
+                <div class="form-group">
+                  <label>Logo Image URL</label>
+                  <input type="text" id="chLogo" class="input-field" placeholder="https://..." />
+                </div>
+                <div class="form-group">
+                  <label>Backup .M3U8 Servers (comma separated, optional)</label>
+                  <input type="text" id="chBackups" class="input-field" placeholder="https://backup1.m3u8, https://backup2.m3u8" />
+                </div>
+                <div class="form-group">
+                  <label>Per-Channel Custom Intro Video Override (optional)</label>
+                  <input type="text" id="chIntroOverride" class="input-field" placeholder="Leave blank to use Default Welcome Video" />
+                </div>
+              </div>
+
+              <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button type="submit" class="btn btn-primary">💾 Save Channel to RTDB</button>
+                <button type="button" class="btn btn-outline" id="chResetBtn">Reset Form</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="glass-card" style="padding:22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+              <h3 style="margin:0;">📡 Active Catalog Channels (<span id="admChCount">0</span>)</h3>
+              <input type="search" id="admChFilter" class="input-field" placeholder="Filter channels..." style="max-width:260px;" />
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Channel</th>
+                    <th>Category</th>
+                    <th>Tier (Click to Switch)</th>
+                    <th>Channel M3U8 File &amp; Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="admChannelsTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB 3: BULK M3U IMPORT / EXPORT -->
+        <section data-adm-panel="import" hidden>
+          <div class="glass-card" style="padding:22px;margin-bottom:18px;">
+            <h2 style="margin-top:0;">📥 Bulk M3U / M3U8 Playlist Importer &amp; Working Link Filter</h2>
+            <p class="muted-sm">Paste a complete <code>#EXTM3U</code> playlist, upload an <code>.m3u/.m3u8</code> file, or fetch from a remote URL. Probe all links to import only working streams!</p>
+
+            <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:10px;">
+              <input type="url" id="bulkRemoteUrl" class="input-field" placeholder="Optional: Paste remote M3U playlist URL (https://.../playlist.m3u)" />
+              <button type="button" class="btn btn-outline" id="fetchRemoteM3uBtn">🌐 Fetch M3U URL</button>
+            </div>
+
+            <div style="margin-bottom:10px;">
+              <input type="file" id="bulkFileInput" accept=".m3u,.m3u8,.txt" class="input-field" />
+            </div>
+
+            <textarea id="bulkM3uTextarea" rows="6" class="input-field" style="width:100%;" placeholder="#EXTM3U&#10;#EXTINF:-1 tvg-logo=&quot;...&quot; group-title=&quot;Sports&quot;,Channel Name&#10;https://example.com/live/stream.m3u8"></textarea>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center;">
+              <button type="button" class="btn btn-primary" id="parseM3uBtn">🔍 Parse M3U Channels</button>
+              <button type="button" class="btn btn-gold" id="probeBulkBtn" hidden>⚡ Test Working M3U8 Links</button>
+              <button type="button" class="btn btn-outline" id="selectWorkingBulkBtn" hidden>✅ Select Working Only</button>
+              <select id="bulkImportTier" class="select-compact">
+                <option value="free">Import as FREE</option>
+                <option value="pro">Import as PRO VIP</option>
+              </select>
+              <button type="button" class="btn btn-whatsapp" id="commitBulkImportBtn" hidden>📥 Import Selected to RTDB</button>
+            </div>
+
+            <div id="bulkParsedWrap" style="margin-top:14px;" hidden></div>
+          </div>
+
+          <div class="glass-card" style="padding:22px;">
+            <h3 style="margin-top:0;">📤 Export BarakatWave Channel Playlists</h3>
+            <p class="muted-sm">Export all channels or Free-only channels as clean `.m3u8` files or full JSON backup.</p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <button type="button" class="btn btn-primary" id="exportCleanM3uBtn">⬇ Export Master Clean .M3U8</button>
+              <button type="button" class="btn btn-outline" id="exportRawM3uBtn">⬇ Export Raw Sources .M3U8</button>
+              <button type="button" class="btn btn-outline" id="exportFreeM3uBtn">⬇ Export Free-Only .M3U8</button>
+              <button type="button" class="btn btn-outline" id="exportJsonBtn">⬇ Export Catalog .JSON</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB 4: GITHUB TOKEN M3U8 PUSH STUDIO -->
+        <section data-adm-panel="github" hidden>
+          <div class="glass-card" style="padding:24px;">
+            <span class="badge badge-gold">AUTOMATED GITHUB M3U8 PUBLISHER</span>
+            <h2 style="margin:8px 0 6px;">🐙 Generate Per-Channel .M3U8 Files &amp; Push via GitHub Token</h2>
+            <p class="muted-sm">
+              Generates individual <code>.m3u8</code> files for every channel (<code>data/streams/&lt;slug&gt;.m3u8</code>) plus <code>master-free.m3u8</code> &amp; <code>master-all.m3u8</code> and pushes them to your GitHub repository in a single atomic commit!
+            </p>
+
+            <div class="form-stack" style="margin-top:14px;">
+              <div class="form-group">
+                <label>GitHub Personal Access Token (PAT with <code>Contents: Read &amp; Write</code>)</label>
+                <input type="password" id="ghTokenInput" class="input-field" placeholder="ghp_... or github_pat_... (Sent securely to /api/github/push)" />
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;">
+                <div class="form-group">
+                  <label>GitHub Repository</label>
+                  <input type="text" id="ghRepoInput" class="input-field" value="muaaziqbalvip/BarakatWave-TV" />
+                </div>
+                <div class="form-group">
+                  <label>Target Branch</label>
+                  <input type="text" id="ghBranchInput" class="input-field" value="main" />
+                </div>
+                <div class="form-group">
+                  <label>Output Folder</label>
+                  <input type="text" id="ghFolderInput" class="input-field" value="data/streams" />
+                </div>
+              </div>
+
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;">
+                <button type="button" class="btn btn-outline" id="previewGhFilesBtn">👁 Preview Generated .M3U8 Files</button>
+                <button type="button" class="btn btn-gold" id="pushGhFilesBtn">🚀 Push All Channel M3U8s to GitHub</button>
+              </div>
+            </div>
+
+            <div id="ghPushResult" class="cred-box" style="margin-top:16px;" hidden></div>
+          </div>
+        </section>
+
+        <!-- TAB 5: STREAM DEFAULTS (WELCOME INTRO VIDEO & PRO UNLOCK VIDEO) -->
+        <section data-adm-panel="defaults" hidden>
+          <div class="glass-card" style="padding:24px;">
+            <span class="badge badge-cyan">LIVE M3U8 STITCHING &amp; WEB PLAYER DEFAULTS</span>
+            <h2 style="margin:8px 0 6px;">🎬 Default Welcome Intro Video &amp; Premium PRO Unlock Video</h2>
+            <p class="muted-sm">
+              Set the default Welcome Animation video that plays before channels start, and the Premium Unlock video that loops inside Live <code>.m3u8</code> &amp; Web Player whenever a Free user opens a <code>PRO VIP</code> channel!
+            </p>
+
+            <form id="defaultsForm" class="form-stack" style="margin-top:14px;">
+              <!-- Welcome Pre-Roll Card -->
+              <div class="cred-box" style="padding:18px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                  <strong>1. Default Welcome / Intro Animation Video (Pre-Roll)</strong>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <input type="checkbox" id="defWelcomeEnabled" checked />
+                    <span>Enable Welcome Video Before Channels</span>
+                  </label>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;">
+                  <input type="text" id="defWelcomeUrl" class="input-field" placeholder="/media/welcome/index.m3u8 or https://.../intro.mp4" />
+                  <button type="button" class="btn btn-sm btn-outline" id="previewWelcomeBtn">▶ Preview</button>
+                  <button type="button" class="btn btn-sm btn-outline" id="resetWelcomeBtn">Reset Default</button>
+                </div>
+                <div style="display:grid;grid-template-columns:180px 1fr;gap:12px;margin-top:10px;align-items:center;">
+                  <div class="form-group">
+                    <label>Intro Duration (sec)</label>
+                    <input type="number" id="defWelcomeDur" class="input-field" min="3" max="30" value="6" />
+                  </div>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:18px;">
+                    <input type="checkbox" id="defWelcomeSkip" checked />
+                    <span>Allow "Skip Intro" button in Web Player</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Premium PRO Unlock Video Card -->
+              <div class="cred-box" style="padding:18px;border-color:var(--border-strong);">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                  <strong>2. Premium Channel Locked / Buy PRO Video (Live M3U8 + Web Loop)</strong>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <input type="checkbox" id="defProVideoEnabled" checked />
+                    <span>Enable PRO Unlock Video Stream</span>
+                  </label>
+                </div>
+                <p class="muted-sm" style="margin:0 0 8px;">When any channel is set to <code>PRO VIP</code>, Free users on Web, TiviMate, IPTV Smarters, or VLC see this continuous live video instructing them to unlock PRO!</p>
+                <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;">
+                  <input type="text" id="defProVideoUrl" class="input-field" placeholder="/media/pro-unlock/index.m3u8 or https://.../unlock.m3u8" />
+                  <button type="button" class="btn btn-sm btn-outline" id="previewProVidBtn">▶ Preview</button>
+                  <button type="button" class="btn btn-sm btn-outline" id="resetProVidBtn">Reset Default</button>
+                </div>
+
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px;">
+                  <div class="form-group">
+                    <label>Official PRO Contact Number</label>
+                    <input type="text" id="defProPhone" class="input-field" value="03062015326" />
+                  </div>
+                  <div class="form-group">
+                    <label>Top Site Announcement Ticker</label>
+                    <input type="text" id="defAnnouncement" class="input-field" />
+                  </div>
+                </div>
+              </div>
+
+              <div id="defaultsPreviewBox" class="cred-box" hidden>
+                <video id="defaultsVideoEl" controls playsinline style="width:100%;max-height:260px;background:#000;border-radius:10px;"></video>
+              </div>
+
+              <button type="submit" class="btn btn-lg btn-primary">💾 Save Default Video &amp; PRO Settings</button>
+            </form>
+          </div>
+        </section>
+
+        <!-- TAB 6: XTREAM ACCOUNTS & PRO VIP UPGRADES -->
+        <section data-adm-panel="xtream" hidden>
+          <div class="glass-card" style="padding:22px;margin-bottom:18px;">
+            <h2 style="margin-top:0;">➕ Create Custom Xtream Server Account (WhatsApp / Direct VIP Customer)</h2>
+            <form id="manualXtreamForm" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end;">
+              <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="manXtUser" class="input-field" placeholder="bw_vip_ali" required />
+              </div>
+              <div class="form-group">
+                <label>Password</label>
+                <input type="text" id="manXtPass" class="input-field" placeholder="BW786786" required />
+              </div>
+              <div class="form-group">
+                <label>Plan Tier</label>
+                <select id="manXtPlan" class="input-field">
+                  <option value="pro">👑 PRO VIP</option>
+                  <option value="free">FREE</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Max Connections</label>
+                <input type="number" id="manXtConn" class="input-field" value="5" min="1" max="20" />
+              </div>
+              <button type="submit" class="btn btn-gold">+ Create Xtream User</button>
+            </form>
+          </div>
+
+          <div class="glass-card" style="padding:22px;">
+            <h3 style="margin-top:0;">⚡ Registered Xtream Server Accounts</h3>
+            <p class="muted-sm">When a customer contacts <strong>0306-2015326</strong>, click <strong>Upgrade to PRO VIP</strong> next to their username for instant activation across Web &amp; IPTV apps!</p>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Password</th>
+                    <th>User / Email</th>
+                    <th>Plan</th>
+                    <th>Conn.</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="admXtreamTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB 7: BLOGS & GOOGLE SEARCH CONSOLE VIRAL SEO -->
+        <section data-adm-panel="seo" hidden>
+          <div class="glass-card" style="padding:22px;margin-bottom:18px;">
+            <span class="badge badge-gold">GOOGLE + AI VIRAL INDEXING</span>
+            <h2 style="margin:8px 0 6px;">🚀 Google Search Console &amp; AI Crawler Hub</h2>
+            <p class="muted-sm">Every page, channel, and blog post is automatically added to <code>/sitemap.xml</code>, <code>/rss.xml</code>, and <code>/llms-full.txt</code> with full credit to <strong>Muaaz Iqbal (Mizanora Projects)</strong>.</p>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin:12px 0;">
+              <div class="form-group">
+                <label>Google Search Console HTML Tag Content</label>
+                <input type="text" id="seoGscInput" class="input-field" placeholder="Paste content='...' verification token" />
+              </div>
+              <div class="form-group">
+                <label>Bing Webmaster Verification Token</label>
+                <input type="text" id="seoBingInput" class="input-field" placeholder="Paste msvalidate.01 token" />
+              </div>
+            </div>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <button type="button" class="btn btn-primary" id="saveSeoTokensBtn">💾 Save Verification Tokens</button>
+              <button type="button" class="btn btn-gold" id="pingIndexNowBtn">📡 Ping IndexNow / Search Engines Now</button>
+              <a href="/sitemap.xml" target="_blank" class="btn btn-outline">🗺 Open Sitemap.xml</a>
+              <a href="/rss.xml" target="_blank" class="btn btn-outline">📰 Open RSS.xml</a>
+              <a href="/llms.txt" target="_blank" class="btn btn-outline">🤖 Open AI LLMs.txt</a>
+            </div>
+            <div id="seoPingOutput" class="cred-box" style="margin-top:12px;" hidden></div>
+          </div>
+
+          <div class="glass-card" style="padding:22px;margin-bottom:18px;">
+            <h3 style="margin-top:0;">✍️ Publish New SEO Blog Article</h3>
+            <form id="blogForm" class="form-stack">
+              <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;">
+                <input type="text" id="blgTitle" class="input-field" placeholder="Blog Title (e.g. Best Free Xtream Server in Pakistan 2026)" required />
+                <input type="text" id="blgCategory" class="input-field" placeholder="Category" value="Streaming Guides" />
+              </div>
+              <input type="text" id="blgExcerpt" class="input-field" placeholder="Short SEO Meta Description (140-160 chars)" required />
+              <textarea id="blgContent" rows="6" class="input-field" placeholder="Write HTML or paragraphs (<p>...</p>, <h2>...</h2>)..." required></textarea>
+              <button type="submit" class="btn btn-primary">🚀 Publish Blog &amp; Auto-Add to Sitemap</button>
+            </form>
+          </div>
+
+          <div class="glass-card" style="padding:22px;">
+            <h3 style="margin-top:0;">📚 Published Blog Articles (<span id="admBlogCount">0</span>)</h3>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Category</th>
+                    <th>SEO URL</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="admBlogsTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB 8: TICKETS, REVIEWS & FIREBASE RTDB RULES -->
+        <section data-adm-panel="support" hidden>
+          <div class="glass-card" style="padding:22px;margin-bottom:18px;">
+            <h2 style="margin-top:0;">🎫 Customer Support &amp; PRO Upgrade Tickets</h2>
+            <div id="admTicketsList" style="display:flex;flex-direction:column;gap:10px;"></div>
+          </div>
+
+          <div class="glass-card" style="padding:22px;margin-bottom:18px;">
+            <h3 style="margin-top:0;">⭐ Moderate &amp; Reply to User Reviews</h3>
+            <div id="admReviewsList" style="display:flex;flex-direction:column;gap:10px;"></div>
+          </div>
+
+          <div class="glass-card" style="padding:22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+              <div>
+                <h3 style="margin:0;">🔒 Firebase Realtime Database Security Rules</h3>
+                <p class="muted-sm" style="margin:4px 0 0;">Paste in Firebase Console &rarr; <strong>barakatwave-tv</strong> &rarr; Realtime Database &rarr; <strong>Rules</strong> &rarr; Publish.</p>
+              </div>
+              <button type="button" class="btn btn-primary" id="copyRtdbRulesBtn">📋 Copy RTDB Rules JSON</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/assets/vendor/hls.min.js"></script>
+  <script type="module" src="/assets/js/admin.js"></script>
+</body>
+</html>

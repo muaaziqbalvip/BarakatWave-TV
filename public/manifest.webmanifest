@@ -1,0 +1,29 @@
+{
+  "name": "BarakatWave Live TV — Mizanora Projects",
+  "short_name": "BarakatWave TV",
+  "description": "Live HD TV Streaming Network, Free Personal Xtream Codes Server & Custom M3U8 Playlist Studio. A Mizanora Project by Muaaz Iqbal.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060d18",
+  "theme_color": "#00d4ff",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/logo-fallback.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

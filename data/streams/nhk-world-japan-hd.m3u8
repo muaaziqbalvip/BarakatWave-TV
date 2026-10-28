@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:NHK World Asia HD — BarakatWave Live TV (FREE HD)
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.channel",VALUE="nhk-world-japan-hd"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="nhk.world" tvg-name="NHK World Asia HD" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="Science & Documentary",NHK World Asia HD
+https://barakatwave.vercel.app/ch/nhk-world-japan-hd.m3u8
