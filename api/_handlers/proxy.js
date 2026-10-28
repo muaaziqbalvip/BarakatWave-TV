@@ -4,7 +4,7 @@ import {
   parseQuery,
   sendText,
   setCorsHeaders
-} from "./_lib/origin.js";
+} from "../_lib/origin.js";
 
 function isSafeExternalUrl(rawUrl) {
   try {

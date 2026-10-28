@@ -3,8 +3,8 @@ import {
   handleOptions,
   parseQuery,
   sendText
-} from "./_lib/origin.js";
-import { getChannels, verifyXtreamCredentials } from "./_lib/rtdb.js";
+} from "../_lib/origin.js";
+import { getChannels, verifyXtreamCredentials } from "../_lib/rtdb.js";
 
 /**
  * Handles both:

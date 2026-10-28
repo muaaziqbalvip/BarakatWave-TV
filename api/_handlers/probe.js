@@ -4,7 +4,7 @@ import {
   parseBody,
   parseQuery,
   sendJson
-} from "./_lib/origin.js";
+} from "../_lib/origin.js";
 
 const KNOWN_LOCAL_STREAMS = new Set([
   "/media/welcome/index.m3u8",

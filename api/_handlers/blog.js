@@ -4,9 +4,9 @@ import {
   parseQuery,
   sendJson,
   sendText
-} from "./_lib/origin.js";
-import { getBlogs, getSettings } from "./_lib/rtdb.js";
-import { BRAND } from "../data/catalog.js";
+} from "../_lib/origin.js";
+import { getBlogs, getSettings } from "../_lib/rtdb.js";
+import { BRAND } from "../../data/catalog.js";
 
 function escHtml(s) {
   return String(s || "")

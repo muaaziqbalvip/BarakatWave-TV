@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_CHANNELS, BRAND } from "../data/catalog.js";
-import { buildGitHubFilesMap } from "../api/github/push.js";
+import { buildGitHubFilesMap } from "../api/_handlers/github-push.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
