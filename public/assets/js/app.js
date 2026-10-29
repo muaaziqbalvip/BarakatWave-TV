@@ -59,6 +59,10 @@ const state = {
   blogs: [...DEFAULT_BLOGS],
   reviews: [...DEFAULT_REVIEWS],
   favorites: new Set(JSON.parse(localStorage.getItem("bw_favorites") || "[]")),
+  watchlist: new Set(JSON.parse(localStorage.getItem("bw_watchlist") || "[]")),
+  deferredInstallPrompt: null,
+  activeSeriesItem: null,
+  activeEpisodeIdx: 0,
   activeCategory: "ALL",
   searchQuery: "",
   viewerSort: "priority",
@@ -78,6 +82,9 @@ let player = null;
 function init() {
   renderThemeSwitcher();
   initPlayer();
+  bindUniversalStreamLab();
+  bindPwaInstaller();
+  bind3dCardTiltEffects();
   bindNavigation();
   bindAuthModal();
   bindGuideControls();
@@ -242,13 +249,17 @@ function applyDynamicSiteSettings() {
 function initPlayer() {
   player = new BarakatPlayer({
     videoEl: document.getElementById("liveVideo"),
+    stageEl: document.getElementById("playerStage"),
     statusEl: document.getElementById("playerStatusPill"),
+    codecBadgeEl: document.getElementById("playerCodecPill"),
     qualitySelectEl: document.getElementById("qualitySelect"),
     audioSelectEl: document.getElementById("audioSelect"),
+    subtitleSelectEl: document.getElementById("subtitleSelect"),
     introOverlayEl: document.getElementById("introOverlay"),
     introCountdownEl: document.getElementById("introCountdown"),
     skipIntroBtnEl: document.getElementById("skipIntroBtn"),
     proOverlayEl: document.getElementById("proUnlockOverlay"),
+    onStepChannel: (delta) => stepChannel(delta),
     onStateChange: (mode, item) => {
       const subEl = document.getElementById("nowPlayingSub");
       if (!subEl) return;
@@ -310,6 +321,10 @@ function selectInitialChannel() {
 
 function playChannel(channel, { skipWelcome = false } = {}) {
   state.currentChannel = channel;
+  state.activeSeriesItem = null;
+  const epTray = document.getElementById("activeSeriesEpisodeTray");
+  if (epTray) epTray.hidden = true;
+
   const logoEl = document.getElementById("nowPlayingLogo");
   const titleEl = document.getElementById("nowPlayingTitle");
   const subEl = document.getElementById("nowPlayingSub");
@@ -1503,16 +1518,23 @@ function bindCinemaHub() {
 function getCombinedCinemaItems() {
   const movs = state.movies.map((m) => ({ ...m, _mediaType: "movie" }));
   const sers = state.series.map((s) => ({ ...s, _mediaType: "series" }));
-  setText("cinCountAll", String(movs.length + sers.length));
+  const allCombined = [...movs, ...sers];
+  setText("cinCountAll", String(allCombined.length));
   setText("cinCountMovies", String(movs.length));
   setText("cinCountSeries", String(sers.length));
+  setText(
+    "cinCountWatchlist",
+    String(allCombined.filter((x) => state.watchlist.has(x.imdbId || x.id)).length)
+  );
 
   let list =
     state.cinemaType === "movie"
       ? movs
       : state.cinemaType === "series"
         ? sers
-        : [...movs, ...sers];
+        : state.cinemaType === "watchlist"
+          ? allCombined.filter((x) => state.watchlist.has(x.imdbId || x.id))
+          : allCombined;
 
   if (state.cinemaCategory !== "ALL") {
     list = list.filter((x) => x.category === state.cinemaCategory);
@@ -1569,9 +1591,15 @@ function renderCinemaHub() {
   }
 
   const items = getCombinedCinemaItems();
+  renderCinemaFeaturedSpotlight(items[0] || state.movies[0]);
+
   if (!items.length) {
     if (moreWrap) moreWrap.hidden = true;
-    gridEl.innerHTML = `<div class="glass-card" style="grid-column:1/-1;padding:28px;text-align:center;">No Movies or Series match your filter. Try pasting any <code>tt...</code> IMDb ID above!</div>`;
+    gridEl.innerHTML = `<div class="glass-card" style="grid-column:1/-1;padding:28px;text-align:center;">${
+      state.cinemaType === "watchlist"
+        ? "Your ❤️ Watchlist is empty — tap the heart icon on any Movie or Series poster to save it!"
+        : "No Movies or Series match your filter. Try pasting any <code>tt...</code> IMDb ID above!"
+    }</div>`;
     return;
   }
 
@@ -1589,6 +1617,8 @@ function renderCinemaHub() {
     .map((item) => {
       const isSeries = item._mediaType === "series" || item.type === "series";
       const rating = Number(item.imdbRating || 8.0).toFixed(1);
+      const wlKey = item.imdbId || item.id;
+      const inWl = state.watchlist.has(wlKey);
       const statusRibbon = item.streamUrl
         ? "▶ STREAMING NOW IN HD"
         : "🎬 SERVICE BUILDING • COMING SOON";
@@ -1603,6 +1633,7 @@ function renderCinemaHub() {
             />
             <span class="imdb-rating-pill">⭐ ${escHtml(rating)}</span>
             <span class="cinema-type-pill">${isSeries ? "📺 SERIES" : "🎬 MOVIE"}</span>
+            <button type="button" class="cinema-fav-heart ${inWl ? "saved" : ""}" data-wl-toggle="${escAttr(wlKey)}" title="Save to My Watchlist">${inWl ? "❤️" : "🤍"}</button>
             <div class="cinema-coming-ribbon">${escHtml(statusRibbon)}</div>
           </div>
           <div class="cinema-card-body">
@@ -1620,8 +1651,16 @@ function renderCinemaHub() {
     })
     .join("");
 
+  gridEl.querySelectorAll("[data-wl-toggle]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleWatchlist(btn.dataset.wlToggle);
+    });
+  });
+
   gridEl.querySelectorAll("[data-open-cin]").forEach((card) => {
-    card.addEventListener("click", () => {
+    card.addEventListener("click", (e) => {
+      if (e.target.closest("[data-wl-toggle]")) return;
       const key = card.dataset.openCin;
       const found = visibleItems.find((x) => (x.id || x.imdbId) === key);
       if (found) openCinemaDetailModal(found);
@@ -1704,31 +1743,117 @@ function openCinemaDetailModal(item) {
 
   document.getElementById("cinWatchMainBtn")?.addEventListener("click", () => {
     modal.hidden = true;
-    playVodInStudio(item);
+    if (isSeries && episodes.length) {
+      playVodInStudio(
+        {
+          ...item,
+          title: `${item.title} — ${episodes[0].title || "S01E01"}`,
+          streamUrl: episodes[0].streamUrl || item.streamUrl || ""
+        },
+        item,
+        0
+      );
+    } else {
+      playVodInStudio(item, null, 0);
+    }
   });
 
   content.querySelectorAll("[data-play-ep-idx]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const ep = episodes[Number(btn.dataset.playEpIdx) || 0];
+      const epIdx = Number(btn.dataset.playEpIdx) || 0;
+      const ep = episodes[epIdx];
       modal.hidden = true;
-      playVodInStudio({
-        ...item,
-        title: ep ? ep.title : item.title,
-        streamUrl: (ep && ep.streamUrl) || item.streamUrl || ""
-      });
+      playVodInStudio(
+        {
+          ...item,
+          title: ep ? `${item.title} — ${ep.title}` : item.title,
+          streamUrl: (ep && ep.streamUrl) || item.streamUrl || ""
+        },
+        item,
+        epIdx
+      );
     });
   });
 }
 
-function playVodInStudio(vodItem) {
+function renderCinemaFeaturedSpotlight(item) {
+  const hero = document.getElementById("cinemaFeaturedHero");
+  if (!hero || !item) return;
+  const isSeries = item._mediaType === "series" || item.type === "series" || Array.isArray(item.episodes);
+  const rating = Number(item.imdbRating || 8.4).toFixed(1);
+  const wlKey = item.imdbId || item.id;
+  const inWl = state.watchlist.has(wlKey);
+
+  hero.style.backgroundImage = `url('${escAttr(item.backdrop || item.poster || BRAND.logoPrimary)}')`;
+  hero.innerHTML = `
+    <div class="cinema-3d-hero-inner">
+      <div style="max-width:640px;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+          <span class="badge badge-gold">🌟 FEATURED 3D CINEMA SPOTLIGHT</span>
+          <span class="badge badge-cyan">⭐ IMDb ${escHtml(rating)}</span>
+          <span class="badge badge-free">${isSeries ? "📺 TV SERIES" : "🎬 BLOCKBUSTER"}</span>
+        </div>
+        <h2 style="margin:0 0 6px;font-size:1.65rem;line-height:1.2;">${escHtml(item.title)} (${escHtml(item.year || "HD")})</h2>
+        <p style="margin:0 0 14px;font-size:0.9rem;color:#cbd5e1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+          ${escHtml(item.plot || "")}
+        </p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-primary" id="heroSpotPlayBtn">▶ Play in 3D Studio Player</button>
+          <button type="button" class="btn btn-outline" id="heroSpotInfoBtn" style="color:#fff;border-color:rgba(255,255,255,0.3);">ℹ️ Details${isSeries ? " & Episodes" : ""}</button>
+          <button type="button" class="btn btn-outline" id="heroSpotWlBtn" style="color:#fff;border-color:rgba(255,255,255,0.3);">${inWl ? "❤️ Saved in My List" : "🤍 Add to My List"}</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  hero.querySelector("#heroSpotPlayBtn")?.addEventListener("click", () => {
+    const eps = Array.isArray(item.episodes) ? item.episodes : [];
+    if (isSeries && eps.length) {
+      playVodInStudio(
+        { ...item, title: `${item.title} — ${eps[0].title || "S01E01"}`, streamUrl: eps[0].streamUrl || item.streamUrl || "" },
+        item,
+        0
+      );
+    } else {
+      playVodInStudio(item, null, 0);
+    }
+  });
+  hero.querySelector("#heroSpotInfoBtn")?.addEventListener("click", () => openCinemaDetailModal(item));
+  hero.querySelector("#heroSpotWlBtn")?.addEventListener("click", () => toggleWatchlist(wlKey));
+}
+
+function toggleWatchlist(wlKey) {
+  if (!wlKey) return;
+  if (state.watchlist.has(wlKey)) {
+    state.watchlist.delete(wlKey);
+    showToast("Removed from ❤️ My List");
+  } else {
+    state.watchlist.add(wlKey);
+    showToast("Saved to ❤️ My List!");
+  }
+  localStorage.setItem("bw_watchlist", JSON.stringify([...state.watchlist]));
+  renderCinemaHub();
+}
+
+function playVodInStudio(vodItem, seriesParent = null, epIdx = 0) {
   switchView("live");
-  setText("activeChannelTitle", `${vodItem.title} ⭐ ${vodItem.imdbRating || "8.0"}`);
+  state.activeSeriesItem = seriesParent || (Array.isArray(vodItem.episodes) ? vodItem : null);
+  state.activeEpisodeIdx = epIdx;
+
+  setText("nowPlayingTitle", `${vodItem.title} ⭐ ${vodItem.imdbRating || "8.0"}`);
   setText(
-    "activeChannelMeta",
-    `${vodItem.category || "IMDb Cinema"} • IMDb ${vodItem.imdbId || ""} • ${vodItem.streamUrl ? "HD VOD" : "Service Building — Coming Soon"}`
+    "nowPlayingSub",
+    `${vodItem.category || "IMDb Cinema"} • IMDb ${vodItem.imdbId || ""} • ${vodItem.streamUrl ? "HD Cinema Stream" : "Service Building — Coming Soon"}`
   );
-  const logoEl = document.getElementById("activeChannelLogo");
+  const logoEl = document.getElementById("nowPlayingLogo");
   if (logoEl) logoEl.src = vodItem.poster || BRAND.logoPrimary;
+  const tierEl = document.getElementById("nowPlayingTier");
+  if (tierEl) {
+    tierEl.className = vodItem.tier === "pro" ? "badge badge-gold" : "badge badge-cyan";
+    tierEl.textContent = state.activeSeriesItem ? "📺 SERIES" : "🎬 CINEMA";
+  }
+
+  renderActiveSeriesEpisodeTray();
 
   player?.loadVod(vodItem, {
     settings: state.settings,
@@ -1738,6 +1863,217 @@ function playVodInStudio(vodItem) {
   setTimeout(() => {
     document.getElementById("playerStage")?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, 120);
+}
+
+function renderActiveSeriesEpisodeTray() {
+  const tray = document.getElementById("activeSeriesEpisodeTray");
+  if (!tray) return;
+  const ser = state.activeSeriesItem;
+  const eps = Array.isArray(ser?.episodes) ? ser.episodes : [];
+  if (!ser || !eps.length) {
+    tray.hidden = true;
+    tray.innerHTML = "";
+    return;
+  }
+
+  tray.hidden = false;
+  tray.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+      <strong style="font-size:0.84rem;">📺 ${escHtml(ser.title)} — Select Episode (${eps.length})</strong>
+      <button type="button" class="btn btn-sm btn-outline" id="backToCinemaFromPlayerBtn">← Back to Movies &amp; Series</button>
+    </div>
+    <div class="episode-pills-scroll">
+      ${eps
+        .map(
+          (ep, idx) => `
+        <button type="button" class="ep-quick-pill ${idx === state.activeEpisodeIdx ? "active" : ""}" data-tray-ep="${idx}">
+          ▶ S${String(ep.season || 1).padStart(2, "0")}E${String(ep.episode || idx + 1).padStart(2, "0")}
+        </button>`
+        )
+        .join("")}
+    </div>
+  `;
+
+  tray.querySelector("#backToCinemaFromPlayerBtn")?.addEventListener("click", () => switchView("cinema"));
+  tray.querySelectorAll("[data-tray-ep]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.trayEp) || 0;
+      const ep = eps[idx];
+      if (!ep) return;
+      playVodInStudio(
+        {
+          ...ser,
+          title: `${ser.title} — ${ep.title || `S01E${idx + 1}`}`,
+          streamUrl: ep.streamUrl || ser.streamUrl || ""
+        },
+        ser,
+        idx
+      );
+    });
+  });
+}
+
+/* ==================== UNIVERSAL STREAM LAB, 3D TILT & PWA INSTALLER ==================== */
+function bindUniversalStreamLab() {
+  const drawer = document.getElementById("universalStreamDrawer");
+  const toggleDrawer = () => {
+    if (!drawer) return;
+    drawer.hidden = !drawer.hidden;
+    if (!drawer.hidden) {
+      document.getElementById("customStreamUrlInput")?.focus();
+    }
+  };
+
+  document.getElementById("openStreamLabBtn")?.addEventListener("click", toggleDrawer);
+  document.getElementById("heroOpenStreamLabBtn")?.addEventListener("click", () => {
+    if (drawer) drawer.hidden = false;
+    drawer?.scrollIntoView({ behavior: "smooth", block: "center" });
+    document.getElementById("customStreamUrlInput")?.focus();
+  });
+
+  document.querySelectorAll("[data-sample-stream]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const kind = btn.dataset.sampleStream;
+      const urlInp = document.getElementById("customStreamUrlInput");
+      const fmtSel = document.getElementById("customStreamFormatSelect");
+      const drmInp = document.getElementById("customStreamDrmInput");
+      if (!urlInp || !fmtSel) return;
+
+      if (kind === "dash") {
+        urlInp.value = "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd";
+        fmtSel.value = "dash";
+        if (drmInp) drmInp.value = "";
+      } else if (kind === "local_dash") {
+        urlInp.value = "/media/demo-dash/index.mpd";
+        fmtSel.value = "dash";
+        if (drmInp) drmInp.value = "";
+      } else {
+        urlInp.value = "/media/demo-live/index.m3u8";
+        fmtSel.value = "hls";
+        if (drmInp) drmInp.value = "";
+      }
+      document.getElementById("customUniversalStreamForm")?.requestSubmit();
+    });
+  });
+
+  document.getElementById("customUniversalStreamForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const url = document.getElementById("customStreamUrlInput")?.value.trim() || "";
+    const format = document.getElementById("customStreamFormatSelect")?.value || "auto";
+    const drmRaw = document.getElementById("customStreamDrmInput")?.value.trim() || "";
+    if (!url) return showToast("Paste a stream URL (.mpd, .m3u8, .ts, .flv, or .mp4)");
+
+    const isLicenseUrl = /^https?:\/\//i.test(drmRaw);
+    const shortHost = (() => {
+      try {
+        return new URL(url, window.location.origin).hostname;
+      } catch {
+        return "Universal Stream";
+      }
+    })();
+
+    setText("nowPlayingTitle", `Universal Stream (${shortHost})`);
+    setText(
+      "nowPlayingSub",
+      `BarakatWave Universal Engine • ${format.toUpperCase()}${drmRaw ? " • DRM Active" : ""}`
+    );
+    const tierEl = document.getElementById("nowPlayingTier");
+    if (tierEl) {
+      tierEl.className = "badge badge-cyan";
+      tierEl.textContent = /\.mpd(\?|$)/i.test(url) || format === "dash" ? "DASH .MPD" : "UNIVERSAL";
+    }
+
+    await player?.playCustomStream({
+      url,
+      title: `Universal Stream (${shortHost})`,
+      format,
+      drmKey: isLicenseUrl ? "" : drmRaw,
+      drmLicenseUrl: isLicenseUrl ? drmRaw : "",
+      isLive: !/\.(mp4|mkv|webm|mov)(\?|$)/i.test(url)
+    });
+    showToast("▶ Playing stream in BarakatWave Universal 3D Player!");
+  });
+}
+
+function bindPwaInstaller() {
+  const modal = document.getElementById("pwaInstallModal");
+  const nativeBox = document.getElementById("pwaNativePromptBox");
+  const nativeBtn = document.getElementById("pwaTriggerNativeBtn");
+  const headerBtn = document.getElementById("installAppHeaderBtn");
+  const mobBtn = document.getElementById("mobileInstallDockBtn");
+  const closeBtn = document.getElementById("closePwaModalBtn");
+
+  // Hide install button if already running as installed standalone PWA
+  const isStandalone =
+    window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+  if (isStandalone && headerBtn) {
+    headerBtn.hidden = true;
+  }
+
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    state.deferredInstallPrompt = e;
+    if (nativeBox) nativeBox.hidden = false;
+    if (headerBtn) headerBtn.hidden = false;
+  });
+
+  window.addEventListener("appinstalled", () => {
+    state.deferredInstallPrompt = null;
+    if (modal) modal.hidden = true;
+    if (headerBtn) headerBtn.hidden = true;
+    showToast("🎉 BarakatWave TV 3D App installed on your device!");
+  });
+
+  const triggerInstallFlow = async () => {
+    if (state.deferredInstallPrompt) {
+      try {
+        state.deferredInstallPrompt.prompt();
+        const choice = await state.deferredInstallPrompt.userChoice;
+        if (choice?.outcome === "accepted") {
+          state.deferredInstallPrompt = null;
+          return;
+        }
+      } catch {
+        // fall through to guide modal
+      }
+    }
+    if (modal) modal.hidden = false;
+  };
+
+  headerBtn?.addEventListener("click", triggerInstallFlow);
+  mobBtn?.addEventListener("click", triggerInstallFlow);
+  nativeBtn?.addEventListener("click", triggerInstallFlow);
+  closeBtn?.addEventListener("click", () => {
+    if (modal) modal.hidden = true;
+  });
+  modal?.addEventListener("click", (e) => {
+    if (e.target === modal) modal.hidden = true;
+  });
+}
+
+function bind3dCardTiltEffects() {
+  if (!window.matchMedia?.("(hover: hover) and (pointer: fine)")?.matches) return;
+
+  let activeCard = null;
+  document.addEventListener("pointermove", (e) => {
+    const card = e.target.closest?.(".channel-item, .cinema-card, .feature-card, .blog-card");
+    if (activeCard && activeCard !== card) {
+      activeCard.style.removeProperty("--rx");
+      activeCard.style.removeProperty("--ry");
+      activeCard = null;
+    }
+    if (!card) return;
+    activeCard = card;
+    const rect = card.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / Math.max(1, rect.width);
+    const py = (e.clientY - rect.top) / Math.max(1, rect.height);
+    const ry = ((px - 0.5) * 9).toFixed(2);
+    const rx = ((0.5 - py) * 9).toFixed(2);
+    card.style.setProperty("--rx", `${rx}deg`);
+    card.style.setProperty("--ry", `${ry}deg`);
+    card.style.setProperty("--mx", `${Math.round(px * 100)}%`);
+    card.style.setProperty("--my", `${Math.round(py * 100)}%`);
+  });
 }
 
 /* ==================== UTILITIES ==================== */

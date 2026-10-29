@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"
+     type="static"
+     mediaPresentationDuration="PT8.000S"
+     minBufferTime="PT2.000S"
+     profiles="urn:mpeg:dash:profile:mp2t-simple:2011,urn:mpeg:dash:profile:isoff-main:2011">
+  <ProgramInformation>
+    <Title>BarakatWave TV — Universal MPEG-DASH 720p HD Showcase</Title>
+    <Source>Mizanora Projects by Muaaz Iqbal</Source>
+  </ProgramInformation>
+  <Period id="p0" duration="PT8.000S">
+    <AdaptationSet id="1" mimeType="video/mp2t" codecs="avc1.4d401f,mp4a.40.2" width="1280" height="720" frameRate="30" segmentAlignment="true" startWithSAP="1">
+      <Representation id="hd720" bandwidth="2200000" width="1280" height="720">
+        <SegmentList timescale="1000" duration="2000">
+          <SegmentURL media="/media/demo-live/seg0.ts"/>
+          <SegmentURL media="/media/demo-live/seg1.ts"/>
+          <SegmentURL media="/media/demo-live/seg2.ts"/>
+          <SegmentURL media="/media/demo-live/seg3.ts"/>
+        </SegmentList>
+      </Representation>
+    </AdaptationSet>
+  </Period>
+</MPD>

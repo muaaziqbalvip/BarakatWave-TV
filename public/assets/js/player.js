@@ -1,44 +1,371 @@
 /**
- * BarakatWave Live TV — Broadcast HLS / MP4 Player Engine v2.1
+ * BarakatWave Live TV — Custom 3D Universal Broadcast Player Engine v4.0
  * Engineered under Mizanora Projects by Muaaz Iqbal
  *
- * Guarantees:
- *  1) Plays Admin's Welcome / Intro Video FIRST (supporting .m3u8, .m2ts/.ts, or .mp4),
- *     and the instant Intro ends, switches DIRECTLY to the Live Channel!
- *  2) PRO VIP Channels remain visible to Free/Guest users and play Admin's Premium Unlock Video
- *     continuously (0306-2015326) until upgraded to PRO VIP!
- *  3) Automatic Direct HD -> Same-Origin Relay Proxy -> Backup Server failover!
+ * Custom Studio Player + Multi-Protocol Media Core:
+ *  - MPEG-DASH (.mpd) Live & VOD + ClearKey DRM (kid:key / JSON) + Widevine DRM via Shaka Player
+ *  - Apple HLS (.m3u8 / .m3u) Live & VOD + AES-128 + Custom Port (:5789) Failover via hls.js / Safari
+ *  - Live Raw MPEG-TS (.ts / .m2ts) & HTTP-FLV (.flv) Streams via mpegts.js MSE
+ *  - Progressive Cinema & Audio (.mp4, .webm, .mkv, .mov, .mp3, .aac, .m4a, .opus)
+ *  - 4-Video Broadcast Suite: Welcome Intro -> Live Channel, PRO VIP Unlock (0306-2015326),
+ *    Channel Offline Standby, and Movies/Series Coming Soon Broadcast
+ *  - Custom Branded 3D Studio Chrome: Scrub Timeline, Live Sync, Aspect Ratio (Fit/Fill/16:9/4:3),
+ *    Unified HLS+DASH Quality & Audio/CC Selectors, 3D Ambilight Glow, Double-Tap Seek,
+ *    Fullscreen Channel Zapping, Mobile Landscape Lock, PiP & Frame Screenshot!
  */
+
+const scriptLoadPromises = new Map();
+
+function loadVendorScriptOnce(src, globalCheck) {
+  if (globalCheck()) return Promise.resolve(true);
+  if (scriptLoadPromises.has(src)) return scriptLoadPromises.get(src);
+
+  const p = new Promise((resolve) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      existing.addEventListener("load", () => resolve(Boolean(globalCheck())), { once: true });
+      existing.addEventListener("error", () => resolve(false), { once: true });
+      setTimeout(() => resolve(Boolean(globalCheck())), 2500);
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve(Boolean(globalCheck()));
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+
+  scriptLoadPromises.set(src, p);
+  return p;
+}
+
+async function ensureShakaPlayer() {
+  const ok = await loadVendorScriptOnce(
+    "/assets/vendor/shaka-player.min.js",
+    () => typeof window !== "undefined" && Boolean(window.shaka?.Player)
+  );
+  if (ok && window.shaka?.polyfill && !window.__bwShakaPolyfilled) {
+    window.__bwShakaPolyfilled = true;
+    try {
+      window.shaka.polyfill.installAll();
+    } catch {
+      // ignore
+    }
+  }
+  return ok && Boolean(window.shaka?.Player?.isBrowserSupported?.() ?? window.shaka?.Player);
+}
+
+async function ensureMpegtsPlayer() {
+  const ok = await loadVendorScriptOnce(
+    "/assets/vendor/mpegts.min.js",
+    () => typeof window !== "undefined" && Boolean(window.mpegts?.createPlayer)
+  );
+  return ok && Boolean(window.mpegts?.isSupported?.());
+}
+
+/**
+ * Parse ClearKey strings in any common IPTV format:
+ *  - "kidHex:keyHex" or "kid1:key1,kid2:key2"
+ *  - '{"keys":[{"kty":"oct","kid":"...","k":"..."}]}' (JWK Base64url)
+ *  - '{"kidHex":"keyHex"}'
+ */
+export function parseClearKeyConfig(rawKey) {
+  const str = String(rawKey || "").trim();
+  if (!str) return null;
+
+  const b64UrlToHex = (b64u) => {
+    try {
+      const b64 = b64u.replace(/-/g, "+").replace(/_/g, "/");
+      const bin = atob(b64 + "===".slice((b64.length + 3) % 4));
+      return Array.from(bin, (c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+    } catch {
+      return "";
+    }
+  };
+
+  if (str.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(str);
+      if (Array.isArray(parsed.keys)) {
+        const out = {};
+        for (const k of parsed.keys) {
+          const kidHex = b64UrlToHex(k.kid || "");
+          const keyHex = b64UrlToHex(k.k || "");
+          if (kidHex && keyHex) out[kidHex.toLowerCase()] = keyHex.toLowerCase();
+        }
+        return Object.keys(out).length ? out : null;
+      }
+      const out = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof v === "string") {
+          out[k.replace(/-/g, "").toLowerCase()] = v.replace(/-/g, "").toLowerCase();
+        }
+      }
+      return Object.keys(out).length ? out : null;
+    } catch {
+      // fall through to colon pair parsing
+    }
+  }
+
+  const out = {};
+  const pairs = str.split(/[,;\s]+/).filter(Boolean);
+  for (const pair of pairs) {
+    const [kid, key] = pair.split(":");
+    if (kid && key) {
+      const cleanKid = kid.replace(/-/g, "").trim().toLowerCase();
+      const cleanKey = key.replace(/-/g, "").trim().toLowerCase();
+      if (/^[0-9a-f]{16,64}$/.test(cleanKid) && /^[0-9a-f]{16,64}$/.test(cleanKey)) {
+        out[cleanKid] = cleanKey;
+      }
+    }
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * Detect optimal playback engine for any stream URL + optional format hint.
+ */
+export function detectStreamProtocol(url, formatHint = "auto") {
+  const hint = String(formatHint || "auto").toLowerCase().trim();
+  if (["dash", "mpd"].includes(hint)) return "dash";
+  if (["hls", "m3u8"].includes(hint)) return "hls";
+  if (["mpegts", "ts"].includes(hint)) return "mpegts";
+  if (hint === "flv") return "flv";
+  if (["mp4", "html5", "direct", "audio"].includes(hint)) return "html5";
+
+  const raw = String(url || "").trim();
+  let checkTarget = raw;
+  // Unwrap /api/proxy?u=... to inspect inner upstream extension!
+  if (raw.includes("/api/proxy?")) {
+    try {
+      const uObj = new URL(raw, "http://localhost");
+      const inner = uObj.searchParams.get("u") || uObj.searchParams.get("url");
+      if (inner) checkTarget = inner;
+    } catch {
+      // keep raw
+    }
+  }
+
+  const cleanPath = checkTarget.split("?")[0].split("#")[0].toLowerCase();
+  const queryPart = (checkTarget.split("?")[1] || "").toLowerCase();
+
+  if (
+    cleanPath.endsWith(".mpd") ||
+    cleanPath.includes(".mpd/") ||
+    /(?:format|manifest|type|output)=mpd\b/.test(queryPart)
+  ) {
+    return "dash";
+  }
+  if (
+    cleanPath.endsWith(".m3u8") ||
+    cleanPath.endsWith(".m3u") ||
+    cleanPath.includes(".m3u8/") ||
+    cleanPath.startsWith("/api/stream") ||
+    /(?:format|output|type)=m3u8\b/.test(queryPart)
+  ) {
+    return "hls";
+  }
+  if (cleanPath.endsWith(".flv") || /(?:format|output)=flv\b/.test(queryPart)) {
+    return "flv";
+  }
+  if (
+    cleanPath.endsWith(".ts") ||
+    cleanPath.endsWith(".m2ts") ||
+    /\/live\/[^/]+\/[^/]+\/\d+\.ts$/i.test(cleanPath)
+  ) {
+    return "mpegts";
+  }
+  if (/\.(mp4|m4v|webm|mkv|mov|ogv|ogg|mp3|aac|m4a|opus|flac|wav)$/.test(cleanPath)) {
+    return "html5";
+  }
+  // Extensionless IPTV panel stream (e.g. http://panel:8080/user/pass/12345) -> try HLS first, then MPEG-TS
+  return "hls";
+}
+
+function formatClock(sec) {
+  if (!Number.isFinite(sec) || sec < 0) return "00:00";
+  const s = Math.floor(sec);
+  const hrs = Math.floor(s / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  const rem = s % 60;
+  if (hrs > 0) {
+    return `${hrs}:${String(mins).padStart(2, "0")}:${String(rem).padStart(2, "0")}`;
+  }
+  return `${String(mins).padStart(2, "0")}:${String(rem).padStart(2, "0")}`;
+}
+
+const ASPECT_MODES = [
+  { id: "fit", label: "16:9 Fit", css: "contain" },
+  { id: "fill", label: "Zoom Fill", css: "cover" },
+  { id: "stretch", label: "Stretch", css: "fill" },
+  { id: "43", label: "4:3 TV", css: "contain", ratio43: true }
+];
 
 export class BarakatPlayer {
   constructor({
     videoEl,
+    stageEl,
     statusEl,
+    codecBadgeEl,
     qualitySelectEl,
     audioSelectEl,
+    subtitleSelectEl,
     introOverlayEl,
     introCountdownEl,
     skipIntroBtnEl,
     proOverlayEl,
-    onStateChange
+    onStateChange,
+    onStepChannel
   }) {
     this.video = videoEl;
+    this.stage = stageEl || videoEl?.closest(".player-stage") || videoEl?.parentElement;
     this.statusEl = statusEl;
+    this.codecBadgeEl = codecBadgeEl;
     this.qualitySelect = qualitySelectEl;
     this.audioSelect = audioSelectEl;
+    this.subtitleSelect = subtitleSelectEl;
     this.introOverlay = introOverlayEl;
     this.introCountdown = introCountdownEl;
     this.skipIntroBtn = skipIntroBtnEl;
     this.proOverlay = proOverlayEl;
     this.onStateChange = onStateChange || (() => {});
+    this.onStepChannel = onStepChannel || null;
 
     this.hls = null;
+    this.shaka = null;
+    this.mpegtsPlayer = null;
+    this.activeEngine = "idle";
+    this.isLiveMode = true;
     this.currentChannel = null;
     this.settings = {};
     this.userPlan = "free";
     this.playToken = 0;
     this.introTimer = null;
     this.introGuardTimer = null;
+    this.aspectIdx = 0;
+    this.ambilightEnabled = localStorage.getItem("bw_ambilight") !== "0";
+    this.ambilightTimer = null;
+    this.uiHideTimer = null;
+    this.isScrubbing = false;
+
+    if (this.video) {
+      // Replace default browser controls with BarakatWave Custom Studio Chrome!
+      this.video.controls = false;
+      this.video.playsInline = true;
+    }
+
+    this.mountCustomChrome();
+    this.bindCoreEvents();
+    this.startAmbilightLoop();
+  }
+
+  mountCustomChrome() {
+    if (!this.stage || !this.video) return;
+    this.stage.classList.add("bw-custom-player");
+
+    // 1. Mount 3D Ambilight Halo Canvas right inside player-shell (behind stage)
+    const shell = this.stage.closest(".player-shell");
+    if (shell && !shell.querySelector(".bw-ambilight-canvas")) {
+      shell.classList.add("bw-shell-3d");
+      const canvas = document.createElement("canvas");
+      canvas.className = "bw-ambilight-canvas";
+      canvas.width = 28;
+      canvas.height = 16;
+      canvas.setAttribute("aria-hidden", "true");
+      shell.prepend(canvas);
+      this.ambilightCanvas = canvas;
+      shell.classList.toggle("ambilight-off", !this.ambilightEnabled);
+    }
+
+    // 2. Mount Custom Center Spinner, Play Pulse, Gesture Zones & Studio Bottom Control Deck
+    if (!this.stage.querySelector(".bw-studio-chrome")) {
+      const chrome = document.createElement("div");
+      chrome.className = "bw-studio-chrome";
+      chrome.innerHTML = `
+        <div class="bw-buffer-ring" id="bwBufferRing" hidden>
+          <div class="bw-spinner-orb"></div>
+          <span class="bw-buffer-label" id="bwBufferLabel">Tuning Stream...</span>
+        </div>
+
+        <button type="button" class="bw-center-play-btn" id="bwCenterPlayBtn" aria-label="Play or Pause" hidden>
+          <span>▶</span>
+        </button>
+
+        <div class="bw-seek-ripple left" id="bwRippleLeft" hidden>⏪ -10s</div>
+        <div class="bw-seek-ripple right" id="bwRippleRight" hidden>+10s ⏩</div>
+
+        <div class="bw-bottom-deck" id="bwBottomDeck">
+          <div class="bw-timeline-wrap" id="bwTimelineWrap">
+            <div class="bw-timeline-track" id="bwTimelineTrack">
+              <div class="bw-timeline-buffered" id="bwTimelineBuffered"></div>
+              <div class="bw-timeline-progress" id="bwTimelineProgress">
+                <span class="bw-timeline-thumb"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bw-deck-row">
+            <div class="bw-deck-left">
+              <button type="button" class="bw-ctrl-btn" id="bwPlayPauseBtn" title="Play / Pause (Space)" aria-label="Play or Pause">⏸</button>
+              <button type="button" class="bw-ctrl-btn" id="bwDeckPrevBtn" title="Previous Channel" aria-label="Previous Channel">⏮</button>
+              <button type="button" class="bw-ctrl-btn" id="bwDeckNextBtn" title="Next Channel" aria-label="Next Channel">⏭</button>
+
+              <div class="bw-vol-group">
+                <button type="button" class="bw-ctrl-btn" id="bwMuteBtn" title="Mute / Unmute (M)" aria-label="Mute">🔊</button>
+                <input type="range" class="bw-vol-slider" id="bwVolSlider" min="0" max="1" step="0.02" value="1" aria-label="Volume" />
+              </div>
+
+              <button type="button" class="bw-live-sync-pill" id="bwTimeOrLiveBtn" title="Jump to Live Edge">
+                <span class="bw-live-dot"></span>
+                <span id="bwTimeText">LIVE</span>
+              </button>
+            </div>
+
+            <div class="bw-deck-right">
+              <span class="bw-engine-badge" id="bwEngineBadge">HLS • AUTO</span>
+              <button type="button" class="bw-ctrl-btn bw-pill-ctrl" id="bwAspectBtn" title="Switch Aspect Ratio (Fit / Fill / 16:9 / 4:3)">16:9</button>
+              <button type="button" class="bw-ctrl-btn bw-pill-ctrl" id="bwSpeedBtn" title="Playback Speed" hidden>1x</button>
+              <button type="button" class="bw-ctrl-btn" id="bwGlowToggleBtn" title="Toggle 3D Ambilight Glow">✨</button>
+              <button type="button" class="bw-ctrl-btn" id="bwSnapBtn" title="Capture HD Frame">📸</button>
+              <button type="button" class="bw-ctrl-btn" id="bwDeckPipBtn" title="Picture-in-Picture (P)">⧉</button>
+              <button type="button" class="bw-ctrl-btn bw-fs-btn" id="bwFullscreenBtn" title="Fullscreen (F)" aria-label="Fullscreen">⛶</button>
+            </div>
+          </div>
+        </div>
+      `;
+      this.stage.appendChild(chrome);
+    }
+
+    this.els = {
+      bufferRing: this.stage.querySelector("#bwBufferRing"),
+      bufferLabel: this.stage.querySelector("#bwBufferLabel"),
+      centerPlayBtn: this.stage.querySelector("#bwCenterPlayBtn"),
+      rippleLeft: this.stage.querySelector("#bwRippleLeft"),
+      rippleRight: this.stage.querySelector("#bwRippleRight"),
+      timelineWrap: this.stage.querySelector("#bwTimelineWrap"),
+      timelineTrack: this.stage.querySelector("#bwTimelineTrack"),
+      timelineBuffered: this.stage.querySelector("#bwTimelineBuffered"),
+      timelineProgress: this.stage.querySelector("#bwTimelineProgress"),
+      playPauseBtn: this.stage.querySelector("#bwPlayPauseBtn"),
+      prevBtn: this.stage.querySelector("#bwDeckPrevBtn"),
+      nextBtn: this.stage.querySelector("#bwDeckNextBtn"),
+      muteBtn: this.stage.querySelector("#bwMuteBtn"),
+      volSlider: this.stage.querySelector("#bwVolSlider"),
+      timeOrLiveBtn: this.stage.querySelector("#bwTimeOrLiveBtn"),
+      timeText: this.stage.querySelector("#bwTimeText"),
+      engineBadge: this.stage.querySelector("#bwEngineBadge"),
+      aspectBtn: this.stage.querySelector("#bwAspectBtn"),
+      speedBtn: this.stage.querySelector("#bwSpeedBtn"),
+      glowBtn: this.stage.querySelector("#bwGlowToggleBtn"),
+      snapBtn: this.stage.querySelector("#bwSnapBtn"),
+      pipBtn: this.stage.querySelector("#bwDeckPipBtn"),
+      fsBtn: this.stage.querySelector("#bwFullscreenBtn")
+    };
+  }
+
+  bindCoreEvents() {
+    if (!this.video || !this.stage) return;
 
     if (this.skipIntroBtn) {
       this.skipIntroBtn.addEventListener("click", () => {
@@ -48,22 +375,519 @@ export class BarakatPlayer {
 
     if (this.qualitySelect) {
       this.qualitySelect.addEventListener("change", () => {
-        if (!this.hls) return;
-        const val = parseInt(this.qualitySelect.value, 10);
-        this.hls.currentLevel = Number.isNaN(val) ? -1 : val;
+        const val = this.qualitySelect.value;
+        if (this.activeEngine === "hls" && this.hls) {
+          const lvl = parseInt(val, 10);
+          this.hls.currentLevel = Number.isNaN(lvl) ? -1 : lvl;
+        } else if (this.activeEngine === "dash" && this.shaka) {
+          if (val === "-1") {
+            this.shaka.configure({ abr: { enabled: true } });
+          } else {
+            const tracks = this.shaka.getVariantTracks() || [];
+            const chosen = tracks.find((t) => String(t.id) === String(val));
+            if (chosen) {
+              this.shaka.configure({ abr: { enabled: false } });
+              this.shaka.selectVariantTrack(chosen, true);
+            }
+          }
+        }
       });
     }
 
     if (this.audioSelect) {
       this.audioSelect.addEventListener("change", () => {
-        if (!this.hls) return;
-        const val = parseInt(this.audioSelect.value, 10);
-        if (!Number.isNaN(val)) this.hls.audioTrack = val;
+        const val = this.audioSelect.value;
+        if (this.activeEngine === "hls" && this.hls) {
+          const idx = parseInt(val, 10);
+          if (!Number.isNaN(idx)) this.hls.audioTrack = idx;
+        } else if (this.activeEngine === "dash" && this.shaka) {
+          this.shaka.selectAudioLanguage(val);
+        }
       });
+    }
+
+    if (this.subtitleSelect) {
+      this.subtitleSelect.addEventListener("change", () => {
+        const val = this.subtitleSelect.value;
+        if (this.activeEngine === "hls" && this.hls) {
+          const idx = parseInt(val, 10);
+          this.hls.subtitleTrack = Number.isNaN(idx) ? -1 : idx;
+        } else if (this.activeEngine === "dash" && this.shaka) {
+          if (val === "off") {
+            this.shaka.setTextTrackVisibility(false);
+          } else {
+            this.shaka.selectTextLanguage(val);
+            this.shaka.setTextTrackVisibility(true);
+          }
+        }
+      });
+    }
+
+    // Play / Pause
+    const togglePlay = () => {
+      if (!this.video) return;
+      if (this.video.paused) {
+        this.safePlay(this.video);
+      } else {
+        this.video.pause();
+      }
+      this.bumpControlsVisibility();
+    };
+
+    this.els?.playPauseBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      togglePlay();
+    });
+    this.els?.centerPlayBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      togglePlay();
+    });
+
+    // Prev / Next Channel inside Studio Deck
+    this.els?.prevBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (this.onStepChannel) this.onStepChannel(-1);
+    });
+    this.els?.nextBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (this.onStepChannel) this.onStepChannel(1);
+    });
+
+    // Volume & Mute
+    const syncVolumeUi = () => {
+      if (!this.els?.muteBtn || !this.video) return;
+      const muted = this.video.muted || this.video.volume === 0;
+      this.els.muteBtn.textContent = muted ? "🔇" : this.video.volume < 0.5 ? "🔉" : "🔊";
+      if (this.els.volSlider) {
+        this.els.volSlider.value = muted ? "0" : String(this.video.volume);
+      }
+    };
+
+    this.els?.muteBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.video.muted = !this.video.muted;
+      if (!this.video.muted && this.video.volume === 0) this.video.volume = 0.8;
+      syncVolumeUi();
+    });
+
+    this.els?.volSlider?.addEventListener("input", (e) => {
+      e.stopPropagation();
+      const v = parseFloat(e.target.value);
+      this.video.volume = Number.isFinite(v) ? v : 1;
+      this.video.muted = v === 0;
+      syncVolumeUi();
+    });
+
+    this.video.addEventListener("volumechange", syncVolumeUi);
+
+    // Live Sync / Time Button
+    this.els?.timeOrLiveBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.jumpToLiveEdge();
+    });
+
+    // Aspect Ratio Switcher
+    this.els?.aspectBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.aspectIdx = (this.aspectIdx + 1) % ASPECT_MODES.length;
+      const mode = ASPECT_MODES[this.aspectIdx];
+      this.video.style.objectFit = mode.css;
+      this.video.style.maxWidth = mode.ratio43 ? "75%" : "100%";
+      this.video.style.margin = mode.ratio43 ? "0 auto" : "0";
+      if (this.els.aspectBtn) this.els.aspectBtn.textContent = mode.label;
+    });
+
+    // Playback Speed (VOD / Cinema)
+    const speeds = [1, 1.25, 1.5, 2, 0.75];
+    this.els?.speedBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const cur = this.video.playbackRate || 1;
+      const next = speeds[(speeds.indexOf(cur) + 1) % speeds.length] || 1;
+      this.video.playbackRate = next;
+      this.els.speedBtn.textContent = `${next}x`;
+    });
+
+    // 3D Ambilight Toggle
+    this.els?.glowBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.ambilightEnabled = !this.ambilightEnabled;
+      localStorage.setItem("bw_ambilight", this.ambilightEnabled ? "1" : "0");
+      this.stage.closest(".player-shell")?.classList.toggle("ambilight-off", !this.ambilightEnabled);
+      this.els.glowBtn.classList.toggle("active-glow", this.ambilightEnabled);
+    });
+    this.els?.glowBtn?.classList.toggle("active-glow", this.ambilightEnabled);
+
+    // Frame Screenshot
+    this.els?.snapBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.captureScreenshot();
+    });
+
+    // PiP
+    this.els?.pipBtn?.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try {
+        if (document.pictureInPictureElement) {
+          await document.exitPictureInPicture();
+        } else if (this.video.requestPictureInPicture) {
+          await this.video.requestPictureInPicture();
+        }
+      } catch {
+        // ignore
+      }
+    });
+
+    // Fullscreen + Mobile Landscape Auto-Lock
+    this.els?.fsBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.toggleFullscreen();
+    });
+
+    document.addEventListener("fullscreenchange", () => {
+      const isFs = Boolean(document.fullscreenElement);
+      if (this.els?.fsBtn) this.els.fsBtn.textContent = isFs ? "🗗" : "⛶";
+      if (!isFs && screen.orientation?.unlock) {
+        try {
+          screen.orientation.unlock();
+        } catch {
+          // ignore
+        }
+      }
+    });
+
+    // Timeline Scrubbing
+    const seekFromPointer = (clientX) => {
+      if (!this.els?.timelineTrack || !this.video) return;
+      const rect = this.els.timelineTrack.getBoundingClientRect();
+      if (!rect.width) return;
+      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const dur = this.getSeekableDuration();
+      if (dur.seekable) {
+        this.video.currentTime = dur.start + ratio * (dur.end - dur.start);
+      }
+    };
+
+    this.els?.timelineTrack?.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      this.isScrubbing = true;
+      seekFromPointer(e.clientX);
+      const onMove = (ev) => seekFromPointer(ev.clientX);
+      const onUp = () => {
+        this.isScrubbing = false;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    });
+
+    // Video State Listeners -> Update Custom Chrome
+    this.video.addEventListener("play", () => {
+      if (this.els?.playPauseBtn) this.els.playPauseBtn.textContent = "⏸";
+      if (this.els?.centerPlayBtn) this.els.centerPlayBtn.hidden = true;
+      this.bumpControlsVisibility();
+    });
+
+    this.video.addEventListener("pause", () => {
+      if (this.els?.playPauseBtn) this.els.playPauseBtn.textContent = "▶";
+      if (this.els?.centerPlayBtn) this.els.centerPlayBtn.hidden = false;
+      this.stage.classList.remove("bw-controls-autohide");
+    });
+
+    this.video.addEventListener("waiting", () => this.showBuffering(true));
+    this.video.addEventListener("playing", () => {
+      this.showBuffering(false);
+      if (this.els?.centerPlayBtn) this.els.centerPlayBtn.hidden = true;
+      this.refreshResolutionBadge();
+    });
+    this.video.addEventListener("canplay", () => this.showBuffering(false));
+    this.video.addEventListener("timeupdate", () => this.updateTimelineUi());
+    this.video.addEventListener("progress", () => this.updateTimelineUi());
+    this.video.addEventListener("resize", () => this.refreshResolutionBadge());
+
+    // Stage Tap / Double-Tap Seek (Mobile) & Click / Double-Click Fullscreen (Laptop)
+    let lastTapTime = 0;
+    let singleTapTimer = null;
+    this.stage.addEventListener("click", (e) => {
+      if (
+        e.target.closest(".bw-bottom-deck") ||
+        e.target.closest(".intro-overlay") ||
+        e.target.closest(".pro-unlock-overlay") ||
+        e.target.closest(".bw-center-play-btn")
+      ) {
+        return;
+      }
+
+      const now = Date.now();
+      const rect = this.stage.getBoundingClientRect();
+      const relX = (e.clientX - rect.left) / Math.max(1, rect.width);
+      const isTouch = window.matchMedia?.("(pointer: coarse)")?.matches;
+
+      if (now - lastTapTime < 290) {
+        clearTimeout(singleTapTimer);
+        lastTapTime = 0;
+        if (isTouch) {
+          if (relX < 0.36) {
+            this.seekRelative(-10);
+          } else if (relX > 0.64) {
+            this.seekRelative(10);
+          } else {
+            this.toggleFullscreen();
+          }
+        } else {
+          this.toggleFullscreen();
+        }
+        return;
+      }
+
+      lastTapTime = now;
+      singleTapTimer = setTimeout(() => {
+        if (isTouch) {
+          if (this.stage.classList.contains("bw-controls-autohide")) {
+            this.bumpControlsVisibility();
+          } else {
+            this.stage.classList.add("bw-controls-autohide");
+          }
+        } else {
+          togglePlay();
+        }
+      }, 240);
+    });
+
+    this.stage.addEventListener("pointermove", () => this.bumpControlsVisibility());
+
+    // Laptop / Desktop Keyboard Shortcuts
+    document.addEventListener("keydown", (e) => {
+      const tag = (e.target?.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || e.target?.isContentEditable) {
+        return;
+      }
+      const liveSection = document.getElementById("view-live");
+      if (liveSection && liveSection.hidden) return;
+
+      if (e.code === "Space" || e.key === "k" || e.key === "K") {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        this.toggleFullscreen();
+      } else if (e.key === "m" || e.key === "M") {
+        e.preventDefault();
+        this.video.muted = !this.video.muted;
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        this.seekRelative(-10);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        this.seekRelative(10);
+      }
+    });
+  }
+
+  bumpControlsVisibility() {
+    if (!this.stage) return;
+    this.stage.classList.remove("bw-controls-autohide");
+    clearTimeout(this.uiHideTimer);
+    if (this.video && !this.video.paused) {
+      this.uiHideTimer = setTimeout(() => {
+        if (this.video && !this.video.paused && !this.isScrubbing) {
+          this.stage.classList.add("bw-controls-autohide");
+        }
+      }, 3600);
     }
   }
 
-  destroyHls() {
+  showBuffering(active, label = "Tuning HD Stream...") {
+    if (!this.els?.bufferRing) return;
+    this.els.bufferRing.hidden = !active;
+    if (active && this.els.bufferLabel) {
+      this.els.bufferLabel.textContent = label;
+    }
+  }
+
+  setEngineBadge(protocolLabel) {
+    const up = String(protocolLabel || "AUTO").toUpperCase();
+    if (this.els?.engineBadge) this.els.engineBadge.textContent = up;
+    if (this.codecBadgeEl) this.codecBadgeEl.textContent = up;
+  }
+
+  refreshResolutionBadge() {
+    const h = this.video?.videoHeight || 0;
+    const proto =
+      this.activeEngine === "dash"
+        ? "DASH MPD"
+        : this.activeEngine === "mpegts"
+          ? "MPEG-TS"
+          : this.activeEngine === "flv"
+            ? "HTTP-FLV"
+            : this.activeEngine === "hls"
+              ? "HLS"
+              : "MEDIA";
+    const resLabel = h >= 2160 ? "4K UHD" : h >= 1080 ? "1080p FHD" : h >= 720 ? "720p HD" : h > 0 ? `${h}p` : "HD";
+    const drmSuffix = this.currentChannel?.drmKey || this.currentChannel?.drmLicenseUrl ? " • DRM" : "";
+    this.setEngineBadge(`${proto} • ${resLabel}${drmSuffix}`);
+  }
+
+  getSeekableDuration() {
+    if (!this.video) return { seekable: false, start: 0, end: 0 };
+    const d = this.video.duration;
+    if (Number.isFinite(d) && d > 0 && d < 86400 * 2) {
+      return { seekable: true, start: 0, end: d };
+    }
+    const sr = this.video.seekable;
+    if (sr && sr.length > 0) {
+      const start = sr.start(0);
+      const end = sr.end(sr.length - 1);
+      if (end - start > 4) {
+        return { seekable: true, start, end };
+      }
+    }
+    return { seekable: false, start: 0, end: 0 };
+  }
+
+  updateTimelineUi() {
+    if (!this.video || !this.els?.timelineProgress) return;
+    const info = this.getSeekableDuration();
+    const cur = this.video.currentTime || 0;
+
+    if (this.els.speedBtn) {
+      this.els.speedBtn.hidden = Boolean(this.isLiveMode);
+    }
+
+    if (!this.isLiveMode && info.seekable) {
+      const span = Math.max(0.1, info.end - info.start);
+      const pct = Math.max(0, Math.min(100, ((cur - info.start) / span) * 100));
+      this.els.timelineProgress.style.width = `${pct}%`;
+
+      if (this.els.timelineBuffered && this.video.buffered?.length) {
+        const bEnd = this.video.buffered.end(this.video.buffered.length - 1);
+        const bPct = Math.max(0, Math.min(100, ((bEnd - info.start) / span) * 100));
+        this.els.timelineBuffered.style.width = `${bPct}%`;
+      }
+      if (this.els.timeText) {
+        this.els.timeText.textContent = `${formatClock(cur)} / ${formatClock(info.end)}`;
+      }
+      this.els.timeOrLiveBtn?.classList.remove("is-live");
+    } else {
+      // Live Broadcast Mode (with DVR edge indicator)
+      let pct = 100;
+      let behindSec = 0;
+      if (info.seekable) {
+        behindSec = Math.max(0, info.end - cur);
+        const span = Math.max(1, info.end - info.start);
+        pct = Math.max(0, Math.min(100, ((cur - info.start) / span) * 100));
+      }
+      this.els.timelineProgress.style.width = `${pct}%`;
+      if (this.els.timelineBuffered) this.els.timelineBuffered.style.width = "100%";
+      const atLiveEdge = behindSec < 12;
+      if (this.els.timeText) {
+        this.els.timeText.textContent = atLiveEdge ? "LIVE" : `-${formatClock(behindSec)} • GO LIVE`;
+      }
+      this.els.timeOrLiveBtn?.classList.toggle("is-live", atLiveEdge);
+    }
+  }
+
+  jumpToLiveEdge() {
+    if (!this.video) return;
+    if (this.activeEngine === "hls" && this.hls?.liveSyncPosition) {
+      this.video.currentTime = this.hls.liveSyncPosition;
+    } else if (this.activeEngine === "dash" && this.shaka?.seekRange) {
+      const range = this.shaka.seekRange();
+      if (range && range.end > 0) this.video.currentTime = Math.max(range.start, range.end - 1.5);
+    } else {
+      const info = this.getSeekableDuration();
+      if (info.seekable) this.video.currentTime = Math.max(info.start, info.end - 1);
+    }
+    this.safePlay(this.video);
+  }
+
+  seekRelative(deltaSec) {
+    if (!this.video) return;
+    const info = this.getSeekableDuration();
+    if (!info.seekable) return;
+    this.video.currentTime = Math.max(info.start, Math.min(info.end, (this.video.currentTime || 0) + deltaSec));
+    const el = deltaSec < 0 ? this.els?.rippleLeft : this.els?.rippleRight;
+    if (el) {
+      el.hidden = false;
+      clearTimeout(el._t);
+      el._t = setTimeout(() => {
+        el.hidden = true;
+      }, 520);
+    }
+  }
+
+  async toggleFullscreen() {
+    const target = this.stage || this.video;
+    if (!target) return;
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else if (target.requestFullscreen) {
+        await target.requestFullscreen();
+        if (screen.orientation?.lock && window.innerWidth < 960) {
+          screen.orientation.lock("landscape").catch(() => {});
+        }
+      } else if (this.video?.webkitEnterFullscreen) {
+        this.video.webkitEnterFullscreen();
+      }
+    } catch {
+      if (this.video?.webkitEnterFullscreen) {
+        try {
+          this.video.webkitEnterFullscreen();
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
+  captureScreenshot() {
+    if (!this.video || !this.video.videoWidth) return;
+    try {
+      const c = document.createElement("canvas");
+      c.width = this.video.videoWidth;
+      c.height = this.video.videoHeight;
+      c.getContext("2d").drawImage(this.video, 0, 0, c.width, c.height);
+      const url = c.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `barakatwave-${Date.now()}.png`;
+      a.click();
+    } catch {
+      // Cross-origin frame security restriction -> ignore cleanly
+    }
+  }
+
+  startAmbilightLoop() {
+    if (this.ambilightTimer) clearInterval(this.ambilightTimer);
+    let phase = 0;
+    this.ambilightTimer = setInterval(() => {
+      if (!this.ambilightEnabled || !this.ambilightCanvas || document.hidden) return;
+      const ctx = this.ambilightCanvas.getContext("2d", { willReadFrequently: false });
+      if (!ctx) return;
+
+      if (this.video && !this.video.paused && this.video.readyState >= 2 && !this._ambilightTainted) {
+        try {
+          ctx.drawImage(this.video, 0, 0, this.ambilightCanvas.width, this.ambilightCanvas.height);
+          return;
+        } catch {
+          this._ambilightTainted = true;
+        }
+      }
+      // Smooth procedural broadcast wave glow when cross-origin video restricts pixel sampling
+      phase += 0.14;
+      const g = ctx.createLinearGradient(0, 0, this.ambilightCanvas.width, this.ambilightCanvas.height);
+      const r1 = Math.round(12 + 25 * Math.sin(phase));
+      const g1 = Math.round(145 + 55 * Math.cos(phase * 0.8));
+      g.addColorStop(0, `rgb(${r1}, ${g1}, 235)`);
+      g.addColorStop(0.55, "rgb(14, 116, 194)");
+      g.addColorStop(1, "rgb(234, 165, 28)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, this.ambilightCanvas.width, this.ambilightCanvas.height);
+    }, 110);
+  }
+
+  destroyEngines() {
     if (this.introTimer) {
       clearInterval(this.introTimer);
       this.introTimer = null;
@@ -73,6 +897,8 @@ export class BarakatPlayer {
       this.introGuardTimer = null;
     }
     this._finishIntroNow = null;
+    this._ambilightTainted = false;
+
     if (this.hls) {
       try {
         this.hls.destroy();
@@ -81,13 +907,44 @@ export class BarakatPlayer {
       }
       this.hls = null;
     }
+
+    if (this.shaka) {
+      const shakaInst = this.shaka;
+      this.shaka = null;
+      try {
+        shakaInst.destroy();
+      } catch {
+        // ignore
+      }
+    }
+
+    if (this.mpegtsPlayer) {
+      try {
+        this.mpegtsPlayer.unload();
+        this.mpegtsPlayer.detachMediaElement();
+        this.mpegtsPlayer.destroy();
+      } catch {
+        // ignore
+      }
+      this.mpegtsPlayer = null;
+    }
+
+    this.activeEngine = "idle";
+
     if (this.video) {
       this.video.onplaying = null;
       this.video.onended = null;
       this.video.onerror = null;
       this.video.onloadedmetadata = null;
       this.video.loop = false;
+      this.video.playbackRate = 1;
+      if (this.els?.speedBtn) this.els.speedBtn.textContent = "1x";
     }
+  }
+
+  // Alias kept for backwards compatibility
+  destroyHls() {
+    this.destroyEngines();
   }
 
   setStatus(text, tone = "live") {
@@ -107,20 +964,20 @@ export class BarakatPlayer {
     this.currentChannel = channel;
     this.settings = settings || {};
     this.userPlan = userPlan || "free";
+    this.isLiveMode = true;
 
-    this.destroyHls();
+    this.destroyEngines();
     this.hideOverlays();
     this.resetSelectors();
+    this.showBuffering(true, `Tuning ${channel.name || "Live TV"}...`);
 
     const isLockedPro = channel.tier === "pro" && this.userPlan !== "pro";
 
-    // Case A: PRO VIP Channel opened by Free/Guest user -> Play Continuous Premium Unlock Video!
     if (isLockedPro) {
       await this.playProLockedStream(channel, token);
       return;
     }
 
-    // Case B: Allowed Channel -> Step 1: Play Admin Intro Video first, Step 2: Switch directly to Live Channel!
     const welcomeUrl = (
       channel.introVideoUrl ||
       this.settings.welcomeVideoUrl ||
@@ -145,8 +1002,9 @@ export class BarakatPlayer {
     this.currentChannel = vodItem;
     this.settings = settings || {};
     this.userPlan = userPlan || "free";
+    this.isLiveMode = false;
 
-    this.destroyHls();
+    this.destroyEngines();
     this.hideOverlays();
     this.resetSelectors();
 
@@ -155,15 +1013,21 @@ export class BarakatPlayer {
       return;
     }
 
-    const customStream = String(vodItem.streamUrl || "").trim();
+    const customStream = String(vodItem.streamUrl || vodItem.url || "").trim();
     if (customStream) {
-      this.setStatus(`🎬 PLAYING • ${vodItem.title}`, "live");
-      this.attachSource(customStream, {
+      this.setStatus(`🎬 LOADING • ${vodItem.title || vodItem.name}`, "loading");
+      this.showBuffering(true, `Loading ${vodItem.title || "Cinema Stream"}...`);
+      await this.attachUniversalSource(customStream, {
+        token,
         loop: false,
-        isLive: /\.m3u8($|\?)/i.test(customStream),
+        isLive: false,
+        formatHint: vodItem.streamFormat || "auto",
+        drmScheme: vodItem.drmScheme || "",
+        drmKey: vodItem.drmKey || "",
+        drmLicenseUrl: vodItem.drmLicenseUrl || "",
         onPlaying: () => {
-          this.setStatus(`🎬 HD • ${vodItem.title}`, "live");
-          this.onStateChange({ mode: "vod_playing", item: vodItem });
+          this.setStatus(`🎬 HD • ${vodItem.title || vodItem.name}`, "live");
+          this.onStateChange("vod_playing", vodItem);
         },
         onError: () => {
           if (token === this.playToken) this.playComingSoonVod(vodItem, token);
@@ -175,19 +1039,97 @@ export class BarakatPlayer {
     this.playComingSoonVod(vodItem, token);
   }
 
+  /**
+   * Direct Universal URL Player — plays ANY .mpd (DASH + ClearKey/Widevine), .m3u8 (HLS),
+   * .ts/.m2ts (MPEG-TS), .flv (HTTP-FLV), .mp4/.mkv/.webm, or audio stream!
+   */
+  async playCustomStream({
+    url,
+    title = "Custom Universal Stream",
+    format = "auto",
+    drmKey = "",
+    drmLicenseUrl = "",
+    isLive = true
+  } = {}) {
+    const cleanUrl = String(url || "").trim();
+    if (!cleanUrl || !this.video) return;
+    const token = ++this.playToken;
+    const customItem = {
+      id: "custom_universal",
+      name: title,
+      title,
+      url: cleanUrl,
+      streamFormat: format,
+      drmScheme: drmLicenseUrl ? "widevine" : drmKey ? "clearkey" : "",
+      drmKey,
+      drmLicenseUrl,
+      tier: "free"
+    };
+    this.currentChannel = customItem;
+    this.isLiveMode = Boolean(isLive);
+
+    this.destroyEngines();
+    this.hideOverlays();
+    this.resetSelectors();
+    this.showBuffering(true, "Connecting Universal Media Engine...");
+    this.setStatus(`🎛 TUNING • ${title}`, "loading");
+
+    // Try direct first, then automatic /api/proxy relay if CORS/mixed-content blocks direct playback!
+    const candidates = [cleanUrl];
+    if (/^https?:\/\//i.test(cleanUrl)) {
+      candidates.push(`/api/proxy?u=${encodeURIComponent(cleanUrl)}`);
+    }
+
+    let cIdx = 0;
+    const tryCandidate = async () => {
+      if (token !== this.playToken) return;
+      if (cIdx >= candidates.length) {
+        this.showBuffering(false);
+        this.setStatus("⚠️ STREAM UNREACHABLE • CHECK URL OR DRM KEY", "error");
+        return;
+      }
+      const nextUrl = candidates[cIdx++];
+      await this.attachUniversalSource(nextUrl, {
+        token,
+        loop: false,
+        isLive,
+        formatHint: format,
+        drmScheme: customItem.drmScheme,
+        drmKey,
+        drmLicenseUrl,
+        onPlaying: () => {
+          this.showBuffering(false);
+          this.setStatus(`● PLAYING • ${title}`, "live");
+          this.onStateChange("playing", customItem);
+        },
+        onError: () => {
+          if (token === this.playToken) tryCandidate();
+        }
+      });
+    };
+
+    await tryCandidate();
+  }
+
   playComingSoonVod(vodItem, token) {
     if (token !== this.playToken) return;
+    this.isLiveMode = false;
     const csUrl = (this.settings.comingSoonVideoUrl || "/media/coming-soon/video.mp4").trim();
     const playTarget =
       csUrl === "/media/coming-soon/index.m3u8" ? "/media/coming-soon/video.mp4" : csUrl;
     this.setStatus("🎬 SERVICE BUILDING • COMING SOON", "intro");
-    this.onStateChange({ mode: "coming_soon", item: vodItem });
-    this.attachSource(playTarget, {
+    this.onStateChange("coming_soon", vodItem);
+    this.attachUniversalSource(playTarget, {
+      token,
       loop: true,
       isLive: false,
       onError: () => {
         if (token === this.playToken) {
-          this.attachSource("/media/coming-soon/index.m3u8", { loop: true, isLive: false });
+          this.attachUniversalSource("/media/coming-soon/index.m3u8", {
+            token,
+            loop: true,
+            isLive: false
+          });
         }
       }
     });
@@ -206,13 +1148,18 @@ export class BarakatPlayer {
       : `/api/stream?mode=offline&id=${encodeURIComponent(channel.streamId || channel.id || "1001")}`;
 
     this.setStatus("📡 STREAM OFFLINE • AUTO-RECOVERING", "error");
-    this.onStateChange({ mode: "offline_standby", channel });
-    this.attachSource(playTarget, {
+    this.onStateChange("offline_standby", channel);
+    this.attachUniversalSource(playTarget, {
+      token,
       loop: true,
       isLive: !isDirect,
       onError: () => {
         if (token === this.playToken) {
-          this.attachSource("/media/channel-offline/video.mp4", { loop: true, isLive: false });
+          this.attachUniversalSource("/media/channel-offline/video.mp4", {
+            token,
+            loop: true,
+            isLive: false
+          });
         }
       }
     });
@@ -245,12 +1192,12 @@ export class BarakatPlayer {
           this.introGuardTimer = null;
         }
         if (this.introOverlay) this.introOverlay.hidden = true;
-        this.destroyHls();
+        this.destroyEngines();
         resolve();
       };
+
       this._finishIntroNow = finish;
 
-      // Safety guard: if a custom remote intro takes > 4.5s to start buffering, jump straight to live channel!
       this.introGuardTimer = setTimeout(() => {
         if (!startedPlayback && !done) finish();
       }, 4500);
@@ -258,11 +1205,11 @@ export class BarakatPlayer {
       const startCountdownOncePlaying = () => {
         if (startedPlayback || done) return;
         startedPlayback = true;
+        this.showBuffering(false);
         if (this.introGuardTimer) {
           clearTimeout(this.introGuardTimer);
           this.introGuardTimer = null;
         }
-        // Respect natural clip duration if shorter/known (up to configuredDur + 15s)
         const natDur = Number(this.video?.duration);
         if (Number.isFinite(natDur) && natDur > 1.5 && natDur <= 45) {
           remaining = Math.min(Math.ceil(natDur), Math.max(configuredDur, Math.ceil(natDur)));
@@ -278,7 +1225,8 @@ export class BarakatPlayer {
         }, 1000);
       };
 
-      this.attachSource(welcomeUrl, {
+      this.attachUniversalSource(welcomeUrl, {
+        token,
         loop: false,
         isLive: false,
         onPlaying: startCountdownOncePlaying,
@@ -292,7 +1240,7 @@ export class BarakatPlayer {
     if (token !== this.playToken) return;
     if (this.proOverlay) this.proOverlay.hidden = false;
     this.setStatus("👑 PRO VIP UNLOCK • 0306-2015326", "pro");
-    this.onStateChange({ mode: "pro_locked", channel });
+    this.onStateChange("pro_locked", channel);
 
     const customProUrl = (
       channel.proUnlockVideoUrl ||
@@ -305,12 +1253,17 @@ export class BarakatPlayer {
       ? customProUrl
       : `/api/stream?mode=pro_lock&id=${encodeURIComponent(channel.streamId || channel.id)}`;
 
-    this.attachSource(streamToPlay, {
+    this.attachUniversalSource(streamToPlay, {
+      token,
       loop: true,
       isLive: !isDirectVideo,
       onError: () => {
         if (token !== this.playToken) return;
-        this.attachSource("/media/pro-unlock/index.m3u8", { loop: true, isLive: false });
+        this.attachUniversalSource("/media/pro-unlock/index.m3u8", {
+          token,
+          loop: true,
+          isLive: false
+        });
       }
     });
   }
@@ -323,6 +1276,7 @@ export class BarakatPlayer {
     for (const src of rawList) {
       const isRemote = /^https?:\/\//i.test(src);
       const isInsecureHttpOnHttps = isHttpsPage && /^http:\/\//i.test(src);
+      const proto = detectStreamProtocol(src, src === channel.url ? channel.streamFormat : "auto");
       let hasCustomPort = false;
       if (isRemote) {
         try {
@@ -337,36 +1291,42 @@ export class BarakatPlayer {
         channel.headers && channel.headers.Referer
           ? `&ref=${encodeURIComponent(channel.headers.Referer)}`
           : "";
+      const segFlag = proto === "mpegts" || proto === "flv" || proto === "html5" ? "&seg=1" : "";
       const relayCandidate = isRemote
-        ? { url: `/api/proxy?u=${encodeURIComponent(src)}${refParam}`, label: "Relay HD", timeoutMs: 8500 }
+        ? {
+            url: `/api/proxy?u=${encodeURIComponent(src)}${refParam}${segFlag}`,
+            label: proto === "dash" ? "Relay DASH" : "Relay HD",
+            formatHint: proto,
+            timeoutMs: 9000
+          }
         : null;
       const directCandidate = {
         url: src,
-        label: "Direct HD",
-        timeoutMs: hasCustomPort ? 4500 : 6500
+        label: proto === "dash" ? "DASH MPD" : proto === "mpegts" ? "MPEG-TS" : "Direct HD",
+        formatHint: proto,
+        timeoutMs: hasCustomPort ? 4500 : 7000
       };
 
       if (isInsecureHttpOnHttps && relayCandidate) {
-        // Browsers block mixed-content http:// XHR on https:// pages -> try TLS Relay Proxy first
         expanded.push(relayCandidate);
       } else if (hasCustomPort && relayCandidate) {
-        // Custom IPTV ports (:5789 etc.): try Direct HD with fast 4.5s failover -> TLS-tolerant Relay HD
         expanded.push(directCandidate, relayCandidate);
       } else {
         expanded.push(directCandidate);
         if (relayCandidate) expanded.push(relayCandidate);
       }
     }
+
     let idx = 0;
-    const tryNext = () => {
+    const tryNext = async () => {
       if (token !== this.playToken) return;
       if (idx >= expanded.length) {
-        // All upstream URLs for this channel failed -> Play Channel Offline Standby Video!
         this.playOfflineStandby(channel, token);
         return;
       }
       const candidate = expanded[idx++];
       this.setStatus(`CONNECTING (${candidate.label})...`, "loading");
+      this.showBuffering(true, `Connecting ${candidate.label}...`);
 
       let settled = false;
       const failTimer = setTimeout(() => {
@@ -374,17 +1334,23 @@ export class BarakatPlayer {
           settled = true;
           tryNext();
         }
-      }, candidate.timeoutMs || 6500);
+      }, candidate.timeoutMs || 7000);
 
-      this.attachSource(candidate.url, {
+      await this.attachUniversalSource(candidate.url, {
+        token,
         loop: candidate.url.startsWith("/media/"),
         isLive: true,
+        formatHint: candidate.formatHint,
+        drmScheme: channel.drmScheme || "",
+        drmKey: channel.drmKey || "",
+        drmLicenseUrl: channel.drmLicenseUrl || "",
         onPlaying: () => {
           if (settled) return;
           settled = true;
           clearTimeout(failTimer);
+          this.showBuffering(false);
           this.setStatus(`● LIVE • ${candidate.label}`, "live");
-          this.onStateChange({ mode: "playing", channel, source: candidate.label });
+          this.onStateChange("playing", channel);
         },
         onError: () => {
           if (settled) return;
@@ -395,33 +1361,178 @@ export class BarakatPlayer {
       });
     };
 
-    tryNext();
+    await tryNext();
   }
 
-  attachSource(url, { loop = false, isLive = true, onPlaying, onEnded, onError } = {}) {
-    if (this.hls) {
-      try {
-        this.hls.destroy();
-      } catch {
-        // ignore
+  /**
+   * Universal Multi-Protocol Media Attacher:
+   * Automatically routes .mpd -> Shaka DASH (+ ClearKey/Widevine), .m3u8 -> hls.js / Safari,
+   * .ts/.flv -> mpegts.js MSE, and .mp4/.mkv/.webm/audio -> HTML5 Progressive!
+   */
+  async attachUniversalSource(
+    url,
+    {
+      token = this.playToken,
+      loop = false,
+      isLive = true,
+      formatHint = "auto",
+      drmScheme = "",
+      drmKey = "",
+      drmLicenseUrl = "",
+      onPlaying,
+      onEnded,
+      onError
+    } = {}
+  ) {
+    if (token !== this.playToken) return;
+    this.destroyEngines();
+
+    // Check inline ?ck=kid:key query param if drmKey wasn't explicitly passed
+    let effectiveDrmKey = drmKey;
+    try {
+      const parsedU = new URL(url, window.location.origin);
+      if (!effectiveDrmKey && parsedU.searchParams.get("ck")) {
+        effectiveDrmKey = parsedU.searchParams.get("ck");
       }
-      this.hls = null;
+    } catch {
+      // ignore
     }
 
+    const protocol = detectStreamProtocol(url, formatHint);
     const video = this.video;
     video.loop = Boolean(loop);
     video.playsInline = true;
 
-    const cleanPath = String(url || "").split("?")[0].toLowerCase();
-    const isDirectVideoFile = /\.(mp4|m4v|webm|ogg|mov)$/.test(cleanPath);
-    const HlsLib = window.Hls;
+    // ==================== ENGINE 1: MPEG-DASH (.MPD) + DRM (SHAKA PLAYER) ====================
+    if (protocol === "dash") {
+      this.activeEngine = "dash";
+      this.setEngineBadge(effectiveDrmKey || drmLicenseUrl ? "DASH • MPD • DRM" : "DASH • MPD");
 
-    if (!isDirectVideoFile && HlsLib && HlsLib.isSupported()) {
+      const shakaReady = await ensureShakaPlayer();
+      if (token !== this.playToken) return;
+      if (!shakaReady) {
+        if (onError) onError(new Error("DASH engine unavailable"));
+        return;
+      }
+
+      try {
+        const shakaPlayer = new window.shaka.Player();
+        await shakaPlayer.attach(video);
+        if (token !== this.playToken) {
+          shakaPlayer.destroy().catch(() => {});
+          return;
+        }
+        this.shaka = shakaPlayer;
+
+        const drmConfig = {};
+        const clearKeys = parseClearKeyConfig(effectiveDrmKey);
+        if (clearKeys) {
+          drmConfig.clearKeys = clearKeys;
+        }
+        if (drmLicenseUrl) {
+          drmConfig.servers = {
+            [drmScheme === "playready" ? "com.microsoft.playready" : "com.widevine.alpha"]:
+              drmLicenseUrl
+          };
+        }
+
+        shakaPlayer.configure({
+          streaming: {
+            bufferingGoal: isLive ? 14 : 24,
+            rebufferingGoal: 2,
+            lowLatencyMode: isLive,
+            retryParameters: { maxAttempts: 2, timeout: 7000 }
+          },
+          ...(Object.keys(drmConfig).length ? { drm: drmConfig } : {})
+        });
+
+        shakaPlayer.addEventListener("error", (ev) => {
+          const detail = ev?.detail;
+          if (detail && detail.severity === 2 && onError) {
+            onError(detail);
+          }
+        });
+
+        video.onplaying = () => {
+          this.populateShakaTracks(shakaPlayer);
+          this.refreshResolutionBadge();
+          if (onPlaying) onPlaying();
+        };
+        video.onended = () => {
+          if (loop) {
+            video.currentTime = 0;
+            this.safePlay(video);
+          } else if (onEnded) {
+            onEnded();
+          }
+        };
+
+        await shakaPlayer.load(url);
+        if (token !== this.playToken) return;
+        this.populateShakaTracks(shakaPlayer);
+        this.safePlay(video);
+        return;
+      } catch (err) {
+        if (onError) onError(err);
+        return;
+      }
+    }
+
+    // ==================== ENGINE 2: LIVE MPEG-TS (.TS / .M2TS) & HTTP-FLV (.FLV) ====================
+    if (protocol === "mpegts" || protocol === "flv") {
+      this.activeEngine = protocol;
+      this.setEngineBadge(protocol === "flv" ? "HTTP-FLV • LIVE" : "MPEG-TS • LIVE");
+
+      const mpegtsReady = await ensureMpegtsPlayer();
+      if (token !== this.playToken) return;
+      if (mpegtsReady) {
+        try {
+          const mts = window.mpegts.createPlayer(
+            {
+              type: protocol === "flv" ? "flv" : "mpegts",
+              isLive: Boolean(isLive),
+              url,
+              cors: true
+            },
+            {
+              enableWorker: true,
+              enableStashBuffer: false,
+              stashInitialSize: 128
+            }
+          );
+          this.mpegtsPlayer = mts;
+          mts.attachMediaElement(video);
+          mts.on(window.mpegts.Events.ERROR, (errType, errDetail) => {
+            if (onError) onError({ errType, errDetail });
+          });
+          video.onplaying = () => {
+            this.refreshResolutionBadge();
+            if (onPlaying) onPlaying();
+          };
+          video.onended = () => {
+            if (onEnded) onEnded();
+          };
+          mts.load();
+          this.safePlay(video);
+          return;
+        } catch (err) {
+          if (onError) onError(err);
+          return;
+        }
+      }
+    }
+
+    // ==================== ENGINE 3: APPLE HLS (.M3U8) VIA HLS.JS ====================
+    const HlsLib = window.Hls;
+    if (protocol === "hls" && HlsLib && HlsLib.isSupported()) {
+      this.activeEngine = "hls";
+      this.setEngineBadge("HLS • AUTO");
+
       const hls = new HlsLib({
         enableWorker: true,
         lowLatencyMode: isLive,
         backBufferLength: 30,
-        maxBufferLength: 20,
+        maxBufferLength: 22,
         manifestLoadingTimeOut: 5500,
         manifestLoadingMaxRetry: 0,
         levelLoadingTimeOut: 6000,
@@ -442,7 +1553,12 @@ export class BarakatPlayer {
         this.populateAudioTracks(data.audioTracks || []);
       });
 
+      hls.on(HlsLib.Events.SUBTITLE_TRACKS_UPDATED, (_, data) => {
+        this.populateHlsSubtitles(data.subtitleTracks || []);
+      });
+
       video.onplaying = () => {
+        this.refreshResolutionBadge();
         if (onPlaying) onPlaying();
       };
 
@@ -459,18 +1575,22 @@ export class BarakatPlayer {
         if (data.fatal) {
           if (data.type === HlsLib.ErrorTypes.MEDIA_ERROR) {
             hls.recoverMediaError();
-          } else {
-            if (onError) onError(data);
+          } else if (onError) {
+            onError(data);
           }
         }
       });
       return;
     }
 
-    // Native HLS (Safari / iOS) or Direct MP4/WebM
+    // ==================== ENGINE 4: NATIVE HLS (SAFARI / iOS) & PROGRESSIVE MP4/WEBM/MKV/AUDIO ====================
+    this.activeEngine = protocol === "hls" ? "hls" : "html5";
+    this.setEngineBadge(protocol === "hls" ? "HLS • NATIVE" : "MP4 / DIRECT");
+
     video.src = url;
     video.onloadedmetadata = () => this.safePlay(video);
     video.onplaying = () => {
+      this.refreshResolutionBadge();
       if (onPlaying) onPlaying();
     };
     video.onended = () => {
@@ -484,6 +1604,11 @@ export class BarakatPlayer {
     video.onerror = (e) => {
       if (onError) onError(e);
     };
+  }
+
+  // Alias kept for backwards compatibility
+  attachSource(url, opts = {}) {
+    return this.attachUniversalSource(url, opts);
   }
 
   safePlay(video) {
@@ -503,6 +1628,10 @@ export class BarakatPlayer {
     if (this.audioSelect) {
       this.audioSelect.innerHTML = `<option value="0">Audio: Default</option>`;
       this.audioSelect.hidden = true;
+    }
+    if (this.subtitleSelect) {
+      this.subtitleSelect.innerHTML = `<option value="off">Subtitles: Off</option>`;
+      this.subtitleSelect.hidden = true;
     }
   }
 
@@ -526,5 +1655,72 @@ export class BarakatPlayer {
     this.audioSelect.innerHTML = tracks
       .map((t, idx) => `<option value="${idx}">Audio: ${t.name || t.lang || `Track ${idx + 1}`}</option>`)
       .join("");
+  }
+
+  populateHlsSubtitles(tracks) {
+    if (!this.subtitleSelect) return;
+    if (!tracks || !tracks.length) {
+      this.subtitleSelect.hidden = true;
+      return;
+    }
+    this.subtitleSelect.hidden = false;
+    this.subtitleSelect.innerHTML =
+      `<option value="-1">CC: Off</option>` +
+      tracks
+        .map((t, idx) => `<option value="${idx}">CC: ${t.name || t.lang || `Sub ${idx + 1}`}</option>`)
+        .join("");
+  }
+
+  populateShakaTracks(shakaPlayer) {
+    if (!shakaPlayer) return;
+
+    // 1. Resolution / Bitrate Variants for DASH .mpd
+    if (this.qualitySelect) {
+      const variants = shakaPlayer.getVariantTracks() || [];
+      const seenHeights = new Map();
+      for (const v of variants) {
+        const key = v.height ? `${v.height}p` : `${Math.round((v.bandwidth || 1500000) / 1000)}kbps`;
+        const prev = seenHeights.get(key);
+        if (!prev || (v.bandwidth || 0) > (prev.bandwidth || 0)) {
+          seenHeights.set(key, v);
+        }
+      }
+      const sorted = [...seenHeights.entries()].sort(
+        (a, b) => (b[1].height || b[1].bandwidth || 0) - (a[1].height || a[1].bandwidth || 0)
+      );
+      let html = `<option value="-1">Quality: Auto DASH (${sorted.length || 1} Levels)</option>`;
+      for (const [label, track] of sorted) {
+        const kbps = track.bandwidth ? ` • ${(track.bandwidth / 1_000_000).toFixed(1)} Mbps` : "";
+        html += `<option value="${track.id}">${label}${kbps}</option>`;
+      }
+      this.qualitySelect.innerHTML = html;
+    }
+
+    // 2. Multi-Audio Languages for DASH .mpd
+    if (this.audioSelect) {
+      const langs = shakaPlayer.getAudioLanguagesAndRoles?.() || [];
+      if (langs.length > 1) {
+        this.audioSelect.hidden = false;
+        this.audioSelect.innerHTML = langs
+          .map((l) => `<option value="${l.language}">Audio: ${String(l.language || "und").toUpperCase()}</option>`)
+          .join("");
+      } else {
+        this.audioSelect.hidden = true;
+      }
+    }
+
+    // 3. Text / Subtitle Tracks for DASH .mpd
+    if (this.subtitleSelect) {
+      const textTracks = shakaPlayer.getTextTracks?.() || [];
+      if (textTracks.length > 0) {
+        this.subtitleSelect.hidden = false;
+        const uniqueLangs = [...new Set(textTracks.map((t) => t.language).filter(Boolean))];
+        this.subtitleSelect.innerHTML =
+          `<option value="off">CC: Off</option>` +
+          uniqueLangs.map((lang) => `<option value="${lang}">CC: ${lang.toUpperCase()}</option>`).join("");
+      } else {
+        this.subtitleSelect.hidden = true;
+      }
+    }
   }
 }

@@ -522,14 +522,16 @@ function bindChannelManager() {
       const data = await res.json();
       const item = data?.results?.[0];
       if (item?.ok) {
-        box.innerHTML = `<div class="text-success" style="font-weight:700;">✅ Stream Working! HTTP ${item.status} • Latency: ${item.latencyMs}ms ${item.isHls ? "• Valid HLS (.m3u8)" : ""}</div>`;
+        const fmtTag = item.isDash ? "• Valid MPEG-DASH (.mpd)" : item.isHls ? "• Valid HLS (.m3u8)" : "";
+        box.innerHTML = `<div class="text-success" style="font-weight:700;">✅ Stream Working! HTTP ${item.status} • Latency: ${item.latencyMs}ms ${fmtTag}</div>`;
       } else {
         box.innerHTML = `<div class="text-danger" style="font-weight:700;">⚠ Server probe note: ${esc(item?.error || "Check browser preview below (stream may require browser/CORS playback)")}</div>`;
       }
     } catch {
-      box.innerHTML = `<span class="muted-sm">Opening browser HLS preview...</span>`;
+      box.innerHTML = `<span class="muted-sm">Opening browser universal stream preview...</span>`;
     }
-    openMiniVideoPreview("adminPreviewVideo", "adminMiniPreviewWrap", url);
+    const drmVal = document.getElementById("chDrmKey")?.value.trim() || "";
+    openMiniVideoPreview("adminPreviewVideo", "adminMiniPreviewWrap", url, drmVal);
   });
 
   document.getElementById("closeMiniPreviewBtn")?.addEventListener("click", () => {
@@ -552,6 +554,9 @@ function bindChannelManager() {
     const orderRaw = document.getElementById("chOrderInput")?.value.trim() || "";
     const pinned = Boolean(document.getElementById("chPinnedCheck")?.checked);
     const url = document.getElementById("chUrl").value.trim();
+    const streamFormat = document.getElementById("chStreamFormat")?.value || "auto";
+    const rawDrm = document.getElementById("chDrmKey")?.value.trim() || "";
+    const isLicenseUrl = /^https?:\/\//i.test(rawDrm);
     const logo = document.getElementById("chLogo").value.trim() || BRAND.logoPrimary;
     const backups = document.getElementById("chBackups").value
       .split(",")
@@ -582,6 +587,10 @@ function bindChannelManager() {
       logo,
       epgId: existing?.epgId || `${slug}.bw`,
       url,
+      streamFormat,
+      drmScheme: isLicenseUrl ? "widevine" : rawDrm ? "clearkey" : "",
+      drmKey: isLicenseUrl ? "" : rawDrm,
+      drmLicenseUrl: isLicenseUrl ? rawDrm : "",
       backupUrls: backups,
       introVideoUrl,
       proUnlockVideoUrl,
@@ -1061,6 +1070,10 @@ function renderAdminChannelsTable() {
       const pinChk = document.getElementById("chPinnedCheck");
       if (pinChk) pinChk.checked = Boolean(ch.pinned);
       document.getElementById("chUrl").value = ch.url || "";
+      const fmtSel = document.getElementById("chStreamFormat");
+      if (fmtSel) fmtSel.value = ch.streamFormat || "auto";
+      const drmInp = document.getElementById("chDrmKey");
+      if (drmInp) drmInp.value = ch.drmKey || ch.drmLicenseUrl || "";
       document.getElementById("chLogo").value = ch.logo || "";
       document.getElementById("chBackups").value = (ch.backupUrls || []).join(", ");
       document.getElementById("chIntroOverride").value = ch.introVideoUrl || "";
@@ -1155,6 +1168,10 @@ function bindImdbStudio() {
     const poster = document.getElementById("imdbPosterInput")?.value.trim() || metahubPoster(imdbId);
     const backdrop = document.getElementById("imdbBackdropInput")?.value.trim() || metahubBackdrop(imdbId);
     const streamUrl = document.getElementById("imdbStreamUrlInput")?.value.trim() || "";
+    const rawVodDrm = document.getElementById("imdbDrmKeyInput")?.value.trim() || "";
+    const isVodLic = /^https?:\/\//i.test(rawVodDrm);
+    const drmKey = isVodLic ? "" : rawVodDrm;
+    const drmLicenseUrl = isVodLic ? rawVodDrm : "";
     const genres = (document.getElementById("imdbGenresInput")?.value || "Drama")
       .split(",")
       .map((s) => s.trim())
@@ -1186,6 +1203,8 @@ function bindImdbStudio() {
         backdrop,
         tier,
         streamUrl,
+        drmKey,
+        drmLicenseUrl,
         order: existingIdx >= 0 ? admState.movies[existingIdx].order : 0
       };
       if (existingIdx >= 0) admState.movies[existingIdx] = rec;
@@ -1228,6 +1247,8 @@ function bindImdbStudio() {
         backdrop,
         tier,
         streamUrl,
+        drmKey,
+        drmLicenseUrl,
         episodes,
         seasonsCount: new Set(episodes.map((ep) => Number(ep.season) || 1)).size || 1,
         order: existingIdx >= 0 ? admState.series[existingIdx].order : 0
@@ -2154,7 +2175,7 @@ function renderAdminTicketsAndReviews() {
 }
 
 /* ==================== MINI HLS PREVIEW & HELPERS ==================== */
-function openMiniVideoPreview(videoId, wrapId, url) {
+async function openMiniVideoPreview(videoId, wrapId, url, drmRaw = "") {
   const wrap = document.getElementById(wrapId);
   const video = document.getElementById(videoId);
   if (!wrap || !video) return;
@@ -2164,8 +2185,51 @@ function openMiniVideoPreview(videoId, wrapId, url) {
     admState.previewHls.destroy();
     admState.previewHls = null;
   }
+  if (admState.previewShaka) {
+    try {
+      await admState.previewShaka.destroy();
+    } catch {
+      // ignore
+    }
+    admState.previewShaka = null;
+  }
 
+  const isDash = /\.mpd(\?|$)/i.test(url);
   const isMp4 = /\.(mp4|webm|ogg)(\?|$)/i.test(url);
+
+  if (isDash) {
+    if (!window.shaka?.Player) {
+      await new Promise((resolve) => {
+        const s = document.createElement("script");
+        s.src = "/assets/vendor/shaka-player.min.js";
+        s.onload = resolve;
+        s.onerror = resolve;
+        document.head.appendChild(s);
+      });
+    }
+    if (window.shaka?.Player) {
+      window.shaka.polyfill?.installAll?.();
+      const sp = new window.shaka.Player();
+      await sp.attach(video);
+      admState.previewShaka = sp;
+      if (drmRaw && drmRaw.includes(":") && !/^https?:\/\//i.test(drmRaw)) {
+        const [kid, key] = drmRaw.split(":");
+        if (kid && key) sp.configure({ drm: { clearKeys: { [kid.trim().toLowerCase()]: key.trim().toLowerCase() } } });
+      } else if (/^https?:\/\//i.test(drmRaw)) {
+        sp.configure({ drm: { servers: { "com.widevine.alpha": drmRaw } } });
+      }
+      try {
+        await sp.load(url);
+      } catch {
+        if (/^https?:\/\//i.test(url)) {
+          await sp.load(`/api/proxy?u=${encodeURIComponent(url)}`).catch(() => {});
+        }
+      }
+      video.play().catch(() => {});
+      return;
+    }
+  }
+
   if (!isMp4 && window.Hls && window.Hls.isSupported()) {
     let triedRelay = false;
     const attach = (srcUrl) => {
@@ -2195,6 +2259,14 @@ function stopMiniPreview(videoId, wrapId) {
   if (admState.previewHls) {
     admState.previewHls.destroy();
     admState.previewHls = null;
+  }
+  if (admState.previewShaka) {
+    try {
+      admState.previewShaka.destroy();
+    } catch {
+      // ignore
+    }
+    admState.previewShaka = null;
   }
   const v = document.getElementById(videoId);
   if (v) {

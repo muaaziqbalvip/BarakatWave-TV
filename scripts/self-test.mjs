@@ -46,7 +46,14 @@ async function run() {
     "public/admin.html",
     "public/assets/css/styles.css",
     "public/assets/vendor/hls.min.js",
+    "public/assets/vendor/shaka-player.min.js",
+    "public/assets/vendor/mpegts.min.js",
     "public/assets/vendor/firebase-sdk.js",
+    "public/assets/icons/apple-touch-icon.png",
+    "public/assets/icons/icon-192.png",
+    "public/assets/icons/icon-512.png",
+    "public/assets/icons/icon-maskable-512.png",
+    "public/media/demo-dash/index.mpd",
     "public/media/welcome/index.m3u8",
     "public/media/welcome/video.mp4",
     "public/media/channel-offline/index.m3u8",
@@ -605,7 +612,111 @@ async function run() {
     check("/ch/:slug.m3u8 serves clean channel HLS master playlist", chDirect.includes("#EXT-X-STREAM-INF"));
 
     const probeRes = await (await fetch(`${base}/api/probe?url=/media/welcome/index.m3u8`)).json();
-    check("/api/probe verifies working HLS stream", probeRes.ok && probeRes.results?.[0]?.ok === true);
+    check("/api/probe verifies working HLS stream", probeRes.ok && probeRes.results?.[0]?.ok === true && probeRes.results?.[0]?.isHls === true);
+
+    const probeDashRes = await (await fetch(`${base}/api/probe?url=/media/demo-dash/index.mpd`)).json();
+    check(
+      "/api/probe verifies working MPEG-DASH (.mpd) manifest",
+      probeDashRes.ok && probeDashRes.results?.[0]?.ok === true && probeDashRes.results?.[0]?.isDash === true
+    );
+
+    // 3l. 3D Installable PWA, Custom Universal Player (DASH .mpd + HLS .m3u8 + TS/FLV + ClearKey DRM) & Stream Lab Checks
+    const { rewriteDashMpdForProxy } = await import("../api/_handlers/proxy.js");
+    const sampleMpd = `<?xml version="1.0"?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011"><Period><AdaptationSet><SegmentTemplate initialization="init-$RepresentationID$.mp4" media="chunk-$RepresentationID$-$Number%05d$.m4s"/></AdaptationSet></Period></MPD>`;
+    const rewrittenMpd = rewriteDashMpdForProxy(
+      sampleMpd,
+      "https://cdn.example.com/dash/live/manifest.mpd",
+      "https://barakatwave.vercel.app"
+    );
+    check(
+      "MPEG-DASH .mpd proxy rewriter wraps segment URLs while preserving unencoded $RepresentationID$ and $Number%05d$ tokens",
+      rewrittenMpd.includes("/api/proxy?seg=1&u=") &&
+        rewrittenMpd.includes("$RepresentationID$") &&
+        rewrittenMpd.includes("$Number%05d$") &&
+        !rewrittenMpd.includes("%24RepresentationID%24")
+    );
+
+    const dashLocalRes = await fetch(`${base}/media/demo-dash/index.mpd`);
+    const dashLocalXml = await dashLocalRes.text();
+    check(
+      "/media/demo-dash/index.mpd serves valid application/dash+xml MPEG-DASH manifest",
+      dashLocalRes.status === 200 &&
+        (dashLocalRes.headers.get("content-type") || "").includes("application/dash+xml") &&
+        dashLocalXml.includes("<MPD") &&
+        dashLocalXml.includes("<SegmentURL")
+    );
+
+    const shakaRes = await fetch(`${base}/assets/vendor/shaka-player.min.js`);
+    const mpegtsRes = await fetch(`${base}/assets/vendor/mpegts.min.js`);
+    check(
+      "Self-hosted Universal Media Engines (shaka-player.min.js & mpegts.min.js) are served with HTTP 200",
+      shakaRes.status === 200 && mpegtsRes.status === 200
+    );
+
+    const { detectStreamProtocol, parseClearKeyConfig } = await import("../public/assets/js/player.js");
+    const parsedCk = parseClearKeyConfig("00112233445566778899aabbccddeeff:ffeeddccbbaa99887766554433221100");
+    check(
+      "Custom BarakatPlayer v4.0 protocol detector & W3C ClearKey DRM parser handle .mpd, .m3u8, .ts, .flv & hex kid:key",
+      detectStreamProtocol("https://cdn.example.com/live/manifest.mpd") === "dash" &&
+        detectStreamProtocol("https://cdn.example.com/live/index.m3u8") === "hls" &&
+        detectStreamProtocol("https://cdn.example.com/live/channel.ts") === "mpegts" &&
+        detectStreamProtocol("https://cdn.example.com/live/stream.flv") === "flv" &&
+        detectStreamProtocol("https://cdn.example.com/vod/movie.mp4") === "html5" &&
+        parsedCk?.["00112233445566778899aabbccddeeff"] === "ffeeddccbbaa99887766554433221100"
+    );
+
+    const { parseM3uPlaylist, exportChannelsToM3u } = await import("../public/assets/js/m3u-parser.js");
+    const kodiM3uSample = [
+      "#EXTM3U",
+      '#KODIPROP:inputstream.adaptive.manifest_type=mpd',
+      '#KODIPROP:inputstream.adaptive.license_type=org.w3.clearkey',
+      '#KODIPROP:inputstream.adaptive.license_key=11223344:55667788',
+      '#EXTINF:-1 group-title="4K DASH",Test 4K DASH Channel',
+      "https://cdn.example.com/live/uhd.mpd"
+    ].join("\n");
+    const parsedKodiList = parseM3uPlaylist(kodiM3uSample);
+    const reExportedKodi = exportChannelsToM3u(parsedKodiList, { useCleanLinks: false });
+    check(
+      "M3U parser & exporter support #KODIPROP MPEG-DASH (.mpd) + ClearKey DRM playlists round-trip",
+      parsedKodiList.length === 1 &&
+        parsedKodiList[0].streamFormat === "dash" &&
+        parsedKodiList[0].drmKey === "11223344:55667788" &&
+        reExportedKodi.includes("inputstream.adaptive.manifest_type=mpd") &&
+        reExportedKodi.includes("11223344:55667788")
+    );
+
+    const manifestJson = await (await fetch(`${base}/manifest.webmanifest`)).json();
+    const icon192Res = await fetch(`${base}/assets/icons/icon-192.png`);
+    const icon512Res = await fetch(`${base}/assets/icons/icon-512.png`);
+    const iconMaskRes = await fetch(`${base}/assets/icons/icon-maskable-512.png`);
+    const appleIconRes = await fetch(`${base}/assets/icons/apple-touch-icon.png`);
+    const swJsText = await (await fetch(`${base}/sw.js`)).text();
+    check(
+      "Installable Mobile & Desktop PWA serves same-origin PNG 192/512/maskable/apple-touch icons + v4 Service Worker",
+      Array.isArray(manifestJson.icons) &&
+        manifestJson.icons.some((i) => i.src === "/assets/icons/icon-512.png") &&
+        icon192Res.status === 200 &&
+        icon512Res.status === 200 &&
+        iconMaskRes.status === 200 &&
+        appleIconRes.status === 200 &&
+        swJsText.includes("barakatwave-tv-3d-v4")
+    );
+
+    const homeHtml3d = await (await fetch(`${base}/`)).text();
+    const playerJsText = fs.readFileSync(path.join(ROOT, "public/assets/js/player.js"), "utf8");
+    const stylesCssText = fs.readFileSync(path.join(ROOT, "public/assets/css/styles.css"), "utf8");
+    check(
+      "3D Spatial Web App HTML, Custom Studio Chrome, Ambilight Halo, Universal Stream Lab & PWA Install Modal are wired",
+      homeHtml3d.includes('id="universalStreamDrawer"') &&
+        homeHtml3d.includes('id="pwaInstallModal"') &&
+        homeHtml3d.includes('id="activeSeriesEpisodeTray"') &&
+        homeHtml3d.includes('id="cinemaFeaturedHero"') &&
+        homeHtml3d.includes('class="spatial-3d-aurora"') &&
+        playerJsText.includes("bw-studio-chrome") &&
+        playerJsText.includes("bw-ambilight-canvas") &&
+        stylesCssText.includes(".bw-shell-3d") &&
+        stylesCssText.includes("--rx")
+    );
 
     const idxNow = await (await fetch(`${base}/api/seo/indexnow`)).json();
     check("/api/seo/indexnow returns >= 18 candidate URLs for search indexing", idxNow.ok && idxNow.indexedCandidateCount >= 18);
