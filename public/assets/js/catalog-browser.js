@@ -29,7 +29,7 @@ export const BRAND = {
 export const DEFAULT_SETTINGS = {
   welcomeVideoUrl: "/media/welcome/index.m3u8",
   welcomeVideoEnabled: true,
-  welcomeDurationSec: 8,
+  welcomeDurationSec: 4,
   welcomeSkippable: true,
   channelOfflineVideoUrl: "/media/channel-offline/index.m3u8",
   comingSoonVideoUrl: "/media/coming-soon/index.m3u8",
@@ -437,7 +437,7 @@ export const DEFAULT_CHANNELS = [
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
     epgId: "pk.super.pro",
     nowPlaying: "Pakistan Top Prime Shows, National Specials & Headlines",
-    url: "https://tv-trtworld.medya.trt.com.tr/master.m3u8",
+    url: "shielded://vault",
     backupUrls: [],
     order: 2
   },
@@ -458,8 +458,8 @@ export const DEFAULT_CHANNELS = [
     logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/Kaaba_icon.svg/240px-Kaaba_icon.svg.png",
     epgId: "quran.makkah.sa",
     nowPlaying: "Live Masjid Al-Haram Recitation & Tawaf 24/7",
-    url: "https://win.holol.com/live/quran/playlist.m3u8",
-    backupUrls: ["https://media2.streambrothers.com:1936/8122/8122/playlist.m3u8"],
+    url: "shielded://vault",
+    backupUrls: [],
     order: 3
   },
   {
@@ -477,7 +477,7 @@ export const DEFAULT_CHANNELS = [
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
     epgId: "sunnah.madinah.sa",
     nowPlaying: "Live Masjid An-Nabawi Broadcast 24/7",
-    url: "https://win.holol.com/live/sunnah/playlist.m3u8",
+    url: "shielded://vault",
     backupUrls: [],
     order: 4
   },
@@ -537,8 +537,8 @@ export const DEFAULT_CHANNELS = [
     epgId: "barakatwave.dash.hd",
     nowPlaying: "Universal MPEG-DASH (.MPD) Multi-Bitrate Broadcast Engine",
     streamFormat: "dash",
-    url: "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd",
-    backupUrls: ["/media/demo-dash/index.mpd", "/media/demo-live/index.m3u8"],
+    url: "/media/demo-dash/index.mpd",
+    backupUrls: [],
     order: 2
   },
 
@@ -558,7 +558,7 @@ export const DEFAULT_CHANNELS = [
     logo: "https://upload.wikimedia.org/wikipedia/en/thumb/f/f2/Aljazeera_eng.svg/240px-Aljazeera_eng.svg.png",
     epgId: "aljazeera.en",
     nowPlaying: "Global Breaking News & Live Coverage",
-    url: "https://live-hls-web-aje.getaj.net/AJE/index.m3u8",
+    url: "shielded://vault",
     backupUrls: [],
     order: 7
   },
@@ -577,7 +577,7 @@ export const DEFAULT_CHANNELS = [
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
     epgId: "trtworld.hd",
     nowPlaying: "International Headlines & South Asia Focus",
-    url: "https://tv-trtworld.medya.trt.com.tr/master.m3u8",
+    url: "shielded://vault",
     backupUrls: [],
     order: 8
   },
@@ -596,7 +596,7 @@ export const DEFAULT_CHANNELS = [
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
     epgId: "dw.english",
     nowPlaying: "World News, Tech & Documentaries",
-    url: "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8",
+    url: "shielded://vault",
     backupUrls: [],
     order: 9
   },
@@ -615,7 +615,7 @@ export const DEFAULT_CHANNELS = [
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
     epgId: "france24.en",
     nowPlaying: "24/7 International Live Bulletin",
-    url: "https://live.france24.com/hls/live/2037218-b/F24_EN_HI_HLS/master_5000.m3u8",
+    url: "shielded://vault",
     backupUrls: [],
     order: 10
   },
@@ -655,7 +655,7 @@ export const DEFAULT_CHANNELS = [
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
     epgId: "in.cinema.pro",
     nowPlaying: "24/7 Blockbuster Premiers & Superhit Cinema",
-    url: "https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8",
+    url: "shielded://vault",
     backupUrls: [],
     order: 12
   },
@@ -676,7 +676,7 @@ export const DEFAULT_CHANNELS = [
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
     epgId: "barakat.cricket.pro",
     nowPlaying: "Pakistan Cricket Live, PSL & ICC 60fps Feed",
-    url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
+    url: "shielded://vault",
     backupUrls: [],
     order: 13
   },
@@ -695,7 +695,7 @@ export const DEFAULT_CHANNELS = [
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
     epgId: "redbull.tv",
     nowPlaying: "Motorsport, Rally & Global Live Championships",
-    url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
+    url: "shielded://vault",
     backupUrls: [],
     order: 14
   },
@@ -714,7 +714,7 @@ export const DEFAULT_CHANNELS = [
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
     epgId: "barakat.football.pro",
     nowPlaying: "European League Nights & Live Match Studio",
-    url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8",
+    url: "shielded://vault",
     backupUrls: [],
     order: 15
   },
@@ -735,7 +735,7 @@ export const DEFAULT_CHANNELS = [
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
     epgId: "nasa.public",
     nowPlaying: "ISS Earth Views & Space Science Live",
-    url: "https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8",
+    url: "shielded://vault",
     backupUrls: [],
     order: 16
   },
@@ -754,7 +754,7 @@ export const DEFAULT_CHANNELS = [
     logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
     epgId: "nhk.world",
     nowPlaying: "Asian Culture, Science & Technology Documentaries",
-    url: "https://nhkwlive-ojp.akamaized.net/hls/live/2003459/nhkwlive-ojp-en/index.m3u8",
+    url: "shielded://vault",
     backupUrls: [],
     order: 17
   }

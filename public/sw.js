@@ -1,4 +1,4 @@
-const CACHE_NAME = "barakatwave-tv-3d-v4";
+const CACHE_NAME = "barakatwave-tv-3d-v5";
 const SHELL_ASSETS = [
   "/",
   "/index.html",
@@ -10,7 +10,13 @@ const SHELL_ASSETS = [
   "/assets/icons/apple-touch-icon.png",
   "/assets/vendor/hls.min.js",
   "/assets/vendor/shaka-player.min.js",
-  "/assets/vendor/mpegts.min.js"
+  "/assets/vendor/mpegts.min.js",
+  "/assets/vendor/mux.min.js",
+  "/assets/js/app.js",
+  "/assets/js/player.js",
+  "/assets/js/vault.js",
+  "/assets/js/analytics.js",
+  "/assets/js/cinema-player.js"
 ];
 
 self.addEventListener("install", (event) => {

@@ -2611,3 +2611,675 @@ tr.drag-over-row td {
 
 
 
+
+/* ==========================================================================
+   BARAKATWAVE v5 — COMPACT 3D STUDIO, SMOOTH MOTION & ANALYTICS DESIGN SYSTEM
+   Mizanora Projects • Muaaz Iqbal
+   ========================================================================== */
+
+/* ---------- 1. Slim live announcement marquee (never eats the viewport) ---------- */
+.top-ticker {
+  padding: 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+  background: var(--ticker-bg);
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+}
+
+.ticker-track {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text);
+  padding: 6px 16px;
+}
+
+.ticker-seq {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 0 0 auto;
+  padding-right: 14px;
+}
+
+@media (max-width: 980px) {
+  .ticker-track {
+    justify-content: flex-start;
+    width: max-content;
+    animation: tickerScroll 30s linear infinite;
+    will-change: transform;
+  }
+}
+
+.top-ticker:hover .ticker-track,
+.top-ticker:focus-within .ticker-track {
+  animation-play-state: paused;
+}
+
+.ticker-track strong {
+  color: var(--gold-text);
+  font-weight: 800;
+}
+
+.ticker-dot {
+  opacity: 0.45;
+}
+
+@keyframes tickerScroll {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+@media (max-width: 820px) {
+  .ticker-track {
+    animation-duration: 24s;
+    font-size: 0.72rem;
+    padding: 5px 12px;
+  }
+}
+
+/* ---------- 2. Compact sticky header (2 tidy rows max, shrinks on scroll) ---------- */
+.site-header {
+  box-shadow: 0 1px 0 var(--border);
+  transition: box-shadow 0.25s ease, background 0.25s ease;
+}
+
+.site-header.is-scrolled {
+  box-shadow: 0 10px 30px -14px rgba(2, 8, 23, 0.28);
+}
+
+.header-inner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 62px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  flex-wrap: nowrap;
+}
+
+.brand-link {
+  gap: 9px;
+  min-width: 0;
+}
+
+.brand-logo {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.brand-title {
+  font-size: 1.04rem;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.brand-sub {
+  font-size: 0.66rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.main-nav {
+  justify-self: center;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-wrap: nowrap;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+}
+
+.main-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.nav-tab {
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.header-actions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.header-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.theme-switcher {
+  padding: 3px 6px;
+  gap: 4px;
+}
+
+.theme-mode-btn {
+  padding: 2px 7px;
+  font-size: 0.68rem;
+}
+
+@media (max-width: 1180px) {
+  .header-inner {
+    grid-template-columns: auto auto;
+    grid-template-areas:
+      "brand actions"
+      "nav nav";
+    row-gap: 6px;
+  }
+
+  .brand-link { grid-area: brand; }
+  .header-actions { grid-area: actions; }
+  .main-nav {
+    grid-area: nav;
+    justify-self: stretch;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 820px) {
+  .header-inner {
+    grid-template-columns: auto 1fr;
+    grid-template-areas: "brand actions";
+    gap: 8px;
+    min-height: 56px;
+  }
+
+  .main-nav { display: none; }
+
+  .brand-title { font-size: 0.96rem; }
+
+  .brand-sub { font-size: 0.6rem; }
+
+  .brand-logo { width: 36px; height: 36px; }
+
+  .header-actions .btn-lbl { display: none; }
+
+  .header-actions .btn {
+    padding: 7px 9px;
+    font-size: 0.82rem;
+  }
+
+  .theme-mode-btn { font-size: 0.64rem; }
+}
+
+@media (max-width: 420px) {
+  .brand-sub { display: none; }
+  .theme-switcher { padding: 2px 5px; }
+}
+
+/* ---------- 3. Hero studio ribbon: light, breathable, 3D depth ---------- */
+.studio-welcome-bar {
+  border-radius: 18px;
+  padding: 11px 16px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 8%, var(--bg-card)), var(--bg-card));
+}
+
+.studio-welcome-bar strong {
+  letter-spacing: -0.01em;
+}
+
+/* ---------- 4. Floating PRO badge no longer covers buttons on phones ---------- */
+.floating-pro-btn {
+  right: 14px;
+  bottom: 16px;
+  padding: 9px 14px;
+  font-size: 0.78rem;
+  box-shadow: 0 12px 26px -8px rgba(22, 163, 74, 0.55);
+}
+
+@media (max-width: 820px) {
+  .floating-pro-btn {
+    right: 12px;
+    bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+    padding: 7px 11px;
+    font-size: 0.72rem;
+    border-radius: 999px;
+    opacity: 0.96;
+  }
+
+  /* Keep the mobile sticky Live TV player slim so it never blocks channel browsing */
+  #view-live .player-shell {
+    top: 58px;
+    border-radius: 16px;
+  }
+
+  .player-stage {
+    max-height: 46vh;
+  }
+}
+
+/* ---------- 5. IMDb Cinema Universe Player (plays by IMDb ID) ---------- */
+.imdb-player-modal {
+  margin-bottom: 20px;
+  animation: imdbPop 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes imdbPop {
+  from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+.imdb-player-shell {
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  background: #05070d;
+  box-shadow: 0 26px 60px -22px rgba(2, 8, 23, 0.65);
+}
+
+.imdb-player-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 11px 16px;
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.16), rgba(5, 7, 13, 0.9));
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  color: #f8fafc;
+}
+
+.imdb-player-meta {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.imdb-player-title {
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.imdb-player-head .muted-sm {
+  color: #cbd5e1;
+  font-size: 0.76rem;
+}
+
+.imdb-frame-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+
+.imdb-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #000;
+}
+
+.imdb-frame-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  color: #e2e8f0;
+  padding: 20px;
+}
+
+.imdb-player-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px 12px;
+  background: #080c15;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.imdb-server-pills,
+.imdb-ep-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.server-pill {
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: #e2e8f0;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.18s ease;
+}
+
+.server-pill:hover {
+  border-color: #38bdf8;
+  transform: translateY(-1px);
+}
+
+.server-pill.active {
+  background: linear-gradient(135deg, #0284c7, #0ea5e9);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 8px 20px -8px rgba(2, 132, 199, 0.9);
+}
+
+.imdb-player-note {
+  color: #94a3b8;
+  font-size: 0.72rem;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.imdb-player-note a {
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .imdb-player-head { padding: 9px 12px; }
+  .imdb-player-title { font-size: 0.9rem; }
+  .imdb-server-pills { width: 100%; }
+  .server-pill { flex: 1 1 auto; text-align: center; }
+}
+
+/* ---------- 6. Analytics analyzer (Admin) ---------- */
+.an-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 12px;
+}
+
+.an-tile {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.18s ease, box-shadow 0.22s ease;
+}
+
+.an-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+
+.an-tile .an-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.an-tile .an-value {
+  font-size: 1.6rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin-top: 2px;
+}
+
+.an-tile .an-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.an-tile.online::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 100% 0%, var(--success-bg), transparent 62%);
+  pointer-events: none;
+}
+
+.an-table-wrap {
+  overflow-x: auto;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+}
+
+.an-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  min-width: 720px;
+}
+
+.an-table th {
+  text-align: left;
+  padding: 9px 12px;
+  background: var(--bg-soft);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.an-table td {
+  padding: 9px 12px;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.an-table tr:hover td {
+  background: var(--bg-hover);
+}
+
+.an-live-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 800;
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.an-live-chip.off {
+  background: var(--bg-soft);
+  color: var(--text-muted);
+}
+
+.an-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.76rem;
+  margin-bottom: 5px;
+}
+
+.an-bar-label {
+  flex: 0 0 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.an-bar-track {
+  flex: 1;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+
+.an-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary), var(--primary-2));
+  animation: anBarGrow 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes anBarGrow {
+  from { width: 0 !important; }
+}
+
+.an-bar-count {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+/* ---------- 7. Smooth micro-interactions everywhere (GPU friendly) ---------- */
+.btn,
+.channel-item,
+.cinema-card,
+.an-tile,
+.server-pill {
+  will-change: transform;
+}
+
+.btn:active {
+  transform: translateY(1px) scale(0.995);
+}
+
+.glass-card {
+  transition: border-color 0.22s ease, box-shadow 0.24s ease, transform 0.22s ease;
+}
+
+/* Skeleton shimmer for lazy posters */
+img[loading="lazy"] {
+  background: linear-gradient(100deg, var(--bg-soft) 30%, var(--bg-hover) 50%, var(--bg-soft) 70%);
+}
+
+/* ---------- 8. Accessibility & reduced-motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track,
+  .aurora-orb,
+  .live-dot,
+  .an-bar-fill {
+    animation: none !important;
+  }
+
+  * {
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- 9. Theme polish: crisper light themes, deeper dark themes ---------- */
+[data-theme="daylight"] .site-header,
+[data-theme="ivory"] .site-header,
+[data-theme="mint"] .site-header {
+  background: color-mix(in srgb, var(--bg-elev) 88%, transparent);
+}
+
+.glass-card,
+.studio-welcome-bar,
+.guide-panel {
+  backdrop-filter: blur(14px) saturate(130%);
+}
+
+@media (max-width: 820px) {
+  .glass-card {
+    backdrop-filter: none;
+  }
+}
+
+/* ---------- 10. Phone-first polish: keep the studio ribbon compact & readable ---------- */
+@media (max-width: 640px) {
+  .studio-welcome-bar {
+    padding: 9px 12px;
+    gap: 8px;
+    border-radius: 14px;
+    margin-bottom: 12px;
+  }
+
+  .studio-welcome-bar > div:first-child {
+    gap: 6px !important;
+  }
+
+  .studio-welcome-bar strong {
+    font-size: 0.82rem !important;
+  }
+
+  /* Keep only the essential codec badge on phones — hide the counts & duplicate CTA */
+  #heroFreeCountBadge,
+  #heroProCountBadge,
+  #heroOpenStreamLabBtn {
+    display: none !important;
+  }
+
+  .studio-welcome-bar .badge {
+    font-size: 0.62rem;
+    padding: 3px 7px;
+  }
+
+  .studio-welcome-bar .btn {
+    flex: 1 1 auto;
+  }
+
+  /* Bigger, thumb-friendly studio controls */
+  .bw-ctrl-btn {
+    min-width: 32px;
+    height: 32px;
+  }
+
+  .bw-timeline-track {
+    height: 5px;
+  }
+
+  /* Cinema poster grid: comfortable 2-up with readable titles */
+  .cinema-card .cinema-title,
+  .cinema-card h4 {
+    font-size: 0.78rem !important;
+    line-height: 1.25;
+  }
+}
+
+/* ---------- 11. Player shell 3D depth (desktop only, GPU-light) ---------- */
+@media (hover: hover) and (pointer: fine) {
+  .bw-shell-3d {
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s ease;
+  }
+
+  .bw-shell-3d:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 34px 70px -30px rgba(2, 8, 23, 0.5);
+  }
+}

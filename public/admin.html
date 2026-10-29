@@ -94,6 +94,7 @@
     <div class="admin-shell" id="adminWorkspace" hidden>
       <aside class="admin-sidebar glass-card">
         <button class="admin-nav-btn active" data-adm-tab="overview">📊 Overview</button>
+        <button class="admin-nav-btn" data-adm-tab="analytics">📈 Live Analytics &amp; Visitors</button>
         <button class="admin-nav-btn" data-adm-tab="channels">📺 Channels &amp; M3U8</button>
         <button class="admin-nav-btn" data-adm-tab="imdb">🎬 IMDb Movies &amp; Series</button>
         <button class="admin-nav-btn" data-adm-tab="import">📥 Bulk M3U Import/Export</button>
@@ -144,6 +145,104 @@
               <button class="btn btn-outline" data-jump-adm="defaults">🎥 Intro, Offline &amp; Coming Soon Videos</button>
               <button class="btn btn-outline" data-jump-adm="github">🐙 Push Channel M3U8s to GitHub</button>
               <button class="btn btn-outline" id="quickPingSeoBtn">🌐 Ping IndexNow Search Engines</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB 1B: LIVE ANALYTICS & VISITOR / PLAYBACK TRACKING -->
+        <section data-adm-panel="analytics" hidden>
+          <div class="glass-card" style="padding:20px;margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+              <div>
+                <span class="badge badge-cyan">📈 REAL-TIME WEB APP ANALYZER</span>
+                <h2 style="margin:8px 0 4px;">Who Came, When, From Where, How Long &amp; What Played</h2>
+                <p class="muted-sm" style="margin:0;max-width:720px;">
+                  Every visitor session (IP, country, city, device, browser, referrer, arrival time, watch duration) and every stream play
+                  (channel / movie / series, protocol engine, IPTV app, watch time) is tracked — for the website AND external Televizo / IPTV Smarters / TiviMate apps.
+                  Auto-refreshes every 15 seconds. <strong id="anLastUpdated">—</strong>
+                </p>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-sm btn-primary" id="anRefreshBtn">🔄 Refresh Now</button>
+                <button type="button" class="btn btn-sm btn-outline" id="anExportBtn">⬇ Export CSV</button>
+                <button type="button" class="btn btn-sm btn-danger" id="anClearBtn">🗑 Reset Counter</button>
+              </div>
+            </div>
+
+            <div class="an-grid" style="margin-top:16px;">
+              <div class="an-tile online">
+                <div class="an-label">🟢 Online Right Now</div>
+                <div class="an-value" id="anOnlineNow">0</div>
+                <div class="an-sub">active in last 75s</div>
+              </div>
+              <div class="an-tile">
+                <div class="an-label">👥 Total Visitors</div>
+                <div class="an-value" id="anTotalSessions">0</div>
+                <div class="an-sub" id="anUniqueIpsSub">0 unique IPs</div>
+              </div>
+              <div class="an-tile">
+                <div class="an-label">▶ Stream Plays</div>
+                <div class="an-value" id="anTotalPlays">0</div>
+                <div class="an-sub" id="anPlaysSplit">0 web • 0 IPTV</div>
+              </div>
+              <div class="an-tile">
+                <div class="an-label">⏱ Avg Stay Time</div>
+                <div class="an-value" id="anAvgSession">0s</div>
+                <div class="an-sub" id="anTotalWatch">0s watched</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:16px;">
+            <div class="glass-card" style="padding:16px;">
+              <h3 style="margin:0 0 10px;font-size:0.95rem;">🌍 Top Countries</h3>
+              <div id="anCountriesBox" class="muted-sm">Loading…</div>
+            </div>
+            <div class="glass-card" style="padding:16px;">
+              <h3 style="margin:0 0 10px;font-size:0.95rem;">🏙 Top Cities</h3>
+              <div id="anCitiesBox" class="muted-sm">Loading…</div>
+            </div>
+            <div class="glass-card" style="padding:16px;">
+              <h3 style="margin:0 0 10px;font-size:0.95rem;">📱 Devices &amp; Apps</h3>
+              <div id="anDevicesBox" class="muted-sm">Loading…</div>
+            </div>
+            <div class="glass-card" style="padding:16px;">
+              <h3 style="margin:0 0 10px;font-size:0.95rem;">🔥 Most Watched</h3>
+              <div id="anTopWatchedBox" class="muted-sm">Loading…</div>
+            </div>
+          </div>
+
+          <div class="glass-card" style="padding:16px;margin-bottom:16px;">
+            <h3 style="margin:0 0 10px;font-size:0.95rem;">👥 Visitor Sessions — Who, When, Where, How Long</h3>
+            <div class="an-table-wrap">
+              <table class="an-table">
+                <thead>
+                  <tr>
+                    <th>Status</th><th>Visitor</th><th>IP Address</th><th>Location</th>
+                    <th>Device / Browser</th><th>Arrived</th><th>Last Seen</th><th>Stayed</th><th>Watching</th>
+                  </tr>
+                </thead>
+                <tbody id="anSessionsBody">
+                  <tr><td colspan="9" class="muted-sm">Loading live sessions…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="glass-card" style="padding:16px;">
+            <h3 style="margin:0 0 10px;font-size:0.95rem;">▶ Playback Tracking — What Played, When, Where &amp; How</h3>
+            <div class="an-table-wrap">
+              <table class="an-table">
+                <thead>
+                  <tr>
+                    <th>Time (PKT)</th><th>Title</th><th>Type</th><th>Engine</th>
+                    <th>IP</th><th>Location</th><th>Device</th><th>User / App</th><th>Watched</th>
+                  </tr>
+                </thead>
+                <tbody id="anPlaysBody">
+                  <tr><td colspan="9" class="muted-sm">No plays tracked yet…</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </section>

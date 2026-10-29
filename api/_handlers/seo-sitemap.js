@@ -19,11 +19,15 @@ export default async function handler(req, res) {
   const [blogs, channels] = await Promise.all([getBlogs(), getChannels()]);
 
   const staticPages = [
-    { path: "/", priority: "1.0", changefreq: "daily" },
+    { path: "/", priority: "1.0", changefreq: "hourly" },
+    { path: "/?view=cinema", priority: "0.95", changefreq: "daily" },
+    { path: "/?view=xtream", priority: "0.95", changefreq: "daily" },
+    { path: "/?view=playlist", priority: "0.9", changefreq: "daily" },
+    { path: "/?view=pro", priority: "0.9", changefreq: "weekly" },
     { path: "/blog", priority: "0.95", changefreq: "daily" },
-    { path: "/llms.txt", priority: "0.8", changefreq: "weekly" },
-    { path: "/llms-full.txt", priority: "0.8", changefreq: "weekly" },
-    { path: "/rss.xml", priority: "0.7", changefreq: "daily" }
+    { path: "/llms.txt", priority: "0.85", changefreq: "weekly" },
+    { path: "/llms-full.txt", priority: "0.85", changefreq: "weekly" },
+    { path: "/rss.xml", priority: "0.8", changefreq: "daily" }
   ];
 
   const xml = [

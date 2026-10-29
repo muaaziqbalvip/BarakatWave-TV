@@ -72,6 +72,7 @@ function initAdmin() {
   bindXtreamManager();
   bindSeoAndBlogs();
   bindSupportAndRules();
+  bindAnalyticsDashboard();
 
   subscribeAuth(async (user) => {
     admState.user = user;
@@ -115,6 +116,192 @@ function renderAdminThemes() {
     localStorage.setItem("bw_theme", b.dataset.themeId);
     paint();
   });
+}
+
+/* ==================== LIVE ANALYTICS & VISITOR TRACKING ==================== */
+const anState = { timer: null, snapshot: null, ticking: false };
+
+function anFmtDuration(sec) {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+function anEsc(v) {
+  return String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function anBars(items) {
+  if (!Array.isArray(items) || !items.length) return '<span class="muted-sm">No data yet</span>';
+  const max = Math.max(...items.map((i) => i.count || 0), 1);
+  return items
+    .map(
+      (i) => `
+    <div class="an-bar-row">
+      <span class="an-bar-label" title="${anEsc(i.label)}">${anEsc(i.label)}</span>
+      <span class="an-bar-track"><span class="an-bar-fill" style="width:${Math.max(
+        4,
+        Math.round(((i.count || 0) / max) * 100)
+      )}%"></span></span>
+      <span class="an-bar-count">${i.count}</span>
+    </div>`
+    )
+    .join("");
+}
+
+async function refreshAnalyticsDashboard({ silent = false } = {}) {
+  if (anState.ticking) return;
+  anState.ticking = true;
+  try {
+    const res = await fetch("/api/analytics", { cache: "no-store", credentials: "omit" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data || !data.ok) throw new Error("Analytics unavailable");
+    anState.snapshot = data;
+
+    const sum = data.summary || {};
+    setTextSafe("anOnlineNow", sum.onlineNow ?? 0);
+    setTextSafe("anTotalSessions", sum.totalSessions ?? 0);
+    setTextSafe("anUniqueIpsSub", `${sum.uniqueIps ?? 0} unique IPs`);
+    setTextSafe("anTotalPlays", sum.totalPlays ?? 0);
+    setTextSafe("anPlaysSplit", `${sum.webPlays ?? 0} web • ${sum.iptvPlays ?? 0} IPTV`);
+    setTextSafe("anAvgSession", anFmtDuration(sum.avgSessionSec));
+    setTextSafe("anTotalWatch", `${anFmtDuration(sum.totalWatchSec)} watched`);
+    setTextSafe("anLastUpdated", `Updated ${data.generatedPkt || ""}`);
+
+    const b = data.breakdowns || {};
+    setHtmlSafe("anCountriesBox", anBars(b.countries));
+    setHtmlSafe("anCitiesBox", anBars(b.cities));
+    setHtmlSafe("anDevicesBox", anBars(b.devices) + anBars(b.browsers));
+    setHtmlSafe("anTopWatchedBox", anBars(b.topWatched));
+
+    const sessionsBody = document.getElementById("anSessionsBody");
+    if (sessionsBody) {
+      const rows = Array.isArray(data.sessions) ? data.sessions : [];
+      sessionsBody.innerHTML = rows.length
+        ? rows
+            .map(
+              (sn) => `
+        <tr>
+          <td><span class="an-live-chip ${sn.isOnline ? "" : "off"}">${sn.isOnline ? "🟢 ONLINE" : "⚪ LEFT"}</span></td>
+          <td><strong>${anEsc(sn.userName || "Guest Viewer")}</strong><div class="muted-sm" style="font-size:0.68rem;">${anEsc(
+                sn.userEmail || (sn.userPlan === "pro" ? "PRO VIP" : "Free / Guest")
+              )}</div></td>
+          <td><code style="font-size:0.7rem;">${anEsc(sn.ip)}</code></td>
+          <td>${anEsc(sn.locationLabel)}</td>
+          <td>${anEsc(sn.deviceType)}<div class="muted-sm" style="font-size:0.68rem;">${anEsc(sn.browser)} • ${anEsc(sn.os)}</div></td>
+          <td>${anEsc(sn.startedPkt)}</td>
+          <td>${anEsc(sn.lastSeenPkt)}</td>
+          <td><strong>${anFmtDuration(sn.durationSec)}</strong></td>
+          <td>${anEsc(sn.currentMedia || "—")}</td>
+        </tr>`
+            )
+            .join("")
+        : '<tr><td colspan="9" class="muted-sm">No visitor sessions tracked yet — open the website in another tab to see live data.</td></tr>';
+    }
+
+    const playsBody = document.getElementById("anPlaysBody");
+    if (playsBody) {
+      const rows = Array.isArray(data.plays) ? data.plays : [];
+      playsBody.innerHTML = rows.length
+        ? rows
+            .map(
+              (p) => `
+        <tr>
+          <td style="white-space:nowrap;">${anEsc(p.playedPkt)}</td>
+          <td><strong>${anEsc(p.title)}</strong>${p.imdbId ? `<div class="muted-sm" style="font-size:0.68rem;">${anEsc(p.imdbId)}</div>` : ""}</td>
+          <td>${anEsc(p.contentType)}</td>
+          <td><span class="badge badge-cyan" style="font-size:0.64rem;">${anEsc(p.engine)}</span></td>
+          <td><code style="font-size:0.7rem;">${anEsc(p.ip)}</code></td>
+          <td>${anEsc(p.locationLabel)}</td>
+          <td>${anEsc(p.deviceType)}</td>
+          <td>${anEsc(p.userLabel)}<div class="muted-sm" style="font-size:0.68rem;">${anEsc(p.surface)}</div></td>
+          <td>${anFmtDuration(p.watchDurationSec)}</td>
+        </tr>`
+            )
+            .join("")
+        : '<tr><td colspan="9" class="muted-sm">No plays tracked yet. Play a channel or a movie to see live events.</td></tr>';
+    }
+  } catch (err) {
+    if (!silent) {
+      setHtmlSafe(
+        "anPlaysBody",
+        `<tr><td colspan="9" class="muted-sm">Analytics endpoint unreachable (${anEsc(
+          err?.message || "error"
+        )}). Ensure Firebase rules for <code>analytics</code> are published and the admin is signed in.</td></tr>`
+      );
+    }
+  } finally {
+    anState.ticking = false;
+  }
+}
+
+function setTextSafe(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = String(value);
+}
+
+function setHtmlSafe(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function downloadAnalyticsCsv() {
+  const snap = anState.snapshot;
+  if (!snap) return;
+  const lines = ["TYPE,TIME,TITLE,IP,LOCATION,DEVICE,BROWSER,ENGINE,WATCH_SEC,USER"];
+  for (const p of snap.plays || []) {
+    const cells = [p.contentType, p.playedPkt, p.title, p.ip, p.locationLabel, p.deviceType, p.browser, p.engine, p.watchDurationSec, p.userLabel];
+    lines.push(cells.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","));
+  }
+  for (const s of snap.sessions || []) {
+    const cells = ["SESSION", s.startedPkt, s.currentMedia || "-", s.ip, s.locationLabel, s.deviceType, s.browser, "-", s.durationSec, s.userEmail || s.userName];
+    lines.push(cells.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","));
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `barakatwave-analytics-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function bindAnalyticsDashboard() {
+  document.getElementById("anRefreshBtn")?.addEventListener("click", () => refreshAnalyticsDashboard());
+  document.getElementById("anExportBtn")?.addEventListener("click", downloadAnalyticsCsv);
+  document.getElementById("anClearBtn")?.addEventListener("click", async () => {
+    if (!window.confirm("Reset all analytics counters? Visitor sessions and play logs will be cleared.")) return;
+    try {
+      await fetch("/api/analytics", { method: "DELETE", credentials: "omit" });
+      refreshAnalyticsDashboard();
+    } catch {
+      // ignore
+    }
+  });
+
+  document.querySelectorAll('[data-adm-tab="analytics"]').forEach((btn) => {
+    btn.addEventListener("click", () => refreshAnalyticsDashboard());
+  });
+
+  const start = () => {
+    refreshAnalyticsDashboard({ silent: true });
+    if (anState.timer) clearInterval(anState.timer);
+    anState.timer = setInterval(() => {
+      if (document.hidden) return;
+      const panel = document.querySelector('[data-adm-panel="analytics"]');
+      if (panel && !panel.hidden) refreshAnalyticsDashboard({ silent: true });
+    }, 15_000);
+  };
+
+  if (document.readyState === "complete") start();
+  else window.addEventListener("load", start, { once: true });
 }
 
 function bindAdminTabs() {

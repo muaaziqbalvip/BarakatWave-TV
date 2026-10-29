@@ -29,7 +29,7 @@ export const BRAND = {
 export const DEFAULT_SETTINGS = {
   welcomeVideoUrl: "/media/welcome/index.m3u8",
   welcomeVideoEnabled: true,
-  welcomeDurationSec: 8,
+  welcomeDurationSec: 4,
   welcomeSkippable: true,
   channelOfflineVideoUrl: "/media/channel-offline/index.m3u8",
   comingSoonVideoUrl: "/media/coming-soon/index.m3u8",
@@ -537,8 +537,8 @@ export const DEFAULT_CHANNELS = [
     epgId: "barakatwave.dash.hd",
     nowPlaying: "Universal MPEG-DASH (.MPD) Multi-Bitrate Broadcast Engine",
     streamFormat: "dash",
-    url: "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd",
-    backupUrls: ["/media/demo-dash/index.mpd", "/media/demo-live/index.m3u8"],
+    url: "/media/demo-dash/index.mpd",
+    backupUrls: ["https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd", "/media/demo-live/index.m3u8"],
     order: 2
   },
 
