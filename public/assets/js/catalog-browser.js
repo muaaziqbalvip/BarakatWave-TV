@@ -521,6 +521,26 @@ export const DEFAULT_CHANNELS = [
     backupUrls: [],
     order: 6
   },
+  {
+    id: "ch_barakat_dash_uhd",
+    streamId: 1016,
+    slug: "barakatwave-dash-mpd-studio-hd",
+    name: "BarakatWave DASH MPD Studio HD",
+    category: "🇵🇰 ⭐ Pakistan Top Channels",
+    categoryId: "1",
+    country: "PK",
+    language: "Urdu / English",
+    tier: "free",
+    featured: true,
+    status: "active",
+    logo: "https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png",
+    epgId: "barakatwave.dash.hd",
+    nowPlaying: "Universal MPEG-DASH (.MPD) Multi-Bitrate Broadcast Engine",
+    streamFormat: "dash",
+    url: "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd",
+    backupUrls: ["/media/demo-dash/index.mpd", "/media/demo-live/index.m3u8"],
+    order: 2
+  },
 
   // ==================== 4. 📰 LIVE NEWS NETWORKS (FOURTH) ====================
   {

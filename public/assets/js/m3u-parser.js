@@ -17,6 +17,7 @@ export function parseM3uPlaylist(rawText, defaultTier = "free", { autoSort = tru
   const channels = [];
   let currentMeta = null;
   let currentHeaders = {};
+  let currentDrm = { streamFormat: "auto", drmScheme: "", drmKey: "", drmLicenseUrl: "" };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -51,6 +52,29 @@ export function parseM3uPlaylist(rawText, defaultTier = "free", { autoSort = tru
       continue;
     }
 
+    if (line.startsWith("#KODIPROP:")) {
+      const prop = line.slice(10).trim();
+      if (/^inputstream\.adaptive\.manifest_type\s*=\s*mpd/i.test(prop)) {
+        currentDrm.streamFormat = "dash";
+      } else if (/^inputstream\.adaptive\.license_type\s*=/i.test(prop)) {
+        const lt = prop.split("=").slice(1).join("=").trim().toLowerCase();
+        if (lt.includes("clearkey") || lt.includes("org.w3.clearkey")) {
+          currentDrm.drmScheme = "clearkey";
+        } else if (lt.includes("widevine")) {
+          currentDrm.drmScheme = "widevine";
+        }
+      } else if (/^inputstream\.adaptive\.license_key\s*=/i.test(prop)) {
+        const lk = prop.split("=").slice(1).join("=").trim();
+        if (/^https?:\/\//i.test(lk) && currentDrm.drmScheme === "widevine") {
+          currentDrm.drmLicenseUrl = lk;
+        } else {
+          if (!currentDrm.drmScheme) currentDrm.drmScheme = "clearkey";
+          currentDrm.drmKey = lk;
+        }
+      }
+      continue;
+    }
+
     if (line.startsWith("#EXTVLCOPT:")) {
       const opt = line.slice(11).trim();
       if (/^http-user-agent=/i.test(opt)) {
@@ -77,6 +101,16 @@ export function parseM3uPlaylist(rawText, defaultTier = "free", { autoSort = tru
       const slug = slugify(meta.name) || `ch-${channels.length + 1}`;
       const inferredTier =
         /\[pro|vip\]/i.test(meta.name) ? "pro" : defaultTier === "pro" ? "pro" : "free";
+      const detectedFmt =
+        currentDrm.streamFormat !== "auto"
+          ? currentDrm.streamFormat
+          : /\.mpd(\?|$)/i.test(line)
+            ? "dash"
+            : /\.flv(\?|$)/i.test(line)
+              ? "flv"
+              : /\.ts(\?|$)/i.test(line)
+                ? "mpegts"
+                : "auto";
 
       channels.push({
         id: `ch_${slug}_${Math.random().toString(36).slice(2, 6)}`,
@@ -92,12 +126,17 @@ export function parseM3uPlaylist(rawText, defaultTier = "free", { autoSort = tru
         tier: inferredTier,
         status: "active",
         url: line,
+        streamFormat: detectedFmt,
+        drmScheme: currentDrm.drmScheme || "",
+        drmKey: currentDrm.drmKey || "",
+        drmLicenseUrl: currentDrm.drmLicenseUrl || "",
         backupUrls: [],
         headers: { ...currentHeaders },
         order: channels.length + 1
       });
       currentMeta = null;
       currentHeaders = {};
+      currentDrm = { streamFormat: "auto", drmScheme: "", drmKey: "", drmLicenseUrl: "" };
     }
   }
 
@@ -124,6 +163,16 @@ export function exportChannelsToM3u(channels, { baseUrl = "", useCleanLinks = fa
     }
     if (ch.headers && ch.headers.Referer) {
       out.push(`#EXTVLCOPT:http-referrer=${ch.headers.Referer}`);
+    }
+    if (ch.streamFormat === "dash" || /\.mpd(\?|$)/i.test(ch.url || "")) {
+      out.push("#KODIPROP:inputstream.adaptive.manifest_type=mpd");
+    }
+    if (ch.drmKey) {
+      out.push(`#KODIPROP:inputstream.adaptive.license_type=${ch.drmScheme === "widevine" ? "com.widevine.alpha" : "org.w3.clearkey"}`);
+      out.push(`#KODIPROP:inputstream.adaptive.license_key=${ch.drmKey}`);
+    } else if (ch.drmLicenseUrl) {
+      out.push("#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha");
+      out.push(`#KODIPROP:inputstream.adaptive.license_key=${ch.drmLicenseUrl}`);
     }
     if (useCleanLinks) {
       out.push(`${origin}/ch/${ch.slug}.m3u8`);

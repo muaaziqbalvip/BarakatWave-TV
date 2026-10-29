@@ -2,17 +2,23 @@
 <html lang="en" data-theme="daylight">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BarakatWave Live TV — Free Xtream Codes Server, M3U8 Playlists &amp; HD Live Streaming | Mizanora Projects by Muaaz Iqbal</title>
-  <meta name="description" content="Watch Pakistan, India, Islamic, Sports &amp; World HD Live TV on BarakatWave TV. Sign in with Google or Gmail to claim your FREE Personal Xtream Codes Server &amp; Custom M3U8 Playlist! A Mizanora Project by Muaaz Iqbal. PRO VIP Contact: 0306-2015326." />
-  <meta name="keywords" content="BarakatWave TV, BarakatWave Live TV, Mizanora Projects, Muaaz Iqbal, Free Xtream Codes Server, Live TV Pakistan, India Live TV, M3U8 Playlist Generator, IPTV Smarters Pro, TiviMate, Barakat TV Pro 03062015326" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0284c7" id="metaThemeColor" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="BarakatWave TV" />
+  <title>BarakatWave Live TV — 3D Broadcast Studio, Universal DASH/MPD + HLS Player &amp; Free Xtream Server | Mizanora Projects by Muaaz Iqbal</title>
+  <meta name="description" content="Watch Pakistan, India, Islamic, Sports &amp; World HD Live TV + 1,570+ IMDb Movies &amp; Series (2000–2026) in BarakatWave's 3D Universal DASH/MPD + HLS + MPEG-TS Studio App. Install on Mobile or Laptop! A Mizanora Project by Muaaz Iqbal. PRO VIP: 0306-2015326." />
+  <meta name="keywords" content="BarakatWave TV, BarakatWave Live TV, Mizanora Projects, Muaaz Iqbal, Universal MPD DASH HLS Player, Free Xtream Codes Server, Live TV Pakistan, India Live TV, M3U8 Playlist Generator, IPTV Smarters Pro, TiviMate, Barakat TV Pro 03062015326" />
   <meta name="author" content="Muaaz Iqbal — Founder &amp; Lead Developer, Mizanora Projects" />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   <link rel="canonical" href="https://barakatwave.vercel.app/" />
   <link rel="alternate" type="application/rss+xml" title="BarakatWave Live TV Official Blog RSS" href="/rss.xml" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="author" href="/humans.txt" />
-  <link rel="icon" type="image/png" href="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png" />
 
   <!-- OpenGraph / WhatsApp / Social Viral Preview -->
   <meta property="og:type" content="website" />
@@ -112,7 +118,14 @@
   }
   </script>
 </head>
-<body class="has-mobile-dock">
+<body class="has-mobile-dock bw-3d-ui">
+  <!-- Ambient 3D Spatial Broadcast Aurora -->
+  <div class="spatial-3d-aurora" aria-hidden="true">
+    <div class="aurora-orb orb-1"></div>
+    <div class="aurora-orb orb-2"></div>
+    <div class="aurora-orb orb-3"></div>
+  </div>
+
   <!-- Live Announcement Ticker -->
   <div class="top-ticker" id="siteTicker">
     🌊 <strong>BarakatWave Live TV</strong> — Under <strong>Mizanora Projects by Muaaz Iqbal</strong> &bull; Sign in with Google or Gmail for your <strong>FREE Xtream Server</strong>! For <strong>PRO VIP Unlock</strong> WhatsApp: <strong>0306-2015326</strong>
@@ -146,6 +159,7 @@
 
       <div class="header-actions">
         <div class="theme-switcher" id="themeSwitcher" title="Switch Broadcast Theme"></div>
+        <button type="button" class="btn btn-sm btn-gold" id="installAppHeaderBtn" title="Install BarakatWave 3D App on Phone or Laptop">📲 Install App</button>
         <a href="/admin.html" class="btn btn-sm btn-outline" title="Admin Command Center">⚙️ Admin</a>
         <button class="btn btn-sm btn-primary" id="openAuthBtn">Sign In / Join</button>
         <div id="userChipWrap" hidden style="display:flex;align-items:center;gap:6px;">
@@ -160,36 +174,40 @@
   <main class="container">
     <!-- ==================== VIEW 1: LIVE TV STUDIO ==================== -->
     <section class="app-section" id="view-live">
-      <div class="studio-welcome-bar">
+      <div class="studio-welcome-bar studio-3d-ribbon">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <span class="live-dot" aria-hidden="true"></span>
-          <strong style="font-size:0.9rem;">BarakatWave Cloud Broadcast Engine</strong>
+          <strong style="font-size:0.9rem;">BarakatWave 3D Universal Studio</strong>
+          <span class="badge badge-cyan">DASH .MPD • HLS • MPEG-TS • MP4</span>
           <span class="badge badge-free" id="heroFreeCountBadge">FREE HD</span>
           <span class="badge badge-gold" id="heroProCountBadge">👑 PRO VIP</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <span class="muted-sm">Xtream Codes + HLS Auto-Intro Active</span>
+          <button type="button" class="btn btn-sm btn-outline" id="heroOpenStreamLabBtn">🎛 Play Any MPD / Stream</button>
           <button type="button" class="btn btn-sm btn-primary" data-jump="xtream">⚡ Claim Free Xtream Key</button>
         </div>
       </div>
 
       <div class="studio-grid">
-        <!-- Broadcast HLS Video Player -->
+        <!-- Custom BarakatWave 3D Universal Broadcast Player (DASH .mpd + HLS .m3u8 + MPEG-TS + MP4 + DRM) -->
         <div class="player-shell glass-card">
           <div class="player-stage" id="playerStage">
             <div class="player-top-hud">
-              <span class="status-pill" id="playerStatusPill" data-tone="loading">READY • HD</span>
+              <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+                <span class="status-pill" id="playerStatusPill" data-tone="loading">READY • HD</span>
+                <span class="codec-pill" id="playerCodecPill">UNIVERSAL ENGINE</span>
+              </div>
               <div class="player-watermark">
                 <img
                   src="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png"
                   onerror="this.onerror=null;this.src='/assets/logo-fallback.svg';"
                   alt=""
                 />
-                <span>BarakatWave HD</span>
+                <span>BarakatWave 3D</span>
               </div>
             </div>
 
-            <video id="liveVideo" controls playsinline poster="/assets/logo-fallback.svg"></video>
+            <video id="liveVideo" playsinline poster="/assets/logo-fallback.svg"></video>
 
             <!-- Pre-Roll Welcome Animation HUD -->
             <div class="intro-overlay" id="introOverlay" hidden>
@@ -242,12 +260,58 @@
               <select id="audioSelect" class="select-compact" aria-label="Audio Track" hidden>
                 <option value="0">Audio: Default</option>
               </select>
+              <select id="subtitleSelect" class="select-compact" aria-label="Subtitles" hidden>
+                <option value="off">CC: Off</option>
+              </select>
+              <button class="btn btn-sm btn-outline" id="openStreamLabBtn" title="Play Any DASH .mpd / HLS .m3u8 / .ts / .mp4 Stream">🎛 MPD / URL</button>
               <button class="btn btn-sm btn-outline" id="prevChBtn" title="Previous Channel">⏮</button>
               <button class="btn btn-sm btn-outline" id="nextChBtn" title="Next Channel">⏭</button>
               <button class="btn btn-sm btn-outline" id="pipBtn" title="Picture-in-Picture">⧉ PiP</button>
               <button class="btn btn-sm btn-outline" id="theaterBtn" title="Theater Mode">▭ Theater</button>
               <button class="btn btn-sm btn-outline" id="shareChBtn" title="Copy Channel Link">🔗 Share</button>
             </div>
+          </div>
+
+          <!-- Inline Series Season & Episode Quick-Switcher (Appears Automatically When Watching Series!) -->
+          <div class="series-episode-tray" id="activeSeriesEpisodeTray" hidden></div>
+
+          <!-- Collapsible Universal Stream Lab (Play Any DASH .mpd + ClearKey DRM / HLS .m3u8 / .ts / .flv / .mp4) -->
+          <div class="universal-stream-drawer" id="universalStreamDrawer" hidden>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+              <div>
+                <strong style="font-size:0.86rem;">🎛 Universal Media Engine — Play Any DASH (<code>.mpd</code>), HLS (<code>.m3u8</code>), MPEG-TS (<code>.ts</code>), FLV or MP4</strong>
+                <div class="muted-sm" style="font-size:0.74rem;">Supports ClearKey DRM (<code>kid:key</code> or JWK JSON), Widevine License URLs &amp; automatic CORS Relay failover!</div>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-sm btn-outline" data-sample-stream="dash">▶ Sample DASH .MPD</button>
+                <button type="button" class="btn btn-sm btn-outline" data-sample-stream="local_dash">▶ Local .MPD</button>
+                <button type="button" class="btn btn-sm btn-outline" data-sample-stream="hls">▶ Sample HLS .M3U8</button>
+              </div>
+            </div>
+            <form id="customUniversalStreamForm" class="universal-stream-grid">
+              <input
+                type="text"
+                id="customStreamUrlInput"
+                class="input-field"
+                placeholder="Paste .mpd, .m3u8, .ts, .flv, or .mp4 stream URL..."
+                required
+              />
+              <select id="customStreamFormatSelect" class="select-compact" aria-label="Protocol">
+                <option value="auto">✨ Auto-Detect</option>
+                <option value="dash">DASH (.mpd)</option>
+                <option value="hls">HLS (.m3u8)</option>
+                <option value="mpegts">MPEG-TS (.ts)</option>
+                <option value="flv">HTTP-FLV (.flv)</option>
+                <option value="html5">MP4 / MKV / WebM</option>
+              </select>
+              <input
+                type="text"
+                id="customStreamDrmInput"
+                class="input-field"
+                placeholder="Optional ClearKey (kid:key) or License URL"
+              />
+              <button type="submit" class="btn btn-primary">▶ Play Stream</button>
+            </form>
           </div>
         </div>
 
@@ -308,16 +372,19 @@
 
     <!-- ==================== VIEW 1B: IMDb MOVIES & SERIES CINEMA HUB ==================== -->
     <section class="app-section" id="view-cinema" hidden>
+      <!-- 3D Featured Blockbuster Spotlight Stage -->
+      <div class="cinema-3d-hero glass-card" id="cinemaFeaturedHero"></div>
+
       <div class="glass-card" style="padding:22px 24px;margin-bottom:20px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
           <div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
               <span class="badge badge-gold">⭐ IMDb AUTO-LOADED (2000–2026)</span>
-              <span class="badge badge-cyan">🎬 1,570+ MOVIES &amp; SERIES IN XTREAM + WEB</span>
+              <span class="badge badge-cyan">🎬 1,570+ MOVIES &amp; SERIES IN XTREAM + 3D WEB</span>
             </div>
-            <h1 style="margin:0 0 6px;font-size:1.55rem;">🍿 BarakatWave IMDb Movies &amp; Web Series Hub (2000–2026)</h1>
+            <h1 style="margin:0 0 6px;font-size:1.55rem;">🍿 BarakatWave 3D IMDb Cinema &amp; Series Hub (2000–2026)</h1>
             <p class="muted-sm" style="margin:0;max-width:740px;">
-              Automatically indexes <strong>all major Movies &amp; TV Series from 2000 through 2026</strong> directly by IMDb ID (<code>tt...</code>) with official IMDb Ratings, Posters, Cast, Synopsis &amp; Seasons across Televizo, IPTV Smarters, TiviMate &amp; Web! <em>VOD servers are building — clicking Watch plays our official Coming Soon HD broadcast!</em>
+              Automatically indexes <strong>all major Movies &amp; TV Series from 2000 through 2026</strong> directly by IMDb ID (<code>tt...</code>) with official IMDb Ratings, Posters, Cast, Synopsis &amp; Seasons across Mobile, Laptop, Televizo, IPTV Smarters &amp; TiviMate!
             </p>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
@@ -337,6 +404,7 @@
             <button type="button" class="btn btn-sm btn-primary" data-cin-type="all">🌐 All Titles (<span id="cinCountAll">0</span>)</button>
             <button type="button" class="btn btn-sm btn-outline" data-cin-type="movie">🎬 Movies (<span id="cinCountMovies">0</span>)</button>
             <button type="button" class="btn btn-sm btn-outline" data-cin-type="series">📺 TV Series (<span id="cinCountSeries">0</span>)</button>
+            <button type="button" class="btn btn-sm btn-outline" data-cin-type="watchlist">❤️ My List (<span id="cinCountWatchlist">0</span>)</button>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;flex:1;justify-content:flex-end;min-width:240px;">
             <select id="cinemaYearFilter" class="select-field" style="width:auto;min-width:155px;">
@@ -827,11 +895,47 @@
       <span class="mob-ico">👑</span>
       <span>PRO VIP</span>
     </button>
-    <button type="button" class="mob-nav-btn" data-view="support">
-      <span class="mob-ico">⭐</span>
-      <span>Support</span>
+    <button type="button" class="mob-nav-btn" id="mobileInstallDockBtn">
+      <span class="mob-ico">📲</span>
+      <span>Install</span>
     </button>
   </nav>
+
+  <!-- ==================== 3D PWA INSTALL APP MODAL (ANDROID / iOS / LAPTOP) ==================== -->
+  <div class="modal-backdrop" id="pwaInstallModal" hidden>
+    <div class="modal-card glass-card" role="dialog" aria-modal="true" aria-labelledby="pwaModalTitle">
+      <button class="modal-close" id="closePwaModalBtn" aria-label="Close">✕</button>
+      <div style="text-align:center;">
+        <img
+          src="/assets/icons/icon-192.png"
+          alt="BarakatWave 3D App"
+          style="width:68px;height:68px;border-radius:18px;box-shadow:0 12px 28px rgba(2,132,199,0.35);"
+        />
+        <div style="margin-top:8px;">
+          <span class="badge badge-gold">✨ 3D PROGRESSIVE WEB APP</span>
+        </div>
+        <h3 id="pwaModalTitle" style="margin:8px 0 4px;">Install BarakatWave TV App</h3>
+        <p class="muted-sm" style="margin:0;">
+          Instant Fullscreen Launch on Android, iPhone/iPad, Windows &amp; Mac — Zero App Store Wait, Ultra-Smooth Live TV &amp; 2000–2026 Cinema!
+        </p>
+      </div>
+
+      <div id="pwaNativePromptBox" style="margin-top:16px;" hidden>
+        <button type="button" class="btn btn-lg btn-primary" id="pwaTriggerNativeBtn" style="width:100%;">
+          📲 Install BarakatWave TV Now (1-Tap)
+        </button>
+      </div>
+
+      <div class="cred-box" style="margin-top:14px;" id="pwaManualGuideBox">
+        <div style="font-weight:800;font-size:0.86rem;margin-bottom:6px;">📱 Quick Install Steps:</div>
+        <div class="muted-sm" style="font-size:0.8rem;line-height:1.58;">
+          • <strong>Android (Chrome / Edge / Samsung):</strong> Tap browser menu <code>⋮</code> &rarr; <strong>Install App</strong> or <strong>Add to Home Screen</strong>.<br />
+          • <strong>iPhone / iPad (Safari):</strong> Tap <strong>Share</strong> icon <code>⬆️</code> at bottom &rarr; <strong>Add to Home Screen</strong>.<br />
+          • <strong>Laptop / PC (Chrome / Edge):</strong> Click the <strong>Install icon</strong> <code>⊕</code> in the address bar!
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- ==================== IMDb MOVIE & SERIES DETAIL MODAL ==================== -->
   <div class="modal-backdrop" id="cinemaDetailModal" hidden>

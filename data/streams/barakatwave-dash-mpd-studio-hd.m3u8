@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:BarakatWave DASH MPD Studio HD — BarakatWave Live TV (FREE HD)
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.channel",VALUE="barakatwave-dash-mpd-studio-hd"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.barakatwave.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="barakatwave.dash.hd" tvg-name="BarakatWave DASH MPD Studio HD" tvg-logo="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" group-title="🇵🇰 ⭐ PAKISTAN TOP CHANNELS",BarakatWave DASH MPD Studio HD
+https://barakatwave.vercel.app/ch/barakatwave-dash-mpd-studio-hd.m3u8

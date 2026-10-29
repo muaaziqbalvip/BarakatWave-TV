@@ -192,12 +192,27 @@
                 </div>
               </div>
 
-              <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;">
+              <div style="display:grid;grid-template-columns:1.5fr auto 1fr auto;gap:8px;align-items:end;">
                 <div class="form-group">
-                  <label>Primary Working .M3U8 Stream URL *</label>
-                  <input type="text" id="chUrl" class="input-field" placeholder="https://example.com/live/index.m3u8" required />
+                  <label>Primary Stream URL (.M3U8 / .MPD DASH / .TS / .FLV / .MP4) *</label>
+                  <input type="text" id="chUrl" class="input-field" placeholder="https://example.com/live/index.m3u8 or manifest.mpd" required />
                 </div>
-                <button type="button" class="btn btn-gold" id="probeSingleBtn">⚡ Test Working M3U8</button>
+                <div class="form-group">
+                  <label>Protocol</label>
+                  <select id="chStreamFormat" class="input-field" style="width:140px;">
+                    <option value="auto">✨ Auto-Detect</option>
+                    <option value="hls">HLS (.m3u8)</option>
+                    <option value="dash">DASH (.mpd)</option>
+                    <option value="mpegts">MPEG-TS (.ts)</option>
+                    <option value="flv">HTTP-FLV (.flv)</option>
+                    <option value="html5">MP4 / Direct</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Optional DRM ClearKey (<code>kid:key</code>) / License URL</label>
+                  <input type="text" id="chDrmKey" class="input-field" placeholder="e.g. a1b2...:c3d4... or Widevine URL" />
+                </div>
+                <button type="button" class="btn btn-gold" id="probeSingleBtn">⚡ Test Stream</button>
               </div>
 
               <div id="probeSingleResult" class="cred-box" hidden></div>
@@ -379,8 +394,12 @@
                   <input type="text" id="imdbBackdropInput" class="input-field" placeholder="https://..." />
                 </div>
                 <div class="form-group">
-                  <label>Optional Direct Stream URL (.mp4 / .m3u8) — Leave Blank for "Coming Soon" Video</label>
+                  <label>Optional Direct Stream URL (.mp4 / .m3u8 / .mpd DASH) — Blank = "Coming Soon"</label>
                   <input type="text" id="imdbStreamUrlInput" class="input-field" placeholder="Blank = Plays 'Service is Building — Coming Soon' Video!" />
+                </div>
+                <div class="form-group">
+                  <label>Optional ClearKey DRM (<code>kid:key</code>) for .mpd VOD</label>
+                  <input type="text" id="imdbDrmKeyInput" class="input-field" placeholder="Optional ClearKey or License URL" />
                 </div>
               </div>
 

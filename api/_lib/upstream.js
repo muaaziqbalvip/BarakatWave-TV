@@ -37,11 +37,14 @@ export function isClientDirectIptvUrl(rawUrl) {
     const pathLower = u.pathname.toLowerCase();
     const searchLower = u.search.toLowerCase();
 
-    // Flussonic / Xtream / Stalker / Nimble dynamic per-IP auto-session endpoints
+    // Flussonic / Xtream / Stalker / Nimble dynamic per-IP auto-session endpoints & non-HLS native formats (DASH .mpd, .ts, .flv)
     if (
       pathLower.includes("/live/auto/") ||
       pathLower.includes("/play/live.php") ||
-      pathLower.endsWith(".ts")
+      pathLower.endsWith(".ts") ||
+      pathLower.endsWith(".mpd") ||
+      pathLower.endsWith(".flv") ||
+      pathLower.endsWith(".mkv")
     ) {
       return true;
     }

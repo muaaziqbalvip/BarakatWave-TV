@@ -272,6 +272,10 @@ export function normalizeChannel(ch, idx = 0) {
     introVideoUrl: ch.introVideoUrl || "",
     offlineVideoUrl: ch.offlineVideoUrl || "",
     proUnlockVideoUrl: ch.proUnlockVideoUrl || "",
+    streamFormat: String(ch.streamFormat || "auto").toLowerCase(),
+    drmScheme: String(ch.drmScheme || "").toLowerCase(),
+    drmKey: String(ch.drmKey || "").trim(),
+    drmLicenseUrl: String(ch.drmLicenseUrl || "").trim(),
     useProxy: Boolean(ch.useProxy),
     headers: ch.headers && typeof ch.headers === "object" ? ch.headers : {},
     order: typeof ch.order === "number" ? ch.order : idx + 1

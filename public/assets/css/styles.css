@@ -1985,4 +1985,629 @@ tr.drag-over-row td {
   border: 1px solid var(--border);
 }
 
+/* ==========================================================================
+   3D Spatial Broadcast Web App + Custom BarakatWave Universal Studio Player
+   Engineered under Mizanora Projects by Muaaz Iqbal
+   ========================================================================== */
+
+.spatial-3d-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.aurora-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(78px);
+  opacity: 0.25;
+  will-change: transform;
+  animation: float3dOrb 18s ease-in-out infinite alternate;
+}
+
+[data-theme="barakat"] .aurora-orb,
+[data-theme="mizanora"] .aurora-orb,
+[data-theme="amethyst"] .aurora-orb {
+  opacity: 0.36;
+}
+
+.aurora-orb.orb-1 {
+  width: 440px;
+  height: 440px;
+  top: -110px;
+  left: -90px;
+  background: radial-gradient(circle, var(--primary) 0%, transparent 72%);
+}
+
+.aurora-orb.orb-2 {
+  width: 390px;
+  height: 390px;
+  top: 18%;
+  right: -110px;
+  background: radial-gradient(circle, var(--gold-bright) 0%, transparent 72%);
+  animation-delay: -6s;
+}
+
+.aurora-orb.orb-3 {
+  width: 460px;
+  height: 460px;
+  bottom: -150px;
+  left: 32%;
+  background: radial-gradient(circle, var(--primary-2) 0%, transparent 74%);
+  animation-delay: -11s;
+}
+
+@keyframes float3dOrb {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(34px, -28px, 0) scale(1.1); }
+}
+
+.studio-3d-ribbon {
+  position: relative;
+  background: linear-gradient(135deg, var(--bg-card), var(--bg-elev));
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+/* 3D Perspective Interactive Cards (Desktop Hover Tilt + Specular Glare) */
+@media (hover: hover) and (pointer: fine) {
+  .channel-item,
+  .cinema-card,
+  .feature-card,
+  .blog-card {
+    transform-style: preserve-3d;
+    transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateY(var(--ty, 0px));
+    transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease, box-shadow 0.22s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .channel-item::after,
+  .cinema-card::after,
+  .feature-card::after,
+  .blog-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(
+      260px circle at var(--mx, 50%) var(--my, 25%),
+      rgba(255, 255, 255, 0.22),
+      transparent 68%
+    );
+    transition: opacity 0.2s ease;
+  }
+
+  .channel-item:hover::after,
+  .cinema-card:hover::after,
+  .feature-card:hover::after,
+  .blog-card:hover::after {
+    opacity: 1;
+  }
+
+  .channel-item:hover,
+  .cinema-card:hover,
+  .feature-card:hover,
+  .blog-card:hover {
+    --ty: -5px;
+    box-shadow: var(--shadow-lg);
+    border-color: var(--primary);
+  }
+}
+
+/* 3D Player Shell + Real-Time Ambilight Halo */
+.bw-shell-3d {
+  position: relative;
+  isolation: isolate;
+  overflow: visible !important;
+  border-radius: 22px;
+  box-shadow: var(--shadow-lg);
+}
+
+.bw-ambilight-canvas {
+  position: absolute;
+  inset: -14px -14px 44px -14px;
+  width: calc(100% + 28px);
+  height: calc(100% - 30px);
+  z-index: -1;
+  filter: blur(36px) saturate(185%);
+  opacity: 0.52;
+  border-radius: 28px;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+
+.bw-shell-3d.ambilight-off .bw-ambilight-canvas {
+  opacity: 0;
+}
+
+.bw-shell-3d .player-stage {
+  border-radius: 20px 20px 0 0;
+}
+
+.bw-shell-3d .player-controls-bar {
+  background: var(--bg-card);
+  border-radius: 0 0 20px 20px;
+}
+
+.codec-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: rgba(8, 17, 32, 0.78);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.38);
+  backdrop-filter: blur(8px);
+}
+
+/* Custom BarakatWave Studio Player Chrome */
+.bw-custom-player {
+  user-select: none;
+  cursor: pointer;
+}
+
+.bw-custom-player.bw-controls-autohide {
+  cursor: none;
+}
+
+.bw-custom-player:fullscreen,
+.bw-custom-player:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto;
+  border-radius: 0 !important;
+  background: #000;
+}
+
+.bw-studio-chrome {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.bw-buffer-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 14px 20px;
+  border-radius: 18px;
+  background: rgba(6, 13, 25, 0.76);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(56, 189, 248, 0.32);
+  color: #f8fafc;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.bw-spinner-orb {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 3px solid rgba(56, 189, 248, 0.22);
+  border-top-color: #38bdf8;
+  border-right-color: #fbbf24;
+  animation: bwSpin 0.78s linear infinite;
+}
+
+@keyframes bwSpin {
+  to { transform: rotate(360deg); }
+}
+
+.bw-center-play-btn {
+  pointer-events: auto;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.88), rgba(14, 165, 233, 0.78));
+  color: #fff;
+  font-size: 1.55rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55), 0 0 0 8px rgba(14, 165, 233, 0.16);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.bw-center-play-btn:hover {
+  transform: translate(-50%, -50%) scale(1.08);
+}
+
+.bw-seek-ripple {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(8, 16, 30, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.84rem;
+}
+
+.bw-seek-ripple.left { left: 12%; }
+.bw-seek-ripple.right { right: 12%; }
+
+.bw-bottom-deck {
+  pointer-events: auto;
+  padding: 24px 14px 11px;
+  background: linear-gradient(180deg, transparent 0%, rgba(4, 9, 18, 0.76) 42%, rgba(4, 9, 18, 0.94) 100%);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.bw-custom-player.bw-controls-autohide .bw-bottom-deck,
+.bw-custom-player.bw-controls-autohide .player-top-hud {
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+}
+
+.bw-timeline-wrap {
+  padding: 5px 0 8px;
+  cursor: pointer;
+}
+
+.bw-timeline-track {
+  position: relative;
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  transition: height 0.14s ease;
+}
+
+.bw-timeline-wrap:hover .bw-timeline-track {
+  height: 8px;
+}
+
+.bw-timeline-buffered {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.36);
+}
+
+.bw-timeline-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #00d4ff, #38bdf8, #fbbf24);
+}
+
+.bw-timeline-thumb {
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%) scale(0.85);
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #0ea5e9;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  transition: transform 0.14s ease;
+}
+
+.bw-timeline-wrap:hover .bw-timeline-thumb {
+  transform: translateY(-50%) scale(1.15);
+}
+
+.bw-deck-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bw-deck-left,
+.bw-deck-right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bw-ctrl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 7px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.09);
+  color: #f8fafc;
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+.bw-ctrl-btn:hover {
+  background: rgba(56, 189, 248, 0.26);
+  border-color: rgba(56, 189, 248, 0.6);
+  transform: translateY(-1px);
+}
+
+.bw-ctrl-btn.active-glow {
+  border-color: rgba(251, 191, 36, 0.65);
+  background: rgba(251, 191, 36, 0.18);
+}
+
+.bw-pill-ctrl {
+  font-size: 0.72rem;
+  padding: 0 9px;
+}
+
+.bw-vol-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bw-vol-slider {
+  width: 68px;
+  height: 4px;
+  accent-color: #38bdf8;
+  cursor: pointer;
+}
+
+.bw-live-sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.bw-live-sync-pill .bw-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.bw-live-sync-pill.is-live {
+  border-color: rgba(239, 68, 68, 0.55);
+  color: #fff;
+}
+
+.bw-live-sync-pill.is-live .bw-live-dot {
+  background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+}
+
+.bw-engine-badge {
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  background: rgba(2, 132, 199, 0.25);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  white-space: nowrap;
+}
+
+/* Universal Stream Lab Drawer & Series Episode Strip */
+.universal-stream-drawer {
+  padding: 14px 18px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-soft);
+  border-radius: 0 0 20px 20px;
+}
+
+.universal-stream-grid {
+  display: grid;
+  grid-template-columns: 1.8fr auto 1.1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.series-episode-tray {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+
+.episode-pills-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.ep-quick-pill {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.ep-quick-pill.active,
+.ep-quick-pill:hover {
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: var(--primary-ink);
+  border-color: transparent;
+}
+
+/* 3D Cinema Spotlight Hero */
+.cinema-3d-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 24px;
+  margin-bottom: 20px;
+  min-height: 250px;
+  background-size: cover;
+  background-position: center 22%;
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-lg);
+}
+
+.cinema-3d-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(95deg, rgba(5, 11, 22, 0.94) 0%, rgba(5, 11, 22, 0.78) 55%, rgba(5, 11, 22, 0.45) 100%);
+}
+
+.cinema-3d-hero-inner {
+  position: relative;
+  z-index: 1;
+  padding: 26px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  color: #f8fafc;
+}
+
+.cinema-fav-heart {
+  position: absolute;
+  bottom: 34px;
+  right: 8px;
+  z-index: 3;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(8, 14, 26, 0.78);
+  color: #fff;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.cinema-fav-heart.saved {
+  background: rgba(239, 68, 68, 0.9);
+  border-color: #fda4af;
+}
+
+/* Mobile & Tablet Ergonomics: Sticky Player + Smooth 2-Col Cinema + Compact Deck */
+@media (max-width: 900px) {
+  .universal-stream-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 820px) {
+  .container {
+    padding: 0 12px;
+  }
+
+  .header-inner {
+    min-height: 60px;
+    gap: 8px;
+  }
+
+  .brand-logo {
+    width: 38px;
+    height: 38px;
+  }
+
+  .brand-title {
+    font-size: 1rem;
+  }
+
+  .theme-dot {
+    display: none;
+  }
+
+  /* Keep Live TV player docked cleanly near top on mobile while surfing channels */
+  #view-live .player-shell {
+    position: sticky;
+    top: 62px;
+    z-index: 42;
+  }
+
+  .bw-vol-slider,
+  .bw-engine-badge,
+  #bwSnapBtn {
+    display: none;
+  }
+
+  .bw-bottom-deck {
+    padding: 16px 9px 8px;
+  }
+
+  .bw-ctrl-btn {
+    min-width: 29px;
+    height: 29px;
+    padding: 0 5px;
+    font-size: 0.78rem;
+  }
+
+  .player-controls-bar {
+    padding: 10px 12px !important;
+    gap: 8px !important;
+  }
+
+  .now-playing-title {
+    font-size: 0.96rem !important;
+  }
+
+  .cinema-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 11px;
+  }
+
+  .cinema-3d-hero-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 18px;
+  }
+
+  .mobile-bottom-nav {
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -8px 28px rgba(2, 132, 199, 0.16);
+  }
+}
+
+
 

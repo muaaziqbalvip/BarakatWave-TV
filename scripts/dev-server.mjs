@@ -25,8 +25,13 @@ const MIME_TYPES = {
   ".xml": "application/xml; charset=utf-8",
   ".m3u8": "application/vnd.apple.mpegurl; charset=utf-8",
   ".m3u": "audio/x-mpegurl; charset=utf-8",
+  ".mpd": "application/dash+xml; charset=utf-8",
+  ".m4s": "video/iso.segment",
   ".ts": "video/mp2t",
   ".m2ts": "video/mp2t",
+  ".flv": "video/x-flv",
+  ".mkv": "video/x-matroska",
+  ".webm": "video/webm",
   ".mp4": "video/mp4"
 };
 

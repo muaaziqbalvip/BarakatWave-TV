@@ -13,7 +13,8 @@ const KNOWN_LOCAL_STREAMS = new Set([
   "/media/channel-offline/index.m3u8",
   "/media/coming-soon/index.m3u8",
   "/media/pro-unlock/index.m3u8",
-  "/media/demo-live/index.m3u8"
+  "/media/demo-live/index.m3u8",
+  "/media/demo-dash/index.mpd"
 ]);
 
 async function probeSingleUrl(rawUrl, baseUrl) {
@@ -22,13 +23,16 @@ async function probeSingleUrl(rawUrl, baseUrl) {
   if (!url) return { url, ok: false, status: 0, latencyMs: 0, error: "Empty URL" };
 
   const cleanLocal = url.split("?")[0];
-  if (KNOWN_LOCAL_STREAMS.has(cleanLocal)) {
+    if (KNOWN_LOCAL_STREAMS.has(cleanLocal)) {
+    const isDashLocal = cleanLocal.endsWith(".mpd");
     return {
       url,
       ok: true,
       status: 200,
       latencyMs: 1,
-      isHls: true,
+      isHls: !isDashLocal,
+      isDash: isDashLocal,
+      format: isDashLocal ? "dash" : "hls",
       local: true,
       error: null
     };
@@ -52,11 +56,17 @@ async function probeSingleUrl(rawUrl, baseUrl) {
   }
 
   if (res.ok || res.isBinaryTs) {
-    const sample = String(res.text || "").slice(0, 2000);
+    const sample = String(res.text || "").slice(0, 2500);
+    const ct = String(res.contentType || "").toLowerCase();
+    const isDash =
+      sample.includes("<MPD") ||
+      ct.includes("dash+xml") ||
+      effectiveUrl.toLowerCase().split("?")[0].endsWith(".mpd");
     const isHls =
-      sample.includes("#EXTM3U") ||
-      (res.contentType || "").includes("mpegurl") ||
-      effectiveUrl.toLowerCase().includes(".m3u8");
+      !isDash &&
+      (sample.includes("#EXTM3U") ||
+        ct.includes("mpegurl") ||
+        effectiveUrl.toLowerCase().includes(".m3u8"));
     return {
       url,
       finalUrl: res.finalUrl || effectiveUrl,
@@ -64,9 +74,11 @@ async function probeSingleUrl(rawUrl, baseUrl) {
       status: res.status || 200,
       latencyMs,
       isHls,
+      isDash,
+      format: isDash ? "dash" : isHls ? "hls" : res.isBinaryTs ? "mpegts" : "direct",
       isMpegTs: Boolean(res.isBinaryTs),
       directPanelMode: isClientDirectIptvUrl(url),
-      hasVariants: sample.includes("#EXT-X-STREAM-INF"),
+      hasVariants: sample.includes("#EXT-X-STREAM-INF") || sample.includes("<Representation"),
       error: null
     };
   }
