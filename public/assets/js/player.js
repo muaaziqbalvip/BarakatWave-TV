@@ -56,6 +56,14 @@ async function ensureShakaPlayer() {
   return ok && Boolean(window.shaka?.Player?.isBrowserSupported?.() ?? window.shaka?.Player);
 }
 
+async function ensureHlsLibrary() {
+  const ok = await loadVendorScriptOnce(
+    "/assets/vendor/hls.min.js",
+    () => typeof window !== "undefined" && Boolean(window.Hls)
+  );
+  return ok;
+}
+
 async function ensureMpegtsPlayer() {
   const ok = await loadVendorScriptOnce(
     "/assets/vendor/mpegts.min.js",
@@ -216,7 +224,8 @@ export class BarakatPlayer {
     skipIntroBtnEl,
     proOverlayEl,
     onStateChange,
-    onStepChannel
+    onStepChannel,
+    sourceResolver
   }) {
     this.video = videoEl;
     this.stage = stageEl || videoEl?.closest(".player-stage") || videoEl?.parentElement;
@@ -231,6 +240,13 @@ export class BarakatPlayer {
     this.proOverlay = proOverlayEl;
     this.onStateChange = onStateChange || (() => {});
     this.onStepChannel = onStepChannel || null;
+    /**
+     * Stream Vault resolver (see `vault.js`). When provided, real playback URLs are
+     * fetched from the encrypted server vault instead of the public channel object,
+     * so backend links never appear in the browser.
+     */
+    this.sourceResolver = sourceResolver || null;
+    this.lastPlayedAt = 0;
 
     this.hls = null;
     this.shaka = null;
@@ -248,6 +264,7 @@ export class BarakatPlayer {
     this.ambilightTimer = null;
     this.uiHideTimer = null;
     this.isScrubbing = false;
+    this.sessionIntroPlayed = false;
 
     if (this.video) {
       // Replace default browser controls with BarakatWave Custom Studio Chrome!
@@ -983,10 +1000,15 @@ export class BarakatPlayer {
       this.settings.welcomeVideoUrl ||
       "/media/welcome/index.m3u8"
     ).trim();
+    // Ultra-smooth zapping: play the branded intro bumper only on the first tune-in of a session
+    // (or every channel when the admin explicitly enables `alwaysShowIntro`).
+    const isFirstTuneInThisSession = !this.sessionIntroPlayed;
     const shouldPlayWelcome =
       !skipWelcome &&
       this.settings.welcomeVideoEnabled !== false &&
-      Boolean(welcomeUrl);
+      Boolean(welcomeUrl) &&
+      (this.settings.alwaysShowIntro === true || isFirstTuneInThisSession);
+    if (shouldPlayWelcome) this.sessionIntroPlayed = true;
 
     if (shouldPlayWelcome) {
       await this.playWelcomeBumper(welcomeUrl, token);
@@ -1013,7 +1035,8 @@ export class BarakatPlayer {
       return;
     }
 
-    const customStream = String(vodItem.streamUrl || vodItem.url || "").trim();
+    let customStream = String(vodItem.streamUrl || vodItem.url || "").trim();
+    if (customStream === "shielded://vault") customStream = "";
     if (customStream) {
       this.setStatus(`🎬 LOADING • ${vodItem.title || vodItem.name}`, "loading");
       this.showBuffering(true, `Loading ${vodItem.title || "Cinema Stream"}...`);
@@ -1268,15 +1291,105 @@ export class BarakatPlayer {
     });
   }
 
+  /**
+   * Play a server-sealed source list (already AES-256-GCM encrypted `/api/proxy?e=...` links).
+   * Each entry is tried in order with a fast watchdog timer, ending on the Channel Offline standby.
+   */
+  async tryVaultedSources(sources, channel, token) {
+    let idx = 0;
+    const tryNext = async () => {
+      if (token !== this.playToken) return;
+      if (idx >= sources.length) {
+        this.playOfflineStandby(channel, token);
+        return;
+      }
+      const source = sources[idx++];
+      this.setStatus(`CONNECTING (${source.label || "Secure HD"})...`, "loading");
+      this.showBuffering(true, `Connecting ${source.label || "Secure HD"}...`);
+
+      let settled = false;
+      const timeoutMs = source.proto === "html5" ? 9000 : 11000;
+      const failTimer = setTimeout(() => {
+        if (!settled && token === this.playToken) {
+          settled = true;
+          tryNext();
+        }
+      }, timeoutMs);
+
+      await this.attachUniversalSource(source.url, {
+        token,
+        loop: source.url.startsWith("/media/"),
+        isLive: true,
+        formatHint: source.proto,
+        drmScheme: channel.drmScheme || "",
+        drmKey: channel.drmKey || "",
+        drmLicenseUrl: channel.drmLicenseUrl || "",
+        onPlaying: () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(failTimer);
+          this.showBuffering(false);
+          this.setStatus(`● LIVE • ${source.label || "Secure HD"}`, "live");
+          this.lastPlayedAt = Date.now();
+          this.onStateChange("playing", channel);
+        },
+        onError: () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(failTimer);
+          tryNext();
+        }
+      });
+    };
+    await tryNext();
+  }
+
   async playLiveCandidates(channel, token) {
+    // 1) Try the encrypted Stream Vault first (zero backend-link exposure in DevTools)
+    if (this.sourceResolver) {
+      try {
+        this.setStatus("🔐 OPENING SECURE STREAM VAULT...", "loading");
+        const vaulted = await this.sourceResolver(channel, {
+          plan: this.userPlan,
+          sid: this.sessionId || ""
+        });
+        if (token !== this.playToken) return;
+
+        if (vaulted?.lockedPro) {
+          await this.playProLockedStream(channel, token);
+          return;
+        }
+        if (vaulted?.sources?.length) {
+          if (vaulted.drm?.key) channel.drmKey = vaulted.drm.key;
+          if (vaulted.drm?.licenseUrl) channel.drmLicenseUrl = vaulted.drm.licenseUrl;
+          if (vaulted.drm?.scheme) channel.drmScheme = vaulted.drm.scheme;
+          await this.tryVaultedSources(vaulted.sources, channel, token);
+          return;
+        }
+      } catch {
+        // Vault unreachable (offline dev / preview) -> transparently fall back to catalog candidates
+      }
+      if (token !== this.playToken) return;
+    }
+
     const rawList = [channel.url, ...(channel.backupUrls || [])].filter(Boolean);
     const expanded = [];
     const isHttpsPage = typeof window !== "undefined" && window.location?.protocol === "https:";
 
-    for (const src of rawList) {
+    for (const rawSrc of rawList) {
+      // `shielded://vault` placeholders only exist in the public bundle: swap them for the
+      // zero-knowledge server route `/ch/:slug`, which 302-redirects to the sealed real stream.
+      const src =
+        rawSrc === "shielded://vault"
+          ? `/ch/${encodeURIComponent(channel.slug || channel.id || channel.streamId || "")}`
+          : rawSrc;
+      if (!src || src === "/ch/") continue;
       const isRemote = /^https?:\/\//i.test(src);
       const isInsecureHttpOnHttps = isHttpsPage && /^http:\/\//i.test(src);
-      const proto = detectStreamProtocol(src, src === channel.url ? channel.streamFormat : "auto");
+      const proto = detectStreamProtocol(
+        src,
+        rawSrc === channel.url || rawSrc === "shielded://vault" ? channel.streamFormat : "auto"
+      );
       let hasCustomPort = false;
       if (isRemote) {
         try {
@@ -1523,6 +1636,11 @@ export class BarakatPlayer {
     }
 
     // ==================== ENGINE 3: APPLE HLS (.M3U8) VIA HLS.JS ====================
+    if (protocol === "hls" && !(window.Hls && window.Hls.isSupported())) {
+      // Lazy-load / recover the vendored HLS engine on demand (never blocks first paint)
+      await ensureHlsLibrary();
+      if (token !== this.playToken) return;
+    }
     const HlsLib = window.Hls;
     if (protocol === "hls" && HlsLib && HlsLib.isSupported()) {
       this.activeEngine = "hls";

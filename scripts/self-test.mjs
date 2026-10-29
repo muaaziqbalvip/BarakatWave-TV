@@ -65,6 +65,17 @@ async function run() {
     "public/media/demo-live/index.m3u8",
     "data/imdb-seed.js",
     "public/assets/js/imdb-seed.js",
+    "public/assets/js/imdb-catalog-2000.js",
+    "public/assets/js/vault.js",
+    "public/assets/js/analytics.js",
+    "public/assets/js/cinema-player.js",
+    "public/assets/vendor/mux.min.js",
+    "public/media/demo-dash/video-init.mp4",
+    "public/media/demo-dash/video-seg1.m4s",
+    "api/_lib/tracker.js",
+    "api/_handlers/gate.js",
+    "api/_handlers/analytics.js",
+    "scripts/build-dash-demo.mjs",
     "public/assets/js/imdb-client.js",
     "data/streams/master-all.m3u8"
   ];
@@ -92,6 +103,41 @@ async function run() {
   const allYearsCovered = Array.from({ length: 27 }, (_, i) => 2000 + i).every((yr) => movieYears.has(yr));
   check("IMDb 2000–2026 Auto-Catalog covers every single release year from 2000 through 2026", allYearsCovered);
   check("SEO Knowledge Base includes 16 professional blogs", DEFAULT_BLOGS.length >= 16);
+
+  // 1b. EVERY relative ES-module import must resolve on disk (a single missing file kills the whole web app!)
+  const moduleDirs = [
+    path.join(ROOT, "public/assets/js"),
+    path.join(ROOT, "api"),
+    path.join(ROOT, "api/_lib"),
+    path.join(ROOT, "api/_handlers"),
+    path.join(ROOT, "data"),
+    path.join(ROOT, "scripts")
+  ];
+  const brokenImports = [];
+  let importCount = 0;
+  for (const dir of moduleDirs) {
+    if (!fs.existsSync(dir)) continue;
+    for (const file of fs.readdirSync(dir)) {
+      if (!/\.(m?js)$/.test(file)) continue;
+      const full = path.join(dir, file);
+      const src = fs.readFileSync(full, "utf8");
+      for (const m of src.matchAll(/(?:^|\n)\s*(?:import|export)\s+(?:[^"';]*?)\s*from\s*["'](\.{1,2}\/[^"']+)["']/g)) {
+        importCount++;
+        const target = path.resolve(dir, m[1]);
+        if (!fs.existsSync(target)) brokenImports.push(`${path.relative(ROOT, full)} -> ${m[1]}`);
+      }
+      for (const m of src.matchAll(/import\(\s*["'](\.{1,2}\/[^"']+)["']\s*\)/g)) {
+        importCount++;
+        const target = path.resolve(dir, m[1]);
+        if (!fs.existsSync(target)) brokenImports.push(`${path.relative(ROOT, full)} -> ${m[1]}`);
+      }
+    }
+  }
+  check(
+    `All ${importCount} relative ES-module imports resolve on disk (no dead browser module graph)`,
+    importCount > 20 && brokenImports.length === 0
+  );
+  if (brokenImports.length) console.log("   broken:", brokenImports);
 
   // 2. Verify M3U Parser & Exporter
   const sampleM3u = `#EXTM3U\n#EXTINF:-1 tvg-id="ptv.pk" tvg-logo="https://img/logo.png" group-title="Pakistan",PTV Home HD\nhttps://example.com/ptv.m3u8\n`;
@@ -643,7 +689,7 @@ async function run() {
       dashLocalRes.status === 200 &&
         (dashLocalRes.headers.get("content-type") || "").includes("application/dash+xml") &&
         dashLocalXml.includes("<MPD") &&
-        dashLocalXml.includes("<SegmentURL")
+        (dashLocalXml.includes("<SegmentTemplate") || dashLocalXml.includes("<SegmentURL"))
     );
 
     const shakaRes = await fetch(`${base}/assets/vendor/shaka-player.min.js`);
@@ -692,14 +738,14 @@ async function run() {
     const appleIconRes = await fetch(`${base}/assets/icons/apple-touch-icon.png`);
     const swJsText = await (await fetch(`${base}/sw.js`)).text();
     check(
-      "Installable Mobile & Desktop PWA serves same-origin PNG 192/512/maskable/apple-touch icons + v4 Service Worker",
+      "Installable Mobile & Desktop PWA serves same-origin PNG 192/512/maskable/apple-touch icons + v5 Service Worker",
       Array.isArray(manifestJson.icons) &&
         manifestJson.icons.some((i) => i.src === "/assets/icons/icon-512.png") &&
         icon192Res.status === 200 &&
         icon512Res.status === 200 &&
         iconMaskRes.status === 200 &&
         appleIconRes.status === 200 &&
-        swJsText.includes("barakatwave-tv-3d-v4")
+        swJsText.includes("barakatwave-tv-3d-v5")
     );
 
     const homeHtml3d = await (await fetch(`${base}/`)).text();
@@ -720,6 +766,181 @@ async function run() {
 
     const idxNow = await (await fetch(`${base}/api/seo/indexnow`)).json();
     check("/api/seo/indexnow returns >= 18 candidate URLs for search indexing", idxNow.ok && idxNow.indexedCandidateCount >= 18);
+
+    // ==================== v5: STREAM VAULT, ANALYTICS & IMDb PLAYER ====================
+    const securityLib = fs.readFileSync(path.join(ROOT, "api/_lib/security.js"), "utf8");
+    const trackerLib = fs.readFileSync(path.join(ROOT, "api/_lib/tracker.js"), "utf8");
+    check(
+      "AES-256-GCM Stream Vault (encryptStreamUrl / decryptStreamUrl / anti-hotlink gate) implemented",
+      securityLib.includes("export function encryptStreamUrl") &&
+        securityLib.includes("export function decryptStreamUrl") &&
+        securityLib.includes("aes-256-gcm") &&
+        securityLib.includes("export function isAllowedWebStreamRequest")
+    );
+
+    const gateRes = await fetch(`${base}/api/gate?cid=ch_bw_promo&plan=free`);
+    const gateJson = await gateRes.json();
+    check(
+      "/api/gate returns sealed server-side sources (no upstream URL exposure) for a channel",
+      gateRes.status === 200 &&
+        gateJson.ok === true &&
+        Array.isArray(gateJson.sources) &&
+        gateJson.sources.length > 0 &&
+        gateJson.sources.every((src) => !/^https?:\/\//.test(src.url))
+    );
+
+    const gatePro = await (await fetch(`${base}/api/gate?cid=ch_pro_pk_gold&plan=free`)).json();
+    check(
+      "/api/gate enforces PRO VIP tier lock server-side for free viewers",
+      gatePro.ok === true && gatePro.lockedPro === true
+    );
+
+    const gateSeal = await (
+      await fetch(`${base}/api/gate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: "https://secret.example.com/live/index.mpd", format: "dash" })
+      })
+    ).json();
+    check(
+      "POST /api/gate seals custom Stream Lab URLs into encrypted /api/proxy?e= tokens",
+      gateSeal.ok === true &&
+        String(gateSeal.source?.url || "").startsWith("/api/proxy?e=") &&
+        !JSON.stringify(gateSeal).includes("secret.example.com")
+    );
+
+    const catalogBrowser = fs.readFileSync(path.join(ROOT, "public/assets/js/catalog-browser.js"), "utf8");
+    check(
+      "Public browser catalog ships ZERO real upstream stream URLs (shielded://vault placeholders)",
+      catalogBrowser.includes('shielded://vault') &&
+        !/\b(?:url|backupUrls)\s*:\s*\[?\s*"https?:\/\//i.test(catalogBrowser)
+    );
+
+    const analyticsPost = await fetch(`${base}/api/analytics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "BarakatWaveSelfTest/5.0" },
+      body: JSON.stringify({
+        type: "play",
+        sid: "s_selftest",
+        playId: "p_selftest",
+        title: "Selftest Channel HD",
+        contentType: "Live TV",
+        engine: "HLS",
+        surface: "Web 3D Studio"
+      })
+    });
+    const analyticsGet = await (await fetch(`${base}/api/analytics`)).json();
+    check(
+      "Real-time Visitor & Playback Analyzer records plays with IP/geo/device and returns dashboard snapshot",
+      analyticsPost.status === 200 &&
+        analyticsGet.ok === true &&
+        analyticsGet.summary.totalPlays >= 1 &&
+        Array.isArray(analyticsGet.plays) &&
+        analyticsGet.plays.some((p) => p.title === "Selftest Channel HD") &&
+        typeof analyticsGet.plays[0].ip === "string" &&
+        trackerLib.includes("recordVisitorSession") &&
+        trackerLib.includes("x-vercel-ip-country") &&
+        trackerLib.includes("formatPktTime")
+    );
+
+    const analyticsRoute = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).rewrites.find(
+      (r) => r.source === "/api/analytics"
+    );
+    check(
+      "Vercel routes /api/gate + /api/analytics to the 4 routers within Hobby limits",
+      Boolean(analyticsRoute) &&
+        analyticsRoute.destination === "/api/admin?ep=analytics" &&
+        JSON.stringify(JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).rewrites).includes(
+          '"/api/media?ep=gate"'
+        )
+    );
+
+    const dashMpd = fs.readFileSync(path.join(ROOT, "public/media/demo-dash/index.mpd"), "utf8");
+    const dashInit = path.join(ROOT, "public/media/demo-dash/video-init.mp4");
+    const dashSeg = path.join(ROOT, "public/media/demo-dash/video-seg1.m4s");
+    check(
+      "Built-in DASH channel serves a real playable fMP4 manifest (init + m4s + SegmentTemplate tokens)",
+      dashMpd.includes("mimeType=\"video/mp4\"") &&
+        dashMpd.includes("initialization=\"video-init.mp4\"") &&
+        dashMpd.includes("media=\"video-seg$Number$.m4s\"") &&
+        dashMpd.includes("codecs=\"avc1.") &&
+        fs.existsSync(dashInit) &&
+        fs.existsSync(dashSeg)
+    );
+
+    const dashHead = await fetch(`${base}/media/demo-dash/index.mpd`);
+    const segHead = await fetch(`${base}/media/demo-dash/video-seg1.m4s`);
+    check(
+      "Local DASH manifest + fMP4 segment are served with correct MIME types",
+      dashHead.status === 200 &&
+        (dashHead.headers.get("content-type") || "").includes("dash+xml") &&
+        segHead.status === 200
+    );
+
+    const homeHtmlV5 = await (await fetch(`${base}/`)).text();
+    const appJsText = fs.readFileSync(path.join(ROOT, "public/assets/js/app.js"), "utf8");
+    const cinemaPlayerJs = fs.readFileSync(path.join(ROOT, "public/assets/js/cinema-player.js"), "utf8");
+    check(
+      "IMDb ID Cinema Player (multi-server embed + seasons/episodes) wired into Movies & Series",
+      homeHtmlV5.includes('id="imdbCinemaPlayerModal"') &&
+        cinemaPlayerJs.includes("buildImdbPlayUrl") &&
+        cinemaPlayerJs.includes("vidsrc") &&
+        appJsText.includes("openImdbCinemaPlayer") &&
+        appJsText.includes("mountImdbCinemaPlayer") &&
+        stylesCssText.includes(".imdb-player-shell")
+    );
+
+    const vaultJs = fs.readFileSync(path.join(ROOT, "public/assets/js/vault.js"), "utf8");
+    const analyticsJs = fs.readFileSync(path.join(ROOT, "public/assets/js/analytics.js"), "utf8");
+    check(
+      "Client Stream Vault + privacy-first analyzer modules are bundled and imported",
+      vaultJs.includes("resolveChannelSources") &&
+        vaultJs.includes("/api/gate") &&
+        analyticsJs.includes("initAnalytics") &&
+        analyticsJs.includes("sendBeacon") &&
+        appJsText.includes('from "./vault.js"') &&
+        appJsText.includes('from "./analytics.js"')
+    );
+
+    const adminHtmlV5 = await (await fetch(`${base}/admin.html`)).text();
+    const adminJsText = fs.readFileSync(path.join(ROOT, "public/assets/js/admin.js"), "utf8");
+    check(
+      "Admin Live Analytics dashboard (online now, visitors, cities, devices, play log, CSV export) is wired",
+      adminHtmlV5.includes('data-adm-panel="analytics"') &&
+        adminHtmlV5.includes('id="anSessionsBody"') &&
+        adminHtmlV5.includes('id="anPlaysBody"') &&
+        adminJsText.includes("refreshAnalyticsDashboard") &&
+        adminJsText.includes("downloadAnalyticsCsv")
+    );
+
+    check(
+      "Compact responsive header, slim marquee ticker & 3D motion design tokens shipped",
+      homeHtmlV5.includes('id="siteHeader"') &&
+        homeHtmlV5.includes('class="ticker-track"') &&
+        homeHtmlV5.includes('class="brand-text"') &&
+        stylesCssText.includes(".ticker-seq") &&
+        stylesCssText.includes("grid-template-areas") &&
+        stylesCssText.includes("prefers-reduced-motion")
+    );
+
+    check(
+      "Search-Console rocket: FAQ rich-result schema, keyword meta, GSC/Bing verification meta + HTML file route",
+      homeHtmlV5.includes('"@type": "FAQPage"') &&
+        homeHtmlV5.includes("free Xtream Codes server 2026") &&
+        appJsText.includes("google-site-verification") &&
+        fs.readFileSync(path.join(ROOT, "api/seo.js"), "utf8").includes("gsc_file") &&
+        JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).rewrites.some(
+          (r) => r.source === "/google:code.html"
+        )
+    );
+
+    const rulesJson = JSON.parse(fs.readFileSync(path.join(ROOT, "firebase/database.rules.json"), "utf8"));
+    check(
+      "Firebase ruleset allows authenticated analytics writes but keeps them owner-readable",
+      rulesJson.rules.analytics &&
+        rulesJson.rules.analytics[".read"] === "auth != null" &&
+        rulesJson.rules.analytics.sessions["$sid"][".write"] === "auth != null"
+    );
   } finally {
     if (fs.existsSync("/tmp/barakatwave-rtdb-mirror.json")) {
       fs.unlinkSync("/tmp/barakatwave-rtdb-mirror.json");

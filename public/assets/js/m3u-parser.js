@@ -174,10 +174,12 @@ export function exportChannelsToM3u(channels, { baseUrl = "", useCleanLinks = fa
       out.push("#KODIPROP:inputstream.adaptive.license_type=com.widevine.alpha");
       out.push(`#KODIPROP:inputstream.adaptive.license_key=${ch.drmLicenseUrl}`);
     }
-    if (useCleanLinks) {
-      out.push(`${origin}/ch/${ch.slug}.m3u8`);
+    const rawUrl = String(ch.url || "");
+    // `shielded://vault` = server-sealed source: export the zero-knowledge clean link instead
+    if (useCleanLinks || rawUrl.startsWith("shielded://")) {
+      out.push(`${origin}/ch/${ch.slug || ch.id}.m3u8`);
     } else {
-      out.push(ch.url.startsWith("/") ? `${origin}${ch.url}` : ch.url);
+      out.push(rawUrl.startsWith("/") ? `${origin}${rawUrl}` : rawUrl);
     }
   }
   return out.join("\n") + "\n";

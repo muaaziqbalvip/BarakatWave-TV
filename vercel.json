@@ -22,6 +22,7 @@
     { "source": "/playlist/:id", "destination": "/api/media?ep=playlist&id=:id" },
     { "source": "/api/stream", "destination": "/api/media?ep=stream" },
     { "source": "/api/proxy", "destination": "/api/media?ep=proxy" },
+    { "source": "/api/gate", "destination": "/api/media?ep=gate" },
     { "source": "/api/playlist", "destination": "/api/media?ep=playlist" },
     { "source": "/blog/feed.xml", "destination": "/api/seo?ep=rss" },
     { "source": "/blog", "destination": "/api/seo?ep=blog" },
@@ -32,11 +33,13 @@
     { "source": "/llms-full.txt", "destination": "/api/seo?ep=llms&full=1" },
     { "source": "/.well-known/ai.txt", "destination": "/api/seo?ep=llms" },
     { "source": "/barakatwave2026mizanoraseokey.txt", "destination": "/api/seo?ep=indexnow&verify=1" },
+    { "source": "/google:code.html", "destination": "/api/seo?ep=gsc_file&code=:code" },
     { "source": "/api/seo/indexnow", "destination": "/api/seo?ep=indexnow" },
     { "source": "/api/probe", "destination": "/api/admin?ep=probe" },
     { "source": "/api/sync", "destination": "/api/admin?ep=sync" },
     { "source": "/api/github/push", "destination": "/api/admin?ep=github_push" },
     { "source": "/api/imdb", "destination": "/api/admin?ep=imdb" },
+    { "source": "/api/analytics", "destination": "/api/admin?ep=analytics" },
     { "source": "/admin", "destination": "/admin.html" }
   ],
   "headers": [

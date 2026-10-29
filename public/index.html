@@ -8,15 +8,21 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="BarakatWave TV" />
-  <title>BarakatWave Live TV — 3D Broadcast Studio, Universal DASH/MPD + HLS Player &amp; Free Xtream Server | Mizanora Projects by Muaaz Iqbal</title>
-  <meta name="description" content="Watch Pakistan, India, Islamic, Sports &amp; World HD Live TV + 1,570+ IMDb Movies &amp; Series (2000–2026) in BarakatWave's 3D Universal DASH/MPD + HLS + MPEG-TS Studio App. Install on Mobile or Laptop! A Mizanora Project by Muaaz Iqbal. PRO VIP: 0306-2015326." />
-  <meta name="keywords" content="BarakatWave TV, BarakatWave Live TV, Mizanora Projects, Muaaz Iqbal, Universal MPD DASH HLS Player, Free Xtream Codes Server, Live TV Pakistan, India Live TV, M3U8 Playlist Generator, IPTV Smarters Pro, TiviMate, Barakat TV Pro 03062015326" />
+  <title>BarakatWave TV — Free Live TV, Xtream Codes &amp; IMDb Movies 2026</title>
+  <meta name="description" content="Stream HD Live TV (Pakistan, India, Islamic, Sports, News) + 1,570 IMDb Movies &amp; Series 2000–2026 free. Claim your FREE Xtream Codes server &amp; M3U8 playlist, install the 3D app on phone or laptop. Mizanora Projects by Muaaz Iqbal. PRO VIP: 0306-2015326." />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <meta name="keywords" content="BarakatWave TV, BarakatWave Live TV, free live TV Pakistan, free Xtream Codes server 2026, free IPTV M3U8 playlist, watch live cricket HD free, Islamic channels live Makkah Madinah, IPTV Smarters Pro free server, TiviMate playlist Pakistan, Televizo IPTV, free movies and series app, IMDb movies 2026 free, MPEG-DASH MPD player, HLS m3u8 player online, install IPTV app on mobile, Mizanora Projects, Muaaz Iqbal, Barakat TV PRO VIP 03062015326" />
   <meta name="author" content="Muaaz Iqbal — Founder &amp; Lead Developer, Mizanora Projects" />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   <link rel="canonical" href="https://barakatwave.vercel.app/" />
   <link rel="alternate" type="application/rss+xml" title="BarakatWave Live TV Official Blog RSS" href="/rss.xml" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="author" href="/humans.txt" />
+  <link rel="preconnect" href="https://i.ibb.co" crossorigin />
+  <link rel="dns-prefetch" href="https://i.ibb.co" />
+  <link rel="preconnect" href="https://image.tmdb.org" crossorigin />
+  <link rel="dns-prefetch" href="https://image.tmdb.org" />
+  <link rel="preload" as="script" href="/assets/vendor/hls.min.js" crossorigin="anonymous" />
   <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png" />
 
@@ -117,6 +123,47 @@
     ]
   }
   </script>
+  <!-- FAQ Structured Data: fastest way to earn Google rich results & AI answer citations -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "How do I get a free Xtream Codes server on BarakatWave TV?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Sign in with Google or Gmail on barakatwave.vercel.app, open the Free Xtream panel and generate your personal Xtream Codes login (host, username, password). It stays in your dashboard and works in IPTV Smarters Pro, TiviMate, Televizo, OTT Navigator and VLC."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Which video formats does the BarakatWave player support?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "The custom BarakatWave Universal Studio Player plays MPEG-DASH (.mpd) including ClearKey and Widevine DRM, HLS (.m3u8), live MPEG-TS (.ts / .m2ts), HTTP-FLV, and MP4, WebM, MKV plus audio streams on mobile, laptop and Smart TV."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I install BarakatWave TV as an app on my phone or laptop?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. Tap Install App in the header on Android, Chrome, Edge, Windows or macOS for a one-tap install, or use Share then Add to Home Screen on iPhone and iPad Safari. It launches fullscreen like a native app with no app store needed."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I unlock BarakatWave TV PRO VIP channels?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Send a WhatsApp message to 0306-2015326 (03062015326). PRO VIP unlocks all premium 4K sports, VIP entertainment channels and the full IMDb Movies and Series library."
+        }
+      }
+    ]
+  }
+  </script>
 </head>
 <body class="has-mobile-dock bw-3d-ui">
   <!-- Ambient 3D Spatial Broadcast Aurora -->
@@ -126,25 +173,51 @@
     <div class="aurora-orb orb-3"></div>
   </div>
 
-  <!-- Live Announcement Ticker -->
-  <div class="top-ticker" id="siteTicker">
-    🌊 <strong>BarakatWave Live TV</strong> — Under <strong>Mizanora Projects by Muaaz Iqbal</strong> &bull; Sign in with Google or Gmail for your <strong>FREE Xtream Server</strong>! For <strong>PRO VIP Unlock</strong> WhatsApp: <strong>0306-2015326</strong>
+  <!-- Slim Live Announcement Marquee -->
+  <div class="top-ticker" id="siteTicker" role="status" aria-live="off">
+    <div class="ticker-track">
+      <span class="ticker-seq">
+        <span>🌊 <strong>BarakatWave Live TV</strong> — Mizanora Projects by <strong>Muaaz Iqbal</strong></span>
+        <span class="ticker-dot">•</span>
+        <span>Sign in with Google or Gmail for your <strong>FREE Xtream Server</strong></span>
+        <span class="ticker-dot">•</span>
+        <span><strong>PRO VIP</strong> WhatsApp: <strong>0306-2015326</strong></span>
+        <span class="ticker-dot">•</span>
+        <span>🎬 IMDb Movies &amp; Series 2000–2026</span>
+        <span class="ticker-dot">•</span>
+        <span>📲 Install the 3D App on your Phone or Laptop</span>
+      </span>
+      <span class="ticker-seq" aria-hidden="true">
+        <span>🌊 <strong>BarakatWave Live TV</strong> — Mizanora Projects by <strong>Muaaz Iqbal</strong></span>
+        <span class="ticker-dot">•</span>
+        <span>Sign in with Google or Gmail for your <strong>FREE Xtream Server</strong></span>
+        <span class="ticker-dot">•</span>
+        <span><strong>PRO VIP</strong> WhatsApp: <strong>0306-2015326</strong></span>
+        <span class="ticker-dot">•</span>
+        <span>🎬 IMDb Movies &amp; Series 2000–2026</span>
+        <span class="ticker-dot">•</span>
+        <span>📲 Install the 3D App on your Phone or Laptop</span>
+      </span>
+    </div>
   </div>
 
-  <!-- Sticky Broadcast Header -->
-  <header class="site-header">
+  <!-- Compact Sticky Broadcast Header -->
+  <header class="site-header" id="siteHeader">
     <div class="container header-inner">
-      <a href="/" class="brand-link" id="brandHomeLink">
+      <a href="/" class="brand-link" id="brandHomeLink" aria-label="BarakatWave TV Home">
         <img
           src="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png"
           onerror="if(!this.dataset.camo){this.dataset.camo='1';this.src='https://camo.githubusercontent.com/36a6df994ba05236c61483cd3dc153d1ed11e9a0bc6c500a94a950a925dd38aa/68747470733a2f2f692e6962622e636f2f74707832774847592f426172616b61742d576176652d53747265616d696e672d4e6574776f726b2d4c6f676f2e706e67';}else{this.onerror=null;this.src='/assets/logo-fallback.svg';}"
           alt="BarakatWave Streaming Network Logo"
           class="brand-logo"
+          width="44"
+          height="44"
+          decoding="async"
         />
-        <div>
+        <span class="brand-text">
           <span class="brand-title">BarakatWave TV</span>
           <span class="brand-sub">Mizanora Projects &bull; Muaaz Iqbal</span>
-        </div>
+        </span>
       </a>
 
       <nav class="main-nav" aria-label="Primary Navigation">
@@ -154,18 +227,24 @@
         <button class="nav-tab" data-view="playlist">📋 My Playlist</button>
         <button class="nav-tab" data-view="pro">👑 PRO VIP</button>
         <button class="nav-tab" data-view="blogs">📰 Blogs</button>
-        <button class="nav-tab" data-view="support">⭐ Reviews &amp; Support</button>
+        <button class="nav-tab" data-view="support">⭐ Support</button>
       </nav>
 
       <div class="header-actions">
         <div class="theme-switcher" id="themeSwitcher" title="Switch Broadcast Theme"></div>
-        <button type="button" class="btn btn-sm btn-gold" id="installAppHeaderBtn" title="Install BarakatWave 3D App on Phone or Laptop">📲 Install App</button>
-        <a href="/admin.html" class="btn btn-sm btn-outline" title="Admin Command Center">⚙️ Admin</a>
-        <button class="btn btn-sm btn-primary" id="openAuthBtn">Sign In / Join</button>
+        <button type="button" class="btn btn-sm btn-gold header-icon-btn" id="installAppHeaderBtn" title="Install BarakatWave 3D App on Phone or Laptop">
+          <span aria-hidden="true">📲</span><span class="btn-lbl">Install</span>
+        </button>
+        <a href="/admin.html" class="btn btn-sm btn-outline header-icon-btn" title="Admin Command Center">
+          <span aria-hidden="true">⚙️</span><span class="btn-lbl">Admin</span>
+        </a>
+        <button class="btn btn-sm btn-primary header-icon-btn" id="openAuthBtn">
+          <span aria-hidden="true">👤</span><span class="btn-lbl">Sign In</span>
+        </button>
         <div id="userChipWrap" hidden style="display:flex;align-items:center;gap:6px;">
           <span class="badge badge-cyan" id="userPlanBadge">FREE</span>
-          <button class="btn btn-sm btn-outline" id="userAccountBtn"></button>
-          <button class="btn btn-sm btn-danger" id="logoutBtn" title="Sign Out">Exit</button>
+          <button class="btn btn-sm btn-outline header-icon-btn" id="userAccountBtn"></button>
+          <button class="btn btn-sm btn-danger header-icon-btn" id="logoutBtn" title="Sign Out"><span class="btn-lbl">Exit</span><span aria-hidden="true">⎋</span></button>
         </div>
       </div>
     </div>
@@ -283,9 +362,9 @@
                 <div class="muted-sm" style="font-size:0.74rem;">Supports ClearKey DRM (<code>kid:key</code> or JWK JSON), Widevine License URLs &amp; automatic CORS Relay failover!</div>
               </div>
               <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                <button type="button" class="btn btn-sm btn-outline" data-sample-stream="dash">▶ Sample DASH .MPD</button>
-                <button type="button" class="btn btn-sm btn-outline" data-sample-stream="local_dash">▶ Local .MPD</button>
-                <button type="button" class="btn btn-sm btn-outline" data-sample-stream="hls">▶ Sample HLS .M3U8</button>
+                <button type="button" class="btn btn-sm btn-outline" data-sample-stream="local_dash">▶ Built-in DASH .MPD</button>
+                <button type="button" class="btn btn-sm btn-outline" data-sample-stream="hls">▶ Built-in HLS .M3U8</button>
+                <button type="button" class="btn btn-sm btn-outline" data-sample-stream="dash">🌐 Global DASH CDN</button>
               </div>
             </div>
             <form id="customUniversalStreamForm" class="universal-stream-grid">
@@ -372,6 +451,9 @@
 
     <!-- ==================== VIEW 1B: IMDb MOVIES & SERIES CINEMA HUB ==================== -->
     <section class="app-section" id="view-cinema" hidden>
+      <!-- IMDb Cinema Universe Player (plays any Movie / Series by IMDb ID) -->
+      <div class="imdb-player-modal" id="imdbCinemaPlayerModal" hidden></div>
+
       <!-- 3D Featured Blockbuster Spotlight Stage -->
       <div class="cinema-3d-hero glass-card" id="cinemaFeaturedHero"></div>
 
@@ -1002,7 +1084,8 @@
 
   <div class="toast-container" id="toastContainer"></div>
 
-  <script src="/assets/vendor/hls.min.js"></script>
+  <!-- Vendor media engines: HLS preloaded (most channels), Shaka DASH & mpegts lazy-loaded on demand -->
+  <script src="/assets/vendor/hls.min.js" defer></script>
   <script type="module" src="/assets/js/app.js"></script>
 </body>
 </html>
