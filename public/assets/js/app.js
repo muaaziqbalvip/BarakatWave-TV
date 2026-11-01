@@ -30,11 +30,15 @@ import {
   logoutUser,
   isSandboxPreviewHost,
   dbRead,
+  dbReadStrict,
   dbWatch,
   dbWrite,
+  dbWriteStrict,
   dbMerge,
   dbPushItem
 } from "./firebase-client.js";
+import { ledgerRows } from "./reseller-ledger.js";
+import { effectiveMembershipPlan } from "./membership.js";
 import { BarakatPlayer } from "./player.js";
 import { exportChannelsToM3u } from "./m3u-parser.js";
 import { resolveChannelSources, sealCustomStreamUrl } from "./vault.js";
@@ -482,9 +486,8 @@ function stepChannel(delta) {
 }
 
 function getEffectiveUserPlan() {
-  if (state.xtreamAccount && String(state.xtreamAccount.plan).toLowerCase() === "pro") return "pro";
-  if (state.userProfile && String(state.userProfile.plan).toLowerCase() === "pro") return "pro";
-  return "free";
+  return effectiveMembershipPlan(state.xtreamAccount);
+
 }
 
 /* ==================== NAVIGATION ==================== */
@@ -498,9 +501,10 @@ function bindNavigation() {
 }
 
 function switchView(viewName) {
-  const valid = ["live", "cinema", "xtream", "playlist", "pro", "blogs", "support"];
+  const valid = ["live", "cinema", "xtream", "playlist", "pro", "reseller", "blogs", "support"];
   const target = valid.includes(viewName) ? viewName : "live";
   trackView(target);
+  if (target === "reseller") renderResellerViewer();
   valid.forEach((v) => {
     const sec = document.getElementById(`view-${v}`);
     if (sec) sec.hidden = v !== target;
@@ -521,7 +525,7 @@ function handleInitialUrlRouting() {
   const hash = (window.location.hash || "").replace(/^#/, "").toLowerCase();
   const qView = (new URLSearchParams(window.location.search).get("view") || "").toLowerCase();
   const wants = qView || hash;
-  if (["cinema", "xtream", "playlist", "pro", "blogs", "support"].includes(wants)) {
+  if (["cinema", "xtream", "playlist", "pro", "reseller", "blogs", "support"].includes(wants)) {
     switchView(wants);
   }
 }
@@ -949,6 +953,8 @@ function setAuthError(msg) {
 }
 
 async function onUserChanged(user) {
+  const resellerViewer = document.getElementById("resellerViewer");
+  if (resellerViewer) resellerViewer.textContent = "Sign in to view your reseller account.";
   const openBtn = document.getElementById("openAuthBtn");
   const chipWrap = document.getElementById("userChipWrap");
   const acctBtn = document.getElementById("userAccountBtn");
@@ -1012,8 +1018,28 @@ async function onUserChanged(user) {
   renderUserTickets();
 
   // If currently viewing a locked PRO channel and user IS PRO, immediately unlock live playback!
+  if (!document.getElementById("view-reseller")?.hidden) renderResellerViewer();
   if (state.currentChannel?.tier === "pro" && effectivePlan === "pro") {
     playChannel(state.currentChannel, { skipWelcome: true });
+  }
+}
+
+async function renderResellerViewer() {
+  const box = document.getElementById("resellerViewer");
+  if (!box) return;
+  const uid = state.user?.uid;
+  if (!uid) { box.textContent = "Sign in to view your reseller account."; return; }
+  box.textContent = "Loading reseller account…";
+  try {
+    const data = await dbReadStrict(`resellers/${uid}`);
+    if (state.user?.uid !== uid) return;
+    const uidText = `<p>Your Firebase UID: <code>${escHtml(uid)}</code></p>`;
+    if (!data?.name) { box.innerHTML = `${uidText}<p>No reseller access yet. Share this UID with support.</p>`; return; }
+    const items = ledgerRows(data.charges);
+    const due = items.filter((item) => item.status === "due").reduce((sum, item) => sum + item.amount, 0);
+    box.innerHTML = `${uidText}<h3>${escHtml(data.name)}</h3><p>Recorded unpaid total: <strong>Rs ${due}</strong></p><div class="table-wrap"><table class="data-table"><thead><tr><th>Period</th><th>Username</th><th>Amount</th><th>Status</th></tr></thead><tbody>${items.length ? items.map((x) => `<tr><td>${escHtml(x.period)}</td><td>${escHtml(x.username)}</td><td>Rs ${x.amount}</td><td>${escHtml(x.status)}</td></tr>`).join("") : '<tr><td colspan="4">No charges recorded.</td></tr>'}</tbody></table></div>`;
+  } catch {
+    if (state.user?.uid === uid) box.textContent = "Unable to load your ledger. Check your connection or contact support.";
   }
 }
 
@@ -1124,7 +1150,7 @@ function renderXtreamPanelState() {
   if (vault) vault.hidden = false;
 
   const xt = state.xtreamAccount;
-  const isPro = String(xt.plan || "free").toLowerCase() === "pro";
+  const isPro = effectiveMembershipPlan(xt) === "pro";
 
   const planBadge = document.getElementById("xtVaultPlanBadge");
   if (planBadge) {
@@ -1337,7 +1363,7 @@ async function saveCloudPlaylist() {
   }
   const plId =
     state.playlist.id ||
-    `pl_${state.user.uid.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10)}_${Math.floor(100 + Math.random() * 900)}`;
+    `pl_${crypto.randomUUID().replace(/-/g, "")}`;
 
   const payload = {
     id: plId,
@@ -1345,13 +1371,17 @@ async function saveCloudPlaylist() {
     name: document.getElementById("plNameInput")?.value.trim() || "My BarakatWave Playlist",
     channelIds: state.playlist.channelIds,
     customStreams: state.playlist.customStreams,
-    xtreamUsername: state.xtreamAccount?.username || "",
-    xtreamPassword: state.xtreamAccount?.password || "",
     updatedAt: new Date().toISOString()
   };
 
-  await dbWrite(`playlists/${plId}`, payload);
-  await dbMerge(`users/${state.user.uid}`, { playlistId: plId });
+  try {
+    await dbWriteStrict(`playlists/${plId}`, payload);
+    const profile = await dbReadStrict(`users/${state.user.uid}`) || {};
+    await dbWriteStrict(`users/${state.user.uid}`, { ...profile, playlistId: plId });
+  } catch {
+    showToast("Could not save the playlist to Firebase. Please try again.");
+    return;
+  }
   state.playlist.id = plId;
   updatePlaylistPreview();
   showToast("✅ Personal Cloud M3U8 Playlist Saved!");
@@ -2292,11 +2322,9 @@ function getEffectiveServerOrigin() {
 
 function generateCleanPassword(len = 10) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  let out = "BW";
-  for (let i = 0; i < len - 2; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return out;
+  const bytes = new Uint8Array(len - 2);
+  crypto.getRandomValues(bytes);
+  return "BW" + Array.from(bytes, (value) => chars[value % chars.length]).join("");
 }
 
 function copyText(text, msg = "Copied!") {

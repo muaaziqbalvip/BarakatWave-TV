@@ -1,3 +1,4 @@
+import { effectiveMembershipPlan } from "../../public/assets/js/membership.js";
 import fs from "node:fs";
 import {
   DEFAULT_CHANNELS,
@@ -354,13 +355,7 @@ export async function verifyXtreamCredentials(username, password) {
   if (String(acct.password) !== String(password)) return null;
   if (String(acct.status || "Active").toLowerCase() === "suspended") return null;
 
-  let effectivePlan = String(acct.plan || "free").toLowerCase() === "pro" ? "pro" : "free";
-  if (effectivePlan === "pro" && acct.expDate) {
-    const expSec = Number(acct.expDate);
-    if (expSec > 0 && Date.now() / 1000 > expSec) {
-      effectivePlan = "free";
-    }
-  }
+  const effectivePlan = effectiveMembershipPlan(acct);
   return { ...acct, effectivePlan };
 }
 
