@@ -1297,6 +1297,67 @@ async function run() {
         )
     );
 
+    // ---- Speed & login hardening (no regressions allowed) ----
+    const fbClientText = fs.readFileSync(path.join(ROOT, "public/assets/js/firebase-client.js"), "utf8");
+    const appJsSpeedText = fs.readFileSync(path.join(ROOT, "public/assets/js/app.js"), "utf8");
+    const adminJsSpeedText = fs.readFileSync(path.join(ROOT, "public/assets/js/admin.js"), "utf8");
+    const indexSpeedHtml = fs.readFileSync(path.join(ROOT, "public/index.html"), "utf8");
+    const adminAuthText = fs.readFileSync(path.join(ROOT, "api/_lib/admin-auth.js"), "utf8");
+
+    check(
+      "Clicks never wait on the network: dbRead is stale-while-revalidate with a hard timeout",
+      fbClientText.includes("refreshInBackground") &&
+        fbClientText.includes("export async function dbRead(path, fallback = null, opts = {})") &&
+        /withTimeout\(get\(ref\(db, clean\)\), opts\.timeoutMs \|\| 2500\)/.test(fbClientText)
+    );
+    check(
+      "Session restore can never hang the UI (authReady guard + login writes are non-blocking)",
+      fbClientText.includes("export function authReady(") &&
+        fbClientText.includes("void dbMerge(")
+    );
+    check(
+      "Google sign-in has a popup watchdog, redirect fallback and in-app-browser detection",
+      fbClientText.includes("loginWithGoogleRedirect") &&
+        fbClientText.includes("isInAppBrowser") &&
+        fbClientText.includes("POPUP_TIMEOUT_MS") &&
+        indexSpeedHtml.includes('id="googleRedirectBtn"') &&
+        fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8").includes('id="admGoogleRedirectBtn"')
+    );
+    check(
+      "Email login rejects a bare username with a helpful message instead of failing silently",
+      fbClientText.includes("describeLoginIdentifier") &&
+        fbClientText.includes("is a username, not an email")
+    );
+    check(
+      "Heavy IMDb catalog is not on the critical path (core seed + idle dynamic import)",
+      appJsSpeedText.includes('scheduleIdle(() => hydrateFullImdbCatalog())') &&
+        appJsSpeedText.includes("loadFullCatalog") &&
+        fs.readFileSync(path.join(ROOT, "public/assets/js/imdb-seed.js"), "utf8").includes("imdb-catalog-2000.js") &&
+        fs.readFileSync(path.join(ROOT, "public/assets/js/imdb-seed.js"), "utf8").includes("fullCatalogPromise") &&
+        fs.statSync(path.join(ROOT, "public/assets/js/imdb-catalog-core.js")).size < 60 * 1024
+    );
+    check(
+      "HLS is fetched on demand, never preloaded on first paint",
+      indexSpeedHtml.includes('rel="prefetch" as="script" href="/assets/vendor/hls.min.js"') &&
+        !indexSpeedHtml.includes('<script src="/assets/vendor/hls.min.js" defer></script>') &&
+        !fs.readFileSync(path.join(ROOT, "public/sw.js"), "utf8").includes('"/assets/vendor/hls.min.js"') &&
+        adminJsSpeedText.includes("function loadHlsOnDemand")
+    );
+    check(
+      "Card tilt runs at most once per animation frame (pointermove jank fix)",
+      appJsSpeedText.includes("requestAnimationFrame(flush)") &&
+        appJsSpeedText.includes('{ passive: true }')
+    );
+    check(
+      "Owner PIN sessions unlock the analytics / sync / github admin APIs too",
+      adminAuthText.includes('from "./adminauth.js"') &&
+        adminAuthText.includes("authenticateAdmin(req)")
+    );
+    check(
+      "Long grids use content-visibility so scrolling stays smooth on mobile",
+      fs.readFileSync(path.join(ROOT, "public/assets/css/styles.css"), "utf8").includes("content-visibility: auto")
+    );
+
     const rulesJson = JSON.parse(fs.readFileSync(path.join(ROOT, "firebase/database.rules.json"), "utf8"));
     check(
       "Firebase ruleset allows authenticated analytics writes but keeps them owner-readable",

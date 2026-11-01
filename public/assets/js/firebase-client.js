@@ -229,6 +229,9 @@ export async function loginWithGoogle() {
 }
 
 export async function registerWithEmailPassword(displayName, email, password) {
+  const check = describeLoginIdentifier(email);
+  if (!check.ok) return { ok: false, code: "auth/invalid-email", error: check.error };
+  email = check.value;
   try {
     const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
     const cleanName = String(displayName || email.split("@")[0]).trim();
@@ -245,7 +248,29 @@ export async function registerWithEmailPassword(displayName, email, password) {
   }
 }
 
+const EMAIL_LOOKS_VALID = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** Treat a bare username like "khashi" as a helpful hint, not a silent failure. */
+export function describeLoginIdentifier(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return { ok: false, error: "Please enter your Gmail / email address." };
+  if (!raw.includes("@")) {
+    return {
+      ok: false,
+      error: `"${raw}" is a username, not an email. Use the full address, e.g. ${raw}@gmail.com — or sign in with Google.`
+    };
+  }
+  if (!EMAIL_LOOKS_VALID.test(raw)) {
+    return { ok: false, error: `"${raw}" does not look like a valid email address.` };
+  }
+  return { ok: true, value: raw.toLowerCase() };
+}
+
 export async function loginWithEmailPassword(email, password) {
+  const check = describeLoginIdentifier(email);
+  if (!check.ok) return { ok: false, code: "auth/invalid-email", error: check.error };
+  email = check.value;
+  if (!password) return { ok: false, code: "auth/missing-password", error: "Please enter your password." };
   try {
     const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
     await ensureUserProfileInRtdb(cred.user, "password");
@@ -343,6 +368,25 @@ function formatAuthError(err) {
       return "Enable 'Google' and 'Email/Password' Sign-in providers in Firebase Console -> Authentication -> Sign-in method.";
     case "auth/popup-closed-by-user":
       return "Sign-in popup was closed before completing login.";
+    case "auth/cancelled-popup-request":
+      return "Another sign-in window is already open. Close it and try again.";
+    case "auth/popup-blocked":
+      return "Your browser blocked the Google pop-up. Use the Redirect button below, or allow pop-ups for this site.";
+    case "auth/network-request-failed":
+      return "Network problem reaching Google/Firebase. Check your internet and try again.";
+    case "auth/too-many-requests":
+      return "Too many attempts from this device. Please wait a few minutes and try again, or use the Owner PIN.";
+    case "auth/user-disabled":
+      return "This account has been disabled. Contact the owner on WhatsApp 0306-2015326.";
+    case "auth/missing-password":
+      return "Please enter your password.";
+    case "auth/missing-email":
+      return "Please enter your Gmail / email address.";
+    case "auth/invalid-api-key":
+    case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
+      return "Firebase API key is missing or invalid on this deployment. Add FIREBASE_API_KEY and redeploy.";
+    case "auth/operation-not-supported-in-this-environment":
+      return "This in-app browser cannot open Google sign-in. Tap 'Open in Chrome/Safari', or use Gmail + Password below.";
     default:
       return err?.message || "Authentication failed. Please try again.";
   }

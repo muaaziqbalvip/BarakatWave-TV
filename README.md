@@ -85,6 +85,22 @@ The flagship **IPTV Reseller Panel** lives at **`/reseller`**, with public prici
 
 > If Google popup says `auth/unauthorized-domain`, the Owner PIN path always works because it is verified server-side, not by Firebase.
 
+### Speed + login behaviour (v11, no-hang build)
+
+| Symptom | What the app now does |
+| --- | --- |
+| Page felt slow / clicks hung | Reads answer from the local cache instantly and refresh in the background; every read has a 2.5–3.5 s ceiling. The admin studio paints **before** the database answers. |
+| Heavy first load | The 1,570+ title IMDb catalog (≈605 KB) is **not** downloaded on first paint — a 48-movie / 36-series core seed renders instantly and the full catalog is imported when the browser is idle. HLS is prefetched, not preloaded, and only fetched on first playback. |
+| Google pop-up blocked (WhatsApp / Instagram / Facebook browser, strict Safari, ad-blocker) | `Continue with Google (Redirect mode)` button appears in both the site login modal and `/admin.html`, plus a plain-language hint. |
+| `auth/unauthorized-domain` | Message tells the owner exactly which host to add in Firebase → Authentication → **Authorized domains**, and points at the Owner PIN + Gmail/Password fallback. |
+| Typed a username like `khashi` into email | Clear message: “that is a username, not an email — use `khashi@gmail.com`”, instead of a silent failure. |
+| Email/password login | Instant “Signing in…” feedback, profile write happens in the background (never blocks the click), reset-link flow restores its label, and every Firebase error code has a human message. |
+| Reseller `/api/panel` slow | Every call aborts after 20 s with “Server took too long to reply. Check your internet and try again.” — a login can never spin forever. |
+
+### Owner PIN now also unlocks the admin APIs
+
+`/api/analytics`, `/api/sync` and `/api/github/push` accept the same three credentials as `/api/panel` (`bwp_` PIN session, Firebase ID token, or `BARAKATWAVE_ADMIN_TOKEN`). Earlier a PIN-only login could open the panel but these routes answered `403 Administrator authentication required` — that mismatch is fixed in `api/_lib/admin-auth.js`.
+
 ---
 
 ## 🧩 Required env vars for the panel
