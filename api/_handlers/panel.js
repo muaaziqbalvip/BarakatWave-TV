@@ -104,6 +104,8 @@ const ADMIN_ACTIONS = new Set([
   "admin/channels",
   "admin/playlists",
   "admin/xtream-accounts",
+  "admin/xtream/create",
+  "admin/xtream/delete",
   "admin/catalog"
 ]);
 
