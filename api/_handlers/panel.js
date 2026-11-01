@@ -49,6 +49,7 @@ import {
   updateOrder,
   updateReseller
 } from "../_lib/panelstore.js";
+import { getChannels, getPlaylistById, getMovies, getSeries, rtdbGet } from "../_lib/rtdb.js";
 import { PLANS, PANEL, PAYMENT, FEATURE_MATRIX, RESELLER_TIERS, SELF_SERVE, KEYWORDS, priceForPlan } from "../../data/panel.js";
 import { BRAND } from "../../data/catalog.js";
 import { getAnalyticsDashboardSnapshot, listClientErrors } from "../_lib/tracker.js";
@@ -99,7 +100,11 @@ const ADMIN_ACTIONS = new Set([
   "admin/trials",
   "admin/payments",
   "admin/reseller-detail",
-  "admin/errors"
+  "admin/errors",
+  "admin/channels",
+  "admin/playlists",
+  "admin/xtream-accounts",
+  "admin/catalog"
 ]);
 
 const RESELLER_ACTIONS = new Set([
@@ -1035,6 +1040,43 @@ export default async function handler(req, res) {
           licenseHash: hashLicenseKey(generated),
           note: "Store only the hash. Give the key to the customer once — it cannot be recovered."
         });
+      }
+
+      /* ---------------------- ADMIN: CHANNELS ---------------------- */
+      if (action === "admin/channels") {
+        const channels = await getChannels();
+        return sendJson(res, 200, { ok: true, count: channels.length, channels });
+      }
+
+      /* ---------------------- ADMIN: PLAYLISTS ---------------------- */
+      if (action === "admin/playlists") {
+        const raw = await rtdbGet("playlists", { ttlMs: 5000 });
+        let arr = [];
+        if (raw && typeof raw === "object") {
+          arr = Array.isArray(raw) ? raw.filter(Boolean) : Object.entries(raw).map(([id, v]) => ({ id, ...v }));
+        }
+        return sendJson(res, 200, { ok: true, count: arr.length, playlists: arr });
+      }
+
+      /* ---------------------- ADMIN: XTREAM ACCOUNTS ---------------------- */
+      if (action === "admin/xtream-accounts") {
+        const raw = await rtdbGet("xtreamAccounts", { ttlMs: 5000 });
+        let arr = [];
+        if (raw && typeof raw === "object") {
+          arr = Array.isArray(raw) ? raw.filter(Boolean) : Object.entries(raw).map(([id, v]) => ({ id, ...v }));
+        }
+        return sendJson(res, 200, { ok: true, count: arr.length, xtreamAccounts: arr });
+      }
+
+      /* ---------------------- ADMIN: CATALOG (MOVIES / SERIES) ---------------------- */
+      if (action === "admin/catalog") {
+        const type = String(q.type || body.type || "movies").toLowerCase();
+        if (type === "series") {
+          const series = await getSeries();
+          return sendJson(res, 200, { ok: true, count: series.length, series });
+        }
+        const movies = await getMovies();
+        return sendJson(res, 200, { ok: true, count: movies.length, movies });
       }
 
       if (action === "admin/secure-link") {
