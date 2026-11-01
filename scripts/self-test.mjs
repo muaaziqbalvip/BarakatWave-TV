@@ -1325,6 +1325,24 @@ async function run() {
       })()
     );
     check(
+      "Every HTML module entry point is cache-versioned (no unversioned entry can go stale)",
+      ["index.html", "admin.html", "reseller.html"].every((f) => {
+        const html = fs.readFileSync(path.join(ROOT, "public", f), "utf8");
+        const tags = [...html.matchAll(/<script[^>]+type="module"[^>]*src="([^"]+)"/g)].map((m) => m[1]);
+        return tags.length > 0 && tags.every((src) => /\?v=\d+$/.test(src));
+      })
+    );
+    check(
+      "HLS engine is never eagerly loaded in any HTML entry",
+      ["index.html", "admin.html", "reseller.html"].every(
+        (f) =>
+          !/<script[^>]+src="\/assets\/vendor\/hls\.min\.js"/.test(
+            fs.readFileSync(path.join(ROOT, "public", f), "utf8")
+          )
+      )
+    );
+
+    check(
       "A stale-module failure shows a refresh banner instead of a blank page",
       indexSpeedHtml.includes("__BW_BOOTED") &&
         indexSpeedHtml.includes("Boot watchdog") &&

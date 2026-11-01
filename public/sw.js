@@ -12,6 +12,7 @@ const SHELL_ASSETS = [
   // Media engines (hls / shaka / mpegts / mux ≈ 620 KB) are intentionally NOT
   // precached: player.js fetches them on demand on first playback.
   "/assets/js/app.js?v=12",
+  "/assets/js/panel.js?v=12",
   "/assets/js/admin.js?v=12",
   "/assets/js/firebase-client.js?v=12",
   "/assets/js/player.js",
