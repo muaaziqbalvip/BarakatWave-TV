@@ -2354,28 +2354,58 @@ function bindPwaInstaller() {
 }
 
 function bind3dCardTiltEffects() {
+  // Desktop pointers only — touch devices skip this entirely (no wasted work).
   if (!window.matchMedia?.("(hover: hover) and (pointer: fine)")?.matches) return;
 
   let activeCard = null;
-  document.addEventListener("pointermove", (e) => {
-    const card = e.target.closest?.(".channel-item, .cinema-card, .feature-card, .blog-card");
-    if (activeCard && activeCard !== card) {
-      activeCard.style.removeProperty("--rx");
-      activeCard.style.removeProperty("--ry");
-      activeCard = null;
-    }
+  let frame = 0;
+  let pending = null;
+
+  // One rAF per stored pointer position: getBoundingClientRect and style writes
+  // are the expensive part, so they run at most once per animation frame instead
+  // of on every single pointermove event (this was the click/scroll jank).
+  const flush = () => {
+    frame = 0;
+    if (!pending || !activeCard) return;
+    const { clientX, clientY, card } = pending;
+    pending = null;
+    if (card !== activeCard) return;
+    const rect = activeCard.getBoundingClientRect();
+    const px = (clientX - rect.left) / Math.max(1, rect.width);
+    const py = (clientY - rect.top) / Math.max(1, rect.height);
+    if (px < -0.05 || px > 1.05 || py < -0.05 || py > 1.05) return;
+    activeCard.style.setProperty("--rx", `${((0.5 - py) * 9).toFixed(2)}deg`);
+    activeCard.style.setProperty("--ry", `${((px - 0.5) * 9).toFixed(2)}deg`);
+    activeCard.style.setProperty("--mx", `${Math.round(px * 100)}%`);
+    activeCard.style.setProperty("--my", `${Math.round(py * 100)}%`);
+  };
+
+  const clearCard = (card) => {
     if (!card) return;
-    activeCard = card;
-    const rect = card.getBoundingClientRect();
-    const px = (e.clientX - rect.left) / Math.max(1, rect.width);
-    const py = (e.clientY - rect.top) / Math.max(1, rect.height);
-    const ry = ((px - 0.5) * 9).toFixed(2);
-    const rx = ((0.5 - py) * 9).toFixed(2);
-    card.style.setProperty("--rx", `${rx}deg`);
-    card.style.setProperty("--ry", `${ry}deg`);
-    card.style.setProperty("--mx", `${Math.round(px * 100)}%`);
-    card.style.setProperty("--my", `${Math.round(py * 100)}%`);
-  });
+    card.style.removeProperty("--rx");
+    card.style.removeProperty("--ry");
+  };
+
+  document.addEventListener(
+    "pointermove",
+    (e) => {
+      const card = e.target.closest?.(".channel-item, .cinema-card, .feature-card, .blog-card") || null;
+      if (activeCard && activeCard !== card) {
+        clearCard(activeCard);
+        activeCard = null;
+      }
+      if (!card) return;
+      activeCard = card;
+      pending = { clientX: e.clientX, clientY: e.clientY, card };
+      if (!frame) frame = requestAnimationFrame(flush);
+    },
+    { passive: true }
+  );
+
+  document.addEventListener("pointerleave", () => {
+    clearCard(activeCard);
+    activeCard = null;
+  }, { passive: true });
 }
 
 /* ==================== UTILITIES ==================== */
