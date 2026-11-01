@@ -60,6 +60,18 @@
           Continue with Google (Admin)
         </button>
 
+        <details class="adm-domain-help" style="margin-top:12px;font-size:0.76rem;text-align:left;">
+          <summary style="cursor:pointer;font-weight:800;">Google login nahi chal raha? (domain fix)</summary>
+          <p style="margin:8px 0 4px;">Firebase sirf un domains par Google popup allow karta hai jo yahan listed hon:
+            <strong>Firebase Console → Authentication → Settings → Authorized domains</strong>.</p>
+          <p style="margin:0 0 4px;">Is page ka domain:
+            <code id="admCurrentHost" style="word-break:break-all;">…</code>
+            <button type="button" class="mini-btn" id="admCopyHostBtn" style="margin-left:6px;">📋 Copy</button>
+          </p>
+          <p style="margin:0;">Yahan tak: <strong>Owner PIN</strong> (neeche) hamesha kaam karta hai, aur
+            <strong>Email + Password</strong> login bhi domain setting se affected nahi hota.</p>
+        </details>
+
         <div class="divider-or">OR ADMIN EMAIL + PASSWORD</div>
 
         <form id="adminLoginForm" class="form-stack">
