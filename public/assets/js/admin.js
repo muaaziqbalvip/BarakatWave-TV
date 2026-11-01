@@ -345,6 +345,17 @@ function bindAdminAuth() {
   const previewBox = document.getElementById("admPreviewBox");
   if (isSandboxPreviewHost() && previewBox) previewBox.hidden = false;
 
+  // Show the exact host that must be whitelisted in Firebase Authorized domains.
+  const hostEl = document.getElementById("admCurrentHost");
+  if (hostEl) hostEl.textContent = location.hostname || "unknown";
+  document.getElementById("admCopyHostBtn")?.addEventListener("click", () => {
+    const host = location.hostname || "";
+    navigator.clipboard?.writeText(host).then(
+      () => toast(`Copied: ${host}`),
+      () => toast(host)
+    );
+  });
+
   document.getElementById("admGoogleRedirectBtn")?.addEventListener("click", async () => {
     showAdmErr("");
     toast("Redirecting to Google sign-in…");
