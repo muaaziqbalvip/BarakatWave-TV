@@ -996,6 +996,55 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <script src="/assets/vendor/hls.min.js"></script>
-  <script type="module" src="/assets/js/admin.js?v=11"></script>
+  <script type="module" src="/assets/js/admin.js?v=12"></script>
+  <!-- Boot watchdog: agar module graph purane cache ki wajah se fail ho jaye to
+       blank page ke bajaye ek saaf "Update" banner dikhta hai (auto-refresh option). -->
+  <script>
+    (function () {
+      var shown = false;
+      function banner(msg) {
+        if (shown || window.__BW_BOOTED) return;
+        shown = true;
+        var box = document.createElement("div");
+        box.setAttribute("role", "alert");
+        box.style.cssText =
+          "position:fixed;left:12px;right:12px;bottom:12px;z-index:2147483000;display:flex;gap:10px;align-items:center;" +
+          "justify-content:space-between;flex-wrap:wrap;padding:12px 14px;border-radius:14px;font:600 13px/1.4 system-ui,sans-serif;" +
+          "background:#0f172a;color:#fff;box-shadow:0 12px 34px rgba(2,6,23,.45)";
+        var text = document.createElement("span");
+        text.textContent = msg;
+        var btn = document.createElement("button");
+        btn.textContent = "🔄 Page refresh karein";
+        btn.style.cssText = "background:#f59e0b;color:#111;border:0;border-radius:10px;padding:8px 14px;font-weight:800;cursor:pointer";
+        btn.onclick = function () {
+          if ("caches" in window) {
+            caches.keys().then(function (keys) {
+              return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+            }).finally(function () { location.reload(); });
+          } else {
+            location.reload();
+          }
+        };
+        box.appendChild(text);
+        box.appendChild(btn);
+        document.body.appendChild(box);
+      }
+      setTimeout(function () {
+        if (!window.__BW_BOOTED) banner("App load nahi hua — purana cached version ho sakta hai. Refresh kar lein.");
+      }, 9000);
+      window.addEventListener("error", function (e) {
+        var m = String((e && e.message) || "");
+        if (/does not provide an export named|Failed to fetch dynamically imported module|Importing a module script failed/i.test(m)) {
+          banner("Update available — ek purana module cache me hai. Refresh kar lein.");
+        }
+      }, true);
+      window.addEventListener("unhandledrejection", function (e) {
+        var m = String((e && e.reason && e.reason.message) || "");
+        if (/does not provide an export named|dynamically imported module/i.test(m)) {
+          banner("Update available — ek purana module cache me hai. Refresh kar lein.");
+        }
+      });
+    })();
+  </script>
 </body>
 </html>

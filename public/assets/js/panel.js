@@ -85,7 +85,7 @@ function readProofFile(file) {
  */
 async function mirrorToRtdb(path, value) {
   try {
-    const mod = await import("/assets/js/firebase-client.js?v=11");
+    const mod = await import("/assets/js/firebase-client.js?v=12");
     const user = mod.getCurrentUserSnapshot();
     if (!user || user.isPreviewSession) return false;
     await mod.dbWrite(path, value);
@@ -205,7 +205,7 @@ async function refreshAdminToken(force = false) {
   }
   // 2) Firebase ID token
   try {
-    const mod = await import("/assets/js/firebase-client.js?v=11");
+    const mod = await import("/assets/js/firebase-client.js?v=12");
     const idToken = await mod.getFirebaseIdToken(force);
     if (idToken) {
       state.adminToken = idToken;
@@ -664,7 +664,7 @@ async function adminLoginWithGoogle() {
   const msg = $("adminAuthMsg");
   try {
     showResult(msg, "Opening Google sign-in…", "warn");
-    const mod = await import("/assets/js/firebase-client.js?v=11");
+    const mod = await import("/assets/js/firebase-client.js?v=12");
     const res = await mod.loginWithGoogle();
     if (!res.ok) return showResult(msg, `❌ ${esc(res.error)}`, "error");
     const token = await mod.getFirebaseIdToken(true);
@@ -841,7 +841,7 @@ function bindAdmin() {
     state.adminToken = "";
     localStorage.removeItem(ADMIN_SESSION_KEY);
     try {
-      const mod = await import("/assets/js/firebase-client.js?v=11");
+      const mod = await import("/assets/js/firebase-client.js?v=12");
       await mod.logoutUser();
     } catch {
       /* ignore */

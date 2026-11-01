@@ -46,8 +46,7 @@ import {
   dbWriteStrict,
   dbMerge,
   dbDelete
-} from "./firebase-client.js?v=11";
-import { loadFullCatalog } from "./imdb-seed.js";
+} from "./firebase-client.js?v=12";
 import { ledgerRows, validLedgerKey, validBillingPeriod } from "./reseller-ledger.js";
 import { effectiveMembershipPlan, membershipUpdate } from "./membership.js";
 import { parseM3uPlaylist, exportChannelsToM3u, slugify } from "./m3u-parser.js";
@@ -631,6 +630,7 @@ async function loadAllAdminData() {
   if (!admState.catalogHydrated) {
     scheduleAdminIdle(async () => {
       try {
+        const { loadFullCatalog } = await import("./imdb-seed.js?v=12");
         const local = await loadFullCatalog();
         if (local.movies?.length) admState.movies = local.movies;
         if (local.series?.length) admState.series = local.series;
@@ -2763,4 +2763,11 @@ function escAttr(s) {
   return esc(s).replace(/'/g, "&#39;");
 }
 
-initAdmin();
+try {
+  initAdmin();
+  window.__BW_BOOTED = true;
+  window.dispatchEvent(new Event("bw:booted"));
+} catch (err) {
+  console.error("[BarakatWave] boot failed", err);
+  window.__BW_BOOT_ERROR = String(err?.message || err);
+}
