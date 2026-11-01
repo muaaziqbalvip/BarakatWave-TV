@@ -1304,6 +1304,54 @@ async function run() {
     const indexSpeedHtml = fs.readFileSync(path.join(ROOT, "public/index.html"), "utf8");
     const adminAuthText = fs.readFileSync(path.join(ROOT, "api/_lib/admin-auth.js"), "utf8");
 
+    // ---- Module-graph integrity: a stale cached module must never white-screen the app ----
+    const entryVersion = (indexSpeedHtml.match(/\/assets\/js\/app\.js\?v=(\d+)/) || [])[1];
+    const adminVersion = (fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8").match(/\/assets\/js\/admin\.js\?v=(\d+)/) || [])[1];
+    check(
+      "Entry modules bump a shared cache version and never statically import the heavy seed",
+      Boolean(entryVersion) &&
+        entryVersion === adminVersion &&
+        !/import\s*\{[^}]*loadFullCatalog[^}]*\}\s*from/.test(appJsSpeedText) &&
+        !/import\s*\{[^}]*loadFullCatalog[^}]*\}\s*from/.test(adminJsSpeedText) &&
+        /await import\("\.\/imdb-seed\.js\?v=\d+"\)/.test(appJsSpeedText) &&
+        /await import\("\.\/imdb-seed\.js\?v=\d+"\)/.test(adminJsSpeedText)
+    );
+    check(
+      "Every lazily imported catalog module carries the same cache version",
+      (() => {
+        const seed = fs.readFileSync(path.join(ROOT, "public/assets/js/imdb-seed.js"), "utf8");
+        const versions = [...seed.matchAll(/imdb-catalog-(?:core|2000)\.js\?v=(\d+)/g)].map((m) => m[1]);
+        return versions.length === 2 && versions.every((v) => v === entryVersion);
+      })()
+    );
+    check(
+      "Every HTML module entry point is cache-versioned (no unversioned entry can go stale)",
+      ["index.html", "admin.html", "reseller.html"].every((f) => {
+        const html = fs.readFileSync(path.join(ROOT, "public", f), "utf8");
+        const tags = [...html.matchAll(/<script[^>]+type="module"[^>]*src="([^"]+)"/g)].map((m) => m[1]);
+        return tags.length > 0 && tags.every((src) => /\?v=\d+$/.test(src));
+      })
+    );
+    check(
+      "HLS engine is never eagerly loaded in any HTML entry",
+      ["index.html", "admin.html", "reseller.html"].every(
+        (f) =>
+          !/<script[^>]+src="\/assets\/vendor\/hls\.min\.js"/.test(
+            fs.readFileSync(path.join(ROOT, "public", f), "utf8")
+          )
+      )
+    );
+
+    check(
+      "A stale-module failure shows a refresh banner instead of a blank page",
+      indexSpeedHtml.includes("__BW_BOOTED") &&
+        indexSpeedHtml.includes("Boot watchdog") &&
+        fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8").includes("__BW_BOOTED") &&
+        appJsSpeedText.includes("window.__BW_BOOTED = true") &&
+        adminJsSpeedText.includes("window.__BW_BOOTED = true")
+    );
+
+
     check(
       "Clicks never wait on the network: dbRead is stale-while-revalidate with a hard timeout",
       fbClientText.includes("refreshInBackground") &&

@@ -20,7 +20,6 @@ import {
   getCategoryPriority
 } from "./default-data.js";
 import { fetchImdbTitle } from "./imdb-client.js";
-import { loadFullCatalog } from "./imdb-seed.js";
 import {
   subscribeAuth,
   loginWithGoogle,
@@ -39,7 +38,7 @@ import {
   dbWriteStrict,
   dbMerge,
   dbPushItem
-} from "./firebase-client.js?v=11";
+} from "./firebase-client.js?v=12";
 import { ledgerRows } from "./reseller-ledger.js";
 import { effectiveMembershipPlan } from "./membership.js";
 import { BarakatPlayer } from "./player.js";
@@ -1596,6 +1595,7 @@ async function hydrateFullImdbCatalog() {
   // 1) Full 1,570+ catalog from the lazily-imported local bundle (works offline,
   //    zero extra network round-trip) — swapped in without touching the DOM state.
   try {
+    const { loadFullCatalog } = await import("./imdb-seed.js?v=12");
     const local = await loadFullCatalog();
     if (local.movies?.length) state.baseCatalogMovies = local.movies;
     if (local.series?.length) state.baseCatalogSeries = local.series;
@@ -2455,4 +2455,11 @@ function escAttr(s) {
   return escHtml(s).replace(/'/g, "&#39;");
 }
 
-init();
+try {
+  init();
+  window.__BW_BOOTED = true;
+  window.dispatchEvent(new Event("bw:booted"));
+} catch (err) {
+  console.error("[BarakatWave] boot failed", err);
+  window.__BW_BOOT_ERROR = String(err?.message || err);
+}
