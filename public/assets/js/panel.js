@@ -16,6 +16,7 @@ const state = {
   dealer: null,
   dealerStats: null,
   dealerClients: [],
+  dealerFinance: null,
   adminToken: "",
   adminUser: null
 };
@@ -85,7 +86,7 @@ function readProofFile(file) {
  */
 async function mirrorToRtdb(path, value) {
   try {
-    const mod = await import("/assets/js/firebase-client.js?v=13");
+    const mod = await import("/assets/js/firebase-client.js?v=14");
     const user = mod.getCurrentUserSnapshot();
     if (!user || user.isPreviewSession) return false;
     await mod.dbWrite(path, value);
@@ -205,7 +206,7 @@ async function refreshAdminToken(force = false) {
   }
   // 2) Firebase ID token
   try {
-    const mod = await import("/assets/js/firebase-client.js?v=13");
+    const mod = await import("/assets/js/firebase-client.js?v=14");
     const idToken = await mod.getFirebaseIdToken(force);
     if (idToken) {
       state.adminToken = idToken;
@@ -481,7 +482,45 @@ function paintDashboard(data) {
     <div><span>M3U Plus</span><strong>${esc(base)}/get.php?username=USER&amp;password=PASS&amp;type=m3u_plus</strong></div>`;
   $("kvHost").textContent = base;
 
+  paintFinance(data.finance || state.dealerFinance);
+  paintDealerPricing(data.reseller);
+
   paintClients(data.clients || []);
+}
+
+function paintFinance(f) {
+  const kv = $("financeKv");
+  if (!kv) return;
+  if (!f) {
+    kv.innerHTML = `<div><span>Earnings</span><strong>—</strong></div>`;
+    return;
+  }
+  const margin = Number(f.pricing?.monthly || 0) - Number(f.cost && f.clients ? 100 : 100);
+  kv.innerHTML = `
+    <div><span>Collected (all time)</span><strong>${money(f.revenue)}</strong></div>
+    <div><span>Collected (last 30 days)</span><strong>${money(f.revenue30d)}</strong></div>
+    <div><span>Credits cost</span><strong>${money(f.cost)}</strong></div>
+    <div><span>Net profit</span><strong style="color:var(--accent-gold,#f7b731)">${money(f.profit)}</strong></div>
+    <div><span>Monthly margin / client</span><strong>${money(margin)}</strong></div>
+    <div><span>Clients (active / unpaid)</span><strong>${f.active} / ${f.unpaid}</strong></div>
+    <div><span>Payments recorded</span><strong>${f.payments}</strong></div>`;
+}
+
+function paintDealerPricing(reseller) {
+  if (!reseller) return;
+  const p = reseller.pricing || {};
+  const set = (id, v) => {
+    const el = $(id);
+    if (el && v !== undefined && v !== null) el.value = v;
+  };
+  set("prConnection", p.connectionFee);
+  set("prMonthly", p.monthly);
+  set("prQuarterly", p.quarterly);
+  set("prYearly", p.yearly);
+  set("prWhatsapp", reseller.contactWhatsapp || reseller.whatsapp || "");
+  set("prBrand", reseller.brandName || "");
+  const fee = $("clFee");
+  if (fee && !fee.value) fee.value = p.connectionFee ?? 50;
 }
 
 function paintClients(clients) {
@@ -496,7 +535,7 @@ function paintClients(clients) {
       const tone = c.status === "active" ? "badge badge-cyan" : "badge badge-gold";
       return `<tr>
         <td><strong>${esc(c.username)}</strong><br /><span class="muted-sm">${esc(c.email || c.whatsapp || "")}</span></td>
-        <td><code>${esc(c.password || "•••")}</code></td>
+        <td><code>${esc(c.password || "•••")}</code>${c.mac ? `<br /><span class="muted-sm">MAC ${esc(c.mac)}</span>` : ""}</td>
         <td>${esc(c.planLabel || c.planId)}</td>
         <td>${fmtDate(c.expDate)}</td>
         <td>${c.daysLeft}</td>
@@ -504,8 +543,9 @@ function paintClients(clients) {
         <td>
           <div class="cell-actions">
             <button class="mini-btn" data-act="copy-m3u" data-user="${esc(c.username)}" data-pass="${esc(c.password || "")}">📋 M3U</button>
+            <button class="mini-btn" data-act="paid" data-user="${esc(c.username)}">💰 Payment</button>
             <button class="mini-btn" data-act="renew" data-user="${esc(c.username)}">🔄 Renew</button>
-            <button class="mini-btn danger" data-act="suspend" data-user="${esc(c.username)}">⏸</button>
+            <button class="mini-btn ${c.status === "suspended" ? "" : "danger"}" data-act="${c.status === "suspended" ? "unblock" : "block"}" data-user="${esc(c.username)}">${c.status === "suspended" ? "▶" : "⛔"}</button>
           </div>
         </td>
       </tr>`;
@@ -518,6 +558,118 @@ async function dealerApi(action, payload = {}) {
   const session = JSON.parse(localStorage.getItem(DEALER_SESSION_KEY) || "{}");
   return api(action, { ...payload, resellerCode: session.code, apiKey: session.apiKey }, {
     headers: { "x-api-key": session.apiKey || "" }
+  });
+}
+
+/* ------------------------- self-serve signup + login ------------------------- */
+
+function bindSignupAndPasswordLogin() {
+  $("signupForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const out = $("signupResult");
+    const btn = e.target.querySelector('button[type="submit"]');
+    const label = btn ? btn.textContent : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Creating your panel…";
+    }
+    try {
+      showResult(out, "Account ban raha hai…", "warn");
+      const res = await api("reseller/register", {
+        name: $("suName").value.trim(),
+        city: $("suCity").value.trim(),
+        email: $("suEmail").value.trim(),
+        whatsapp: $("suWhatsapp").value.trim(),
+        password: $("suPass").value,
+        brandName: $("suBrand").value.trim()
+      });
+      const r = res.reseller;
+      localStorage.setItem(DEALER_SESSION_KEY, JSON.stringify({ code: r.code, apiKey: r.apiKey }));
+      showResult(
+        out,
+        `✅ <strong>${esc(r.name)}</strong>, aapka panel ready hai!<br />
+         Dealer code: <code>${esc(r.code)}</code> · Starter credits: <strong>${esc(res.starterCredits)}</strong><br />
+         Ab dashboard me apni price set karein aur client add karein.`,
+        "ok"
+      );
+      toast("Reseller panel created — welcome aboard!");
+      const session = await api("reseller/login", { resellerCode: r.code, apiKey: r.apiKey });
+      saveDealerSession(session);
+      state.dealerClients = session.clients || [];
+      paintDashboard(session);
+      switchTab("dashboard");
+    } catch (err) {
+      showResult(out, `❌ ${esc(err.message)}`, "error");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = label || "Create My Reseller Panel";
+      }
+    }
+  });
+
+  $("dealerPassForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const out = $("dealerPassResult");
+    const btn = e.target.querySelector('button[type="submit"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Signing in…";
+    }
+    try {
+      const res = await api("reseller/login-password", {
+        email: $("dlEmail").value.trim(),
+        password: $("dlPassword").value
+      });
+      localStorage.setItem(
+        DEALER_SESSION_KEY,
+        JSON.stringify({ code: res.reseller.code, apiKey: res.reseller.apiKey })
+      );
+      saveDealerSession(res);
+      state.dealerClients = res.clients || [];
+      state.dealerFinance = res.finance || null;
+      paintDashboard(res);
+      switchTab("dashboard");
+      toast(`Welcome back, ${res.reseller.name}!`);
+    } catch (err) {
+      showResult(out, `❌ ${esc(err.message)}`, "error");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "🔓 Open My Panel";
+      }
+    }
+  });
+
+  // "Free signup" helper buttons anywhere in the panel
+  $$("[data-goto-tab]").forEach((b) =>
+    b.addEventListener("click", () => switchTab(b.dataset.gotoTab))
+  );
+
+  // ---------- pricing / contact settings ----------
+  $("pricingForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const out = $("pricingResult");
+    try {
+      showResult(out, "Saving…", "warn");
+      const res = await dealerApi("reseller/pricing-set", {
+        pricing: {
+          connectionFee: Number($("prConnection").value) || 0,
+          monthly: Number($("prMonthly").value) || 0,
+          quarterly: Number($("prQuarterly").value) || 0,
+          yearly: Number($("prYearly").value) || 0
+        },
+        contactWhatsapp: $("prWhatsapp").value.trim(),
+        contactPhone: $("prWhatsapp").value.trim(),
+        brandName: $("prBrand").value.trim()
+      });
+      state.dealer = res.reseller;
+      showResult(out, "✅ Price aur recharge number save ho gaye.", "ok");
+      toast("Pricing updated");
+      await refreshDealer();
+    } catch (err) {
+      showResult(out, `❌ ${esc(err.message)}`, "error");
+    }
   });
 }
 
@@ -539,13 +691,17 @@ function bindDashboard() {
     const out = $("clientResult");
     try {
       showResult(out, "Creating client…", "warn");
+      const months = Number($("clMonths")?.value) || 1;
+      const feeField = $("clFee");
       const res = await dealerApi("reseller/client-create", {
         username: $("clUser").value.trim(),
         password: $("clPass").value.trim(),
         whatsapp: $("clWhatsapp").value.trim(),
         devices: Number($("clDevices").value) || 1,
-        planId: $("clPlan").value,
-        mac: $("clMac").value.trim()
+        planId: months === 3 ? "quarterly" : months === 12 ? "yearly" : months === 6 ? "half-yearly" : "monthly",
+        days: months * 30,
+        mac: $("clMac").value.trim(),
+        connectionFee: feeField ? Number(feeField.value) || 0 : undefined
       });
       const c = res.client;
       const xtream = `Host: ${state.config?.baseUrl || location.origin}\nPort: 443\nUsername: ${c.username}\nPassword: ${c.password}`;
@@ -599,12 +755,41 @@ function bindDashboard() {
       }
       return;
     }
-    if (act === "suspend") {
+    if (act === "suspend" || act === "block" || act === "unblock") {
       try {
         btn.disabled = true;
-        const suspend = client?.status !== "suspended";
-        await dealerApi("reseller/client-suspend", { username: user, suspended: suspend });
-        toast(suspend ? `Suspended ${user}` : `Resumed ${user}`);
+        const block = act === "block" || (act === "suspend" && client?.status !== "suspended");
+        await dealerApi("reseller/client-block", { username: user, blocked: block });
+        toast(block ? `⛔ ${user} blocked (payment na aane par service band)` : `▶ ${user} unblocked`);
+        await refreshDealer();
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+      return;
+    }
+    if (act === "paid") {
+      // Payment received -> renew for N months and record the money.
+      const price = Number(state.dealer?.pricing?.monthly) || 300;
+      const monthsInput = prompt(
+        `${user} se kitne mahine ka paisa mila? (1-12)\nCredits available: ${state.dealer?.credits ?? 0}`,
+        "1"
+      );
+      if (!monthsInput) return;
+      const months = Math.max(1, Math.min(12, Number(monthsInput) || 1));
+      const amountInput = prompt(`Kitne rupay mile? (monthly rate: Rs ${price})`, String(price * months));
+      if (amountInput === null) return;
+      const amount = Math.max(0, Number(amountInput) || 0);
+      try {
+        btn.disabled = true;
+        const res = await dealerApi("reseller/payment-record", {
+          username: user,
+          months,
+          amount,
+          via: "cash"
+        });
+        toast(res.message || `Payment recorded for ${user}`);
         await refreshDealer();
       } catch (err) {
         toast(err.message);
@@ -624,6 +809,7 @@ async function refreshDealer() {
     });
     saveDealerSession(res);
     state.dealerClients = res.clients || [];
+    state.dealerFinance = res.finance || state.dealerFinance;
     paintDashboard(res);
   } catch {
     // keep last view
@@ -664,7 +850,7 @@ async function adminLoginWithGoogle() {
   const msg = $("adminAuthMsg");
   try {
     showResult(msg, "Opening Google sign-in…", "warn");
-    const mod = await import("/assets/js/firebase-client.js?v=13");
+    const mod = await import("/assets/js/firebase-client.js?v=14");
     const res = await mod.loginWithGoogle();
     if (!res.ok) return showResult(msg, `❌ ${esc(res.error)}`, "error");
     const token = await mod.getFirebaseIdToken(true);
@@ -841,7 +1027,7 @@ function bindAdmin() {
     state.adminToken = "";
     localStorage.removeItem(ADMIN_SESSION_KEY);
     try {
-      const mod = await import("/assets/js/firebase-client.js?v=13");
+      const mod = await import("/assets/js/firebase-client.js?v=14");
       await mod.logoutUser();
     } catch {
       /* ignore */
@@ -979,6 +1165,7 @@ async function init() {
   bindOrder();
   bindTrial();
   bindDashboard();
+  bindSignupAndPasswordLogin();
   bindAdmin();
   await loadConfig();
 

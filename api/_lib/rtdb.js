@@ -355,8 +355,33 @@ export async function verifyXtreamCredentials(username, password) {
   if (String(acct.password) !== String(password)) return null;
   if (String(acct.status || "Active").toLowerCase() === "suspended") return null;
 
+  // Non-payment model: mahina poora hone par service band (reseller ka block bhi
+  // yahin se enforce hota hai). Trial ki expiry bhi isi rule se chalti hai.
+  const expSec = Number(acct.expDate || 0);
+  if (expSec > 0 && Date.now() / 1000 > expSec) {
+    return { ...acct, expired: true, effectivePlan: "expired" };
+  }
+
   const effectivePlan = effectiveMembershipPlan(acct);
   return { ...acct, effectivePlan };
+}
+
+/** Reseller ka public contact (expired client ko renew karne ke liye dikhaya jata hai). */
+export async function resellerContactForClient(username = "") {
+  const clean = String(username || "").trim().toLowerCase();
+  if (!clean) return null;
+  const clients = await rtdbGet("panel/clients", { ttlMs: 5000 }).catch(() => null);
+  const client = clients && typeof clients === "object" ? clients[clean] : null;
+  const code = String(client?.resellerCode || "").trim().toUpperCase();
+  if (!code) return null;
+  const resellers = await rtdbGet("panel/resellers", { ttlMs: 5000 }).catch(() => null);
+  const reseller = resellers && typeof resellers === "object" ? resellers[code] : null;
+  if (!reseller) return null;
+  return {
+    name: reseller.brandName || reseller.name || "Your IPTV reseller",
+    phone: reseller.contactPhone || reseller.whatsapp || "",
+    whatsapp: reseller.contactWhatsapp || reseller.whatsapp || ""
+  };
 }
 
 export async function getPlaylistById(playlistId) {

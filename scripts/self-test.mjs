@@ -704,6 +704,180 @@ async function run() {
         muaazBlogHtml.includes("Mizanora Projects")
     );
 
+    // 3j-2. SELF-SERVE RESELLER BUSINESS MODEL (owner-approved rules)
+    const suEmail = `dealer${Date.now().toString(36)}@test.com`;
+    const regRes = await (
+      await fetch(`${base}/api/panel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reseller/register",
+          name: "Test Dealer",
+          email: suEmail,
+          whatsapp: "03001234567",
+          password: "secret123",
+          city: "Kasur",
+          brandName: "Test IPTV"
+        })
+      })
+    ).json();
+    check(
+      "Reseller self-registration is open (no owner approval) and returns working credentials",
+      regRes.ok === true &&
+        /^RS-[A-F0-9]{6}$/.test(regRes.reseller?.code || "") &&
+        /^bwr_[a-f0-9]{32}$/.test(regRes.reseller?.apiKey || "") &&
+        regRes.starterCredits >= 1
+    );
+
+    const dealerCode = regRes.reseller.code;
+    const dealerKey = regRes.reseller.apiKey;
+    const dealerHeaders = { "Content-Type": "application/json", "x-api-key": dealerKey };
+
+    const dupReg = await (
+      await fetch(`${base}/api/panel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reseller/register", name: "Dup", email: suEmail, whatsapp: "03001234567", password: "secret123" })
+      })
+    ).json();
+    check("Duplicate reseller email is rejected", dupReg.ok === false && /already registered/i.test(dupReg.error || ""));
+
+    const passLogin = await (
+      await fetch(`${base}/api/panel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reseller/login-password", email: suEmail, password: "secret123" })
+      })
+    ).json();
+    check(
+      "Reseller can log in with email + password",
+      passLogin.ok === true && passLogin.reseller?.code === dealerCode && Boolean(passLogin.finance)
+    );
+
+    const badLogin = await (
+      await fetch(`${base}/api/panel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reseller/login-password", email: suEmail, password: "wrong-one" })
+      })
+    ).json();
+    check("Wrong reseller password is rejected", badLogin.ok === false);
+
+    const priceRes = await (
+      await fetch(`${base}/api/panel`, {
+        method: "POST",
+        headers: dealerHeaders,
+        body: JSON.stringify({
+          action: "reseller/pricing-set",
+          resellerCode: dealerCode,
+          pricing: { connectionFee: 50, monthly: 350, quarterly: 950, yearly: 3200 },
+          contactWhatsapp: "03009998888"
+        })
+      })
+    ).json();
+    check(
+      "Reseller sets his own selling price (connection fee + monthly) and recharge number",
+      priceRes.ok === true &&
+        priceRes.reseller.pricing.connectionFee === 50 &&
+        priceRes.reseller.pricing.monthly === 350 &&
+        priceRes.reseller.contactWhatsapp === "03009998888"
+    );
+
+    const macClientRes = await (
+      await fetch(`${base}/api/panel`, {
+        method: "POST",
+        headers: dealerHeaders,
+        body: JSON.stringify({
+          action: "reseller/client-create",
+          resellerCode: dealerCode,
+          username: "selftestmac",
+          whatsapp: "03011112222",
+          mac: "00:1A:79:AB:CD:EF",
+          days: 30
+        })
+      })
+    ).json();
+    check(
+      "Reseller creates a MAC / Stalker client with Stalker portal details + connection fee collected",
+      macClientRes.ok === true &&
+        macClientRes.client.mac === "00:1A:79:AB:CD:EF" &&
+        String(macClientRes.stalker?.portalUrl || "").includes("/c/") &&
+        macClientRes.connectionFee?.amount === 50
+    );
+
+    const payRes = await (
+      await fetch(`${base}/api/panel`, {
+        method: "POST",
+        headers: dealerHeaders,
+        body: JSON.stringify({
+          action: "reseller/payment-record",
+          resellerCode: dealerCode,
+          username: "selftestmac",
+          amount: 350,
+          months: 1
+        })
+      })
+    ).json();
+    check(
+      "Recording a client payment renews service, consumes credits and books the profit",
+      payRes.ok === true &&
+        payRes.payment.amount === 350 &&
+        payRes.finance.revenue >= 400 &&
+        payRes.finance.profit === payRes.finance.revenue - payRes.finance.cost
+    );
+
+    const contactRes = await (await fetch(`${base}/api/panel?action=recharge/contact&username=selftestmac`)).json();
+    check(
+      "Every client resolves to his reseller's recharge number (branded), never to secrets",
+      contactRes.ok === true &&
+        contactRes.source === "reseller" &&
+        contactRes.reseller?.brandName === "Test IPTV" &&
+        String(contactRes.reseller?.whatsapp || "").startsWith("https://wa.me/") &&
+        !JSON.stringify(contactRes).includes(dealerKey)
+    );
+
+    const blockRes = await (
+      await fetch(`${base}/api/panel`, {
+        method: "POST",
+        headers: dealerHeaders,
+        body: JSON.stringify({ action: "reseller/client-block", resellerCode: dealerCode, username: "selftestmac", blocked: true })
+      })
+    ).json();
+    check(
+      "Reseller can block a non-paying client and unblock after payment",
+      blockRes.ok === true && blockRes.client.status === "suspended"
+    );
+
+    const expiredCreate = await (
+      await fetch(`${base}/api/panel`, {
+        method: "POST",
+        headers: dealerHeaders,
+        body: JSON.stringify({
+          action: "reseller/client-create",
+          resellerCode: dealerCode,
+          username: "selftestexp",
+          days: 30,
+          startTs: Math.floor(Date.now() / 1000) - 40 * 86400,
+          collectFee: false
+        })
+      })
+    ).json();
+    const expiredPlayer = await (await fetch(`${base}/player_api.php?username=selftestexp&password=${expiredCreate.client?.password || "x"}`)).json();
+    check(
+      "Expired client is blocked by the Xtream/Stalker service with a renewal message",
+      expiredCreate.ok === true &&
+        expiredPlayer.user_info?.auth === 0 &&
+        /expired|khatam/i.test(expiredPlayer.user_info?.message || "")
+    );
+
+    const expiredM3u = await (
+      await fetch(`${base}/get.php?username=selftestexp&password=${expiredCreate.client?.password || "x"}&type=m3u_plus`)
+    ).text();
+    check(
+      "Expired client's M3U playlist contains only a renewal notice",
+      expiredM3u.includes("Subscription Expired") && !expiredM3u.includes("tvg-id=")
+    );
+
     // 3k. GitHub M3U8 File Generator Preview, Probe, Clean Channel M3U8 & IndexNow
     const ghPrev = await (
       await fetch(`${base}/api/github/push`, {
