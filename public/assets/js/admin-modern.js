@@ -139,12 +139,25 @@ function adminToken() {
   return "";
 }
 
+const API_TIMEOUT_MS = 15000;
+
+async function fetchWithTimeout(url, opts = {}, ms = API_TIMEOUT_MS) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctl.signal });
+  } catch (err) {
+    if (err?.name === "AbortError") throw new Error("Server taking too long — check your internet.");
+    throw err;
+  } finally { clearTimeout(timer); }
+}
+
 async function apiGet(action, params = {}) {
   const qs = new URLSearchParams({ action, ...params }).toString();
   const headers = { Accept: "application/json" };
   const t = adminToken();
   if (t) headers["x-admin-token"] = t;
-  const res = await fetch(`/api/panel?${qs}`, { headers });
+  const res = await fetchWithTimeout(`/api/panel?${qs}`, { headers });
   if (!res.ok) throw new Error(`API ${action} failed (${res.status})`);
   return res.json();
 }
@@ -153,7 +166,7 @@ async function apiPost(action, payload) {
   const headers = { "Content-Type": "application/json" };
   const t = adminToken();
   if (t) headers["x-admin-token"] = t;
-  const res = await fetch("/api/panel", {
+  const res = await fetchWithTimeout("/api/panel", {
     method: "POST",
     headers,
     body: JSON.stringify({ action, ...payload })
@@ -359,7 +372,18 @@ async function loadAnalytics() {
 }
 
 async function loadAll() {
-  await Promise.all([loadChannels(), loadPlaylists(), loadXtream(), loadMovies(), loadSeries(), loadUsers(), loadSettings(), loadActivity(), loadAnalytics()]);
+  // Individual try/catch so one failed loader never blocks the rest
+  await Promise.allSettled([
+    (async () => { try { await loadChannels(); } catch (e) { console.warn("loadChannels failed", e.message); } })(),
+    (async () => { try { await loadPlaylists(); } catch (e) { console.warn("loadPlaylists failed", e.message); } })(),
+    (async () => { try { await loadXtream(); } catch (e) { console.warn("loadXtream failed", e.message); } })(),
+    (async () => { try { await loadMovies(); } catch (e) { console.warn("loadMovies failed", e.message); } })(),
+    (async () => { try { await loadSeries(); } catch (e) { console.warn("loadSeries failed", e.message); } })(),
+    (async () => { try { await loadUsers(); } catch (e) { console.warn("loadUsers failed", e.message); } })(),
+    (async () => { try { await loadSettings(); } catch (e) { console.warn("loadSettings failed", e.message); } })(),
+    (async () => { try { await loadActivity(); } catch (e) { console.warn("loadActivity failed", e.message); } })(),
+    (async () => { try { await loadAnalytics(); } catch (e) { console.warn("loadAnalytics failed", e.message); } })()
+  ]);
 }
 
 /* ==================== Renderers ==================== */
