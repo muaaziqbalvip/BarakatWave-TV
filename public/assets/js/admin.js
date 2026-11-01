@@ -41,7 +41,7 @@ import {
   dbWriteStrict,
   dbMerge,
   dbDelete
-} from "./firebase-client.js";
+} from "./firebase-client.js?v=10";
 import { ledgerRows, validLedgerKey, validBillingPeriod } from "./reseller-ledger.js";
 import { effectiveMembershipPlan, membershipUpdate } from "./membership.js";
 import { parseM3uPlaylist, exportChannelsToM3u, slugify } from "./m3u-parser.js";

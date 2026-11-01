@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -133,6 +134,24 @@ async function run() {
   check("IMDb 2000–2026 Auto-Catalog covers every single release year from 2000 through 2026", allYearsCovered);
   check("SEO Knowledge Base includes 16 professional blogs", DEFAULT_BLOGS.length >= 16);
 
+  const browserLinkTest = spawnSync(process.execPath, ["--no-warnings", "--experimental-vm-modules", path.join(ROOT, "scripts/check-browser-modules.mjs")], { encoding: "utf8", cwd: ROOT });
+  check(`Admin and app browser module graphs link successfully${browserLinkTest.status === 0 ? "" : `: ${browserLinkTest.stderr}`}`, browserLinkTest.status === 0);
+
+  // Check actual exports, not just whether the referenced file exists.
+  const firebaseModule = await import("../public/assets/js/firebase-client.js?v=10");
+  check("Firebase client exports strict admin data helpers", typeof firebaseModule.dbReadStrict === "function" && typeof firebaseModule.dbWriteStrict === "function");
+  const adminModuleSource = fs.readFileSync(path.join(ROOT, "public/assets/js/admin.js"), "utf8");
+  const appModuleSource = fs.readFileSync(path.join(ROOT, "public/assets/js/app.js"), "utf8");
+  const adminPageSource = fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8");
+  const appPageSource = fs.readFileSync(path.join(ROOT, "public/index.html"), "utf8");
+  const swSource = fs.readFileSync(path.join(ROOT, "public/sw.js"), "utf8");
+  const config = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
+  check("Admin and app load versioned Firebase module", adminModuleSource.includes('./firebase-client.js?v=10') && appModuleSource.includes('./firebase-client.js?v=10'));
+  check("HTML pages load versioned entry modules", adminPageSource.includes('/assets/js/admin.js?v=10') && appPageSource.includes('/assets/js/app.js?v=10'));
+  check("Vercel header definitions contain valid key/value entries", config.headers.every(h => h.headers.every(v => typeof v.key === "string" && typeof v.value === "string")));
+  check("Assets revalidate rather than stay fresh for a week", config.headers.some(h => h.source === "/assets/(.*)" && h.headers.some(v => v.key === "Cache-Control" && v.value.includes("must-revalidate"))));
+  check("Service worker revalidates module fetches and does not substitute HTML for scripts", swSource.includes('fetch(req, { cache: "no-cache" })') && swSource.includes('if (req.mode === "navigate")'));
+
   // 1b. EVERY relative ES-module import must resolve on disk (a single missing file kills the whole web app!)
   const moduleDirs = [
     path.join(ROOT, "public/assets/js"),
@@ -152,12 +171,12 @@ async function run() {
       const src = fs.readFileSync(full, "utf8");
       for (const m of src.matchAll(/(?:^|\n)\s*(?:import|export)\s+(?:[^"';]*?)\s*from\s*["'](\.{1,2}\/[^"']+)["']/g)) {
         importCount++;
-        const target = path.resolve(dir, m[1]);
+        const target = path.resolve(dir, m[1].split(/[?#]/)[0]);
         if (!fs.existsSync(target)) brokenImports.push(`${path.relative(ROOT, full)} -> ${m[1]}`);
       }
       for (const m of src.matchAll(/import\(\s*["'](\.{1,2}\/[^"']+)["']\s*\)/g)) {
         importCount++;
-        const target = path.resolve(dir, m[1]);
+        const target = path.resolve(dir, m[1].split(/[?#]/)[0]);
         if (!fs.existsSync(target)) brokenImports.push(`${path.relative(ROOT, full)} -> ${m[1]}`);
       }
     }
@@ -772,14 +791,14 @@ async function run() {
     const appleIconRes = await fetch(`${base}/assets/icons/apple-touch-icon.png`);
     const swJsText = await (await fetch(`${base}/sw.js`)).text();
     check(
-      "Installable Mobile & Desktop PWA serves same-origin PNG 192/512/maskable/apple-touch icons + v9 Service Worker",
+      "Installable Mobile & Desktop PWA serves same-origin PNG 192/512/maskable/apple-touch icons + v10 Service Worker",
       Array.isArray(manifestJson.icons) &&
         manifestJson.icons.some((i) => i.src === "/assets/icons/icon-512.png") &&
         icon192Res.status === 200 &&
         icon512Res.status === 200 &&
         iconMaskRes.status === 200 &&
         appleIconRes.status === 200 &&
-        swJsText.includes("barakatwave-tv-3d-v9")
+        swJsText.includes("barakatwave-tv-3d-v10")
     );
 
     const homeHtml3d = await (await fetch(`${base}/`)).text();

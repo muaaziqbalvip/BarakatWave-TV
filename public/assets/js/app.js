@@ -36,7 +36,7 @@ import {
   dbWriteStrict,
   dbMerge,
   dbPushItem
-} from "./firebase-client.js";
+} from "./firebase-client.js?v=10";
 import { ledgerRows } from "./reseller-ledger.js";
 import { effectiveMembershipPlan } from "./membership.js";
 import { BarakatPlayer } from "./player.js";

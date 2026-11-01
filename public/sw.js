@@ -1,4 +1,4 @@
-const CACHE_NAME = "barakatwave-tv-3d-v9";
+const CACHE_NAME = "barakatwave-tv-3d-v10";
 const SHELL_ASSETS = [
   "/",
   "/index.html",
@@ -13,7 +13,9 @@ const SHELL_ASSETS = [
   "/assets/vendor/shaka-player.min.js",
   "/assets/vendor/mpegts.min.js",
   "/assets/vendor/mux.min.js",
-  "/assets/js/app.js",
+  "/assets/js/app.js?v=10",
+  "/assets/js/admin.js?v=10",
+  "/assets/js/firebase-client.js?v=10",
   "/assets/js/player.js",
   "/assets/js/vault.js",
   "/assets/js/membership.js",
@@ -63,7 +65,7 @@ self.addEventListener("fetch", (event) => {
   // Network-first for HTML documents & JS modules so updates deploy instantaneously, fallback to cache offline
   if (req.mode === "navigate" || /\.(html|js|css)$/i.test(url.pathname) || url.pathname === "/") {
     event.respondWith(
-      fetch(req)
+      fetch(req, { cache: "no-cache" })
         .then((res) => {
           if (res && res.ok) {
             const clone = res.clone();
@@ -71,7 +73,12 @@ self.addEventListener("fetch", (event) => {
           }
           return res;
         })
-        .catch(() => caches.match(req).then((m) => m || caches.match("/index.html")))
+        .catch(async () => {
+          const cached = await caches.match(req);
+          if (cached) return cached;
+          if (req.mode === "navigate") return (await caches.match("/index.html")) || Response.error();
+          return Response.error();
+        })
     );
     return;
   }
