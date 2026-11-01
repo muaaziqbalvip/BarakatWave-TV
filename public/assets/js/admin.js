@@ -46,7 +46,7 @@ import {
   dbWriteStrict,
   dbMerge,
   dbDelete
-} from "./firebase-client.js?v=12";
+} from "./firebase-client.js?v=13";
 import { ledgerRows, validLedgerKey, validBillingPeriod } from "./reseller-ledger.js";
 import { effectiveMembershipPlan, membershipUpdate } from "./membership.js";
 import { parseM3uPlaylist, exportChannelsToM3u, slugify } from "./m3u-parser.js";
@@ -388,7 +388,17 @@ function bindAdminAuth() {
     showAdmErr("");
     const email = document.getElementById("admEmail").value.trim();
     const pass = document.getElementById("admPass").value;
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const label = submitBtn ? submitBtn.textContent : "";
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Signing in…";
+    }
     const res = await loginWithEmailPassword(email, pass);
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = label || "Sign In";
+    }
     if (!res.ok) showAdmErr(res.error);
   });
 
@@ -422,11 +432,35 @@ function bindAdminAuth() {
     const pin = document.getElementById("admPin").value.trim();
     if (!pin) return showAdmErr("Enter the Owner PIN.");
     try {
-      const res = await fetch("/api/panel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "admin/pin-login", pin })
-      }).then((r) => r.json());
+      const pinBtn = e.target.querySelector('button[type="submit"]');
+      if (pinBtn) {
+        pinBtn.disabled = true;
+        pinBtn.dataset.label = pinBtn.textContent;
+        pinBtn.textContent = "Verifying PIN…";
+      }
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 15000);
+      let res;
+      try {
+        res = await fetch("/api/panel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "admin/pin-login", pin }),
+          signal: ctl.signal
+        }).then((r) => r.json());
+      } catch (err) {
+        return showAdmErr(
+          err?.name === "AbortError"
+            ? "Server ne 15s me jawab nahi diya. Internet check kar ke dobara try karein."
+            : "Network error — internet check karein."
+        );
+      } finally {
+        clearTimeout(timer);
+        if (pinBtn) {
+          pinBtn.disabled = false;
+          pinBtn.textContent = pinBtn.dataset.label || pinBtn.textContent;
+        }
+      }
       if (!res.ok) return showAdmErr(res.error || "Owner PIN rejected.");
       localStorage.setItem(
         "bw_admin_session",
@@ -630,7 +664,7 @@ async function loadAllAdminData() {
   if (!admState.catalogHydrated) {
     scheduleAdminIdle(async () => {
       try {
-        const { loadFullCatalog } = await import("./imdb-seed.js?v=12");
+        const { loadFullCatalog } = await import("./imdb-seed.js?v=13");
         const local = await loadFullCatalog();
         if (local.movies?.length) admState.movies = local.movies;
         if (local.series?.length) admState.series = local.series;
