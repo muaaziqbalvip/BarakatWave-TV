@@ -7,6 +7,8 @@ const SECRET_KEY =
   process.env.FIREBASE_DATABASE_SECRET ||
   "bw_mizanora_muaaz_iqbal_hmac_v2_2026";
 
+const AES_VAULT_KEY = crypto.createHash("sha256").update(`vault:${SECRET_KEY}`).digest();
+
 const dnsCache = new Map();
 const rateBuckets = new Map();
 
@@ -18,8 +20,93 @@ export function setSecurityHeaders(res) {
 }
 
 export function getClientIp(req) {
-  const xff = (req?.headers?.["x-forwarded-for"] || "").split(",")[0].trim();
-  return xff || req?.socket?.remoteAddress || "0.0.0.0";
+  const headers = req?.headers || {};
+  const candidates = [
+    headers["x-vercel-forwarded-for"],
+    headers["cf-connecting-ip"],
+    headers["x-real-ip"],
+    headers["x-forwarded-for"]
+  ];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    const first = String(raw).split(",")[0].trim();
+    if (first) return first.replace(/^::ffff:/i, "");
+  }
+  return String(req?.socket?.remoteAddress || "0.0.0.0").replace(/^::ffff:/i, "");
+}
+
+/**
+ * AES-256-GCM Encrypted Stream Vault Token:
+ * Seals upstream URLs + optional Referer/UA/TTL into an opaque token (`v1.<base64url>`)
+ * so browser DevTools Network tab, Elements tab, and JS memory NEVER reveal raw backend URLs!
+ */
+export function encryptStreamUrl(url, { ref = "", ua = "", cid = "", ttlSec = 10800 } = {}) {
+  const cleanUrl = String(url || "").trim();
+  if (!cleanUrl) return "";
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", AES_VAULT_KEY, iv);
+  const payload = JSON.stringify({
+    u: cleanUrl,
+    ...(ref ? { r: ref } : {}),
+    ...(ua ? { a: ua } : {}),
+    ...(cid ? { c: cid } : {}),
+    x: Math.floor(Date.now() / 1000) + Math.max(60, Number(ttlSec) || 10800)
+  });
+  const enc = Buffer.concat([cipher.update(payload, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  const packed = Buffer.concat([iv, tag, enc]).toString("base64url");
+  return `v1.${packed}`;
+}
+
+export function decryptStreamUrl(token) {
+  const raw = String(token || "").trim();
+  if (!raw.startsWith("v1.")) return null;
+  try {
+    const buf = Buffer.from(raw.slice(3), "base64url");
+    if (buf.length < 29) return null;
+    const iv = buf.subarray(0, 12);
+    const tag = buf.subarray(12, 28);
+    const enc = buf.subarray(28);
+    const decipher = crypto.createDecipheriv("aes-256-gcm", AES_VAULT_KEY, iv);
+    decipher.setAuthTag(tag);
+    const json = Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
+    const parsed = JSON.parse(json);
+    if (!parsed || typeof parsed.u !== "string") return null;
+    if (parsed.x && Math.floor(Date.now() / 1000) > Number(parsed.x)) {
+      return null; // Expired token
+    }
+    return {
+      url: parsed.u,
+      ref: parsed.r || "",
+      ua: parsed.a || "",
+      cid: parsed.c || ""
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Anti-Hotlink & Scraper Shield for Web Vault Endpoints (/api/gate):
+ * Allows same-origin web requests, localhost/preview domains, and blocks third-party hotlinking!
+ */
+export function isAllowedWebStreamRequest(req) {
+  const secSite = String(req?.headers?.["sec-fetch-site"] || "").toLowerCase();
+  if (secSite === "cross-site") {
+    const origin = String(req?.headers?.origin || "").toLowerCase();
+    // Allow Arena preview iframe or Vercel preview deployments
+    if (
+      origin &&
+      !origin.includes("barakatwave") &&
+      !origin.includes("vercel.app") &&
+      !origin.includes("e2b.app") &&
+      !origin.includes("localhost") &&
+      !origin.includes("127.0.0.1")
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**

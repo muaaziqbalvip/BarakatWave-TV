@@ -141,6 +141,18 @@
       "destination": "/api/seo?ep=legal&slug=founder"
     },
     {
+      "source": "/api/gate",
+      "destination": "/api/media?ep=gate"
+    },
+    {
+      "source": "/google:code.html",
+      "destination": "/api/seo?ep=gsc_file&code=:code"
+    },
+    {
+      "source": "/api/analytics",
+      "destination": "/api/admin?ep=analytics"
+    },
+    {
       "source": "/api/stream",
       "destination": "/api/media?ep=stream"
     },
@@ -219,6 +231,51 @@
   ],
   "headers": [
     {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/admin.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/admin",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
       "source": "/media/(.*)\\.(ts|m2ts)",
       "headers": [
         {
@@ -291,7 +348,7 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "public, max-age=604800"
+          "value": "public, max-age=0, must-revalidate"
         }
       ]
     }

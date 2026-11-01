@@ -85,7 +85,7 @@ function readProofFile(file) {
  */
 async function mirrorToRtdb(path, value) {
   try {
-    const mod = await import("/assets/js/firebase-client.js");
+    const mod = await import("/assets/js/firebase-client.js?v=11");
     const user = mod.getCurrentUserSnapshot();
     if (!user || user.isPreviewSession) return false;
     await mod.dbWrite(path, value);
@@ -132,11 +132,29 @@ function deviceId() {
 
 /* --------------------------------- API --------------------------------- */
 
+/** Any /api/panel request that takes longer than this is aborted (never hangs). */
+const API_TIMEOUT_MS = 20000;
+
+async function fetchWithTimeout(url, opts = {}, ms = API_TIMEOUT_MS) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctl.signal });
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      throw new Error("Server took too long to reply. Check your internet and try again.");
+    }
+    throw new Error("Network error — please check your connection and retry.");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function api(action, payload = null, { method = "POST", headers = {} } = {}) {
   const opts = { method, headers: { "Content-Type": "application/json", ...headers } };
   if (method === "POST") opts.body = JSON.stringify({ action, ...payload });
   const url = method === "POST" ? "/api/panel" : `/api/panel?action=${encodeURIComponent(action)}`;
-  const res = await fetch(url, opts);
+  const res = await fetchWithTimeout(url, opts);
   let json = {};
   try {
     json = await res.json();
@@ -187,7 +205,7 @@ async function refreshAdminToken(force = false) {
   }
   // 2) Firebase ID token
   try {
-    const mod = await import("/assets/js/firebase-client.js");
+    const mod = await import("/assets/js/firebase-client.js?v=11");
     const idToken = await mod.getFirebaseIdToken(force);
     if (idToken) {
       state.adminToken = idToken;
@@ -512,7 +530,7 @@ function bindDashboard() {
       await dealerLogin($("dlCode").value.trim(), $("dlKey").value.trim(), $("dlLicense").value.trim());
       showResult(out, "✅ Welcome back to your dealer panel.", "ok");
     } catch (err) {
-      showResult(out, `❌ ${esc(err.message)}`, "error");
+      showResult(out, `❌ ${esc(err.message)}<br /><span class="muted-sm">Need help? WhatsApp 0306-2015326.</span>`, "error");
     }
   });
 
@@ -620,7 +638,7 @@ async function adminLoginWithPin() {
   if (!pin) return showResult(msg, "Enter the Owner PIN.", "error");
   try {
     showResult(msg, "Verifying owner PIN…", "warn");
-    const res = await fetch("/api/panel", {
+    const res = await fetchWithTimeout("/api/panel", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "admin/pin-login", pin })
@@ -646,7 +664,7 @@ async function adminLoginWithGoogle() {
   const msg = $("adminAuthMsg");
   try {
     showResult(msg, "Opening Google sign-in…", "warn");
-    const mod = await import("/assets/js/firebase-client.js");
+    const mod = await import("/assets/js/firebase-client.js?v=11");
     const res = await mod.loginWithGoogle();
     if (!res.ok) return showResult(msg, `❌ ${esc(res.error)}`, "error");
     const token = await mod.getFirebaseIdToken(true);
@@ -823,7 +841,7 @@ function bindAdmin() {
     state.adminToken = "";
     localStorage.removeItem(ADMIN_SESSION_KEY);
     try {
-      const mod = await import("/assets/js/firebase-client.js");
+      const mod = await import("/assets/js/firebase-client.js?v=11");
       await mod.logoutUser();
     } catch {
       /* ignore */

@@ -27,8 +27,11 @@ import {
 } from "./default-data.js";
 import { fetchImdbTitle } from "./imdb-client.js";
 import {
+  auth,
   subscribeAuth,
   loginWithGoogle,
+  loginWithGoogleRedirect,
+  isInAppBrowser,
   loginWithEmailPassword,
   registerWithEmailPassword,
   resetUserPassword,
@@ -38,10 +41,15 @@ import {
   logoutUser,
   isSandboxPreviewHost,
   dbRead,
+  dbReadStrict,
   dbWrite,
+  dbWriteStrict,
   dbMerge,
   dbDelete
-} from "./firebase-client.js";
+} from "./firebase-client.js?v=11";
+import { loadFullCatalog } from "./imdb-seed.js";
+import { ledgerRows, validLedgerKey, validBillingPeriod } from "./reseller-ledger.js";
+import { effectiveMembershipPlan, membershipUpdate } from "./membership.js";
 import { parseM3uPlaylist, exportChannelsToM3u, slugify } from "./m3u-parser.js";
 
 const admState = {
@@ -62,6 +70,11 @@ const admState = {
   previewHls: null
 };
 
+function scheduleAdminIdle(fn, timeout = 1200) {
+  if (typeof requestIdleCallback === "function") requestIdleCallback(() => fn(), { timeout });
+  else setTimeout(fn, 200);
+}
+
 function initAdmin() {
   renderAdminThemes();
   bindAdminTabs();
@@ -73,10 +86,13 @@ function initAdmin() {
   bindGitHubPublisher();
   bindDefaultsEditor();
   bindXtreamManager();
+  bindResellerLedger();
   bindSeoAndBlogs();
   bindSupportAndRules();
+  bindAnalyticsDashboard();
 
   subscribeAuth(async (user) => {
+    window.dispatchEvent(new Event("bw-admin-identity-change"));
     admState.user = user;
     await evaluateAdminAccess(user);
   });
@@ -120,6 +136,192 @@ function renderAdminThemes() {
   });
 }
 
+/* ==================== LIVE ANALYTICS & VISITOR TRACKING ==================== */
+const anState = { timer: null, snapshot: null, ticking: false };
+
+function anFmtDuration(sec) {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+function anEsc(v) {
+  return String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function anBars(items) {
+  if (!Array.isArray(items) || !items.length) return '<span class="muted-sm">No data yet</span>';
+  const max = Math.max(...items.map((i) => i.count || 0), 1);
+  return items
+    .map(
+      (i) => `
+    <div class="an-bar-row">
+      <span class="an-bar-label" title="${anEsc(i.label)}">${anEsc(i.label)}</span>
+      <span class="an-bar-track"><span class="an-bar-fill" style="width:${Math.max(
+        4,
+        Math.round(((i.count || 0) / max) * 100)
+      )}%"></span></span>
+      <span class="an-bar-count">${i.count}</span>
+    </div>`
+    )
+    .join("");
+}
+
+async function refreshAnalyticsDashboard({ silent = false } = {}) {
+  if (anState.ticking) return;
+  anState.ticking = true;
+  try {
+    const res = await fetch("/api/analytics", { cache: "no-store", credentials: "omit", headers: { Authorization: `Bearer ${await auth.currentUser?.getIdToken() || ""}` } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data || !data.ok) throw new Error("Analytics unavailable");
+    anState.snapshot = data;
+
+    const sum = data.summary || {};
+    setTextSafe("anOnlineNow", sum.onlineNow ?? 0);
+    setTextSafe("anTotalSessions", sum.totalSessions ?? 0);
+    setTextSafe("anUniqueIpsSub", `${sum.uniqueIps ?? 0} unique IPs`);
+    setTextSafe("anTotalPlays", sum.totalPlays ?? 0);
+    setTextSafe("anPlaysSplit", `${sum.webPlays ?? 0} web • ${sum.iptvPlays ?? 0} IPTV`);
+    setTextSafe("anAvgSession", anFmtDuration(sum.avgSessionSec));
+    setTextSafe("anTotalWatch", `${anFmtDuration(sum.totalWatchSec)} watched`);
+    setTextSafe("anLastUpdated", `Updated ${data.generatedPkt || ""}`);
+
+    const b = data.breakdowns || {};
+    setHtmlSafe("anCountriesBox", anBars(b.countries));
+    setHtmlSafe("anCitiesBox", anBars(b.cities));
+    setHtmlSafe("anDevicesBox", anBars(b.devices) + anBars(b.browsers));
+    setHtmlSafe("anTopWatchedBox", anBars(b.topWatched));
+
+    const sessionsBody = document.getElementById("anSessionsBody");
+    if (sessionsBody) {
+      const rows = Array.isArray(data.sessions) ? data.sessions : [];
+      sessionsBody.innerHTML = rows.length
+        ? rows
+            .map(
+              (sn) => `
+        <tr>
+          <td><span class="an-live-chip ${sn.isOnline ? "" : "off"}">${sn.isOnline ? "🟢 ONLINE" : "⚪ LEFT"}</span></td>
+          <td><strong>${anEsc(sn.userName || "Guest Viewer")}</strong><div class="muted-sm" style="font-size:0.68rem;">${anEsc(
+                sn.userEmail || (sn.userPlan === "pro" ? "PRO VIP" : "Free / Guest")
+              )}</div></td>
+          <td><code style="font-size:0.7rem;">${anEsc(sn.ip)}</code></td>
+          <td>${anEsc(sn.locationLabel)}</td>
+          <td>${anEsc(sn.deviceType)}<div class="muted-sm" style="font-size:0.68rem;">${anEsc(sn.browser)} • ${anEsc(sn.os)}</div></td>
+          <td>${anEsc(sn.startedPkt)}</td>
+          <td>${anEsc(sn.lastSeenPkt)}</td>
+          <td><strong>${anFmtDuration(sn.durationSec)}</strong></td>
+          <td>${anEsc(sn.currentMedia || "—")}</td>
+        </tr>`
+            )
+            .join("")
+        : '<tr><td colspan="9" class="muted-sm">No visitor sessions tracked yet — open the website in another tab to see live data.</td></tr>';
+    }
+
+    const playsBody = document.getElementById("anPlaysBody");
+    if (playsBody) {
+      const rows = Array.isArray(data.plays) ? data.plays : [];
+      playsBody.innerHTML = rows.length
+        ? rows
+            .map(
+              (p) => `
+        <tr>
+          <td style="white-space:nowrap;">${anEsc(p.playedPkt)}</td>
+          <td><strong>${anEsc(p.title)}</strong>${p.imdbId ? `<div class="muted-sm" style="font-size:0.68rem;">${anEsc(p.imdbId)}</div>` : ""}</td>
+          <td>${anEsc(p.contentType)}</td>
+          <td><span class="badge badge-cyan" style="font-size:0.64rem;">${anEsc(p.engine)}</span></td>
+          <td><code style="font-size:0.7rem;">${anEsc(p.ip)}</code></td>
+          <td>${anEsc(p.locationLabel)}</td>
+          <td>${anEsc(p.deviceType)}</td>
+          <td>${anEsc(p.userLabel)}<div class="muted-sm" style="font-size:0.68rem;">${anEsc(p.surface)}</div></td>
+          <td>${anFmtDuration(p.watchDurationSec)}</td>
+        </tr>`
+            )
+            .join("")
+        : '<tr><td colspan="9" class="muted-sm">No plays tracked yet. Play a channel or a movie to see live events.</td></tr>';
+    }
+  } catch (err) {
+    if (!silent) {
+      setHtmlSafe(
+        "anPlaysBody",
+        `<tr><td colspan="9" class="muted-sm">Analytics endpoint unreachable (${anEsc(
+          err?.message || "error"
+        )}). Ensure Firebase rules for <code>analytics</code> are published and the admin is signed in.</td></tr>`
+      );
+    }
+  } finally {
+    anState.ticking = false;
+  }
+}
+
+function setTextSafe(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = String(value);
+}
+
+function setHtmlSafe(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function downloadAnalyticsCsv() {
+  const snap = anState.snapshot;
+  if (!snap) return;
+  const lines = ["TYPE,TIME,TITLE,IP,LOCATION,DEVICE,BROWSER,ENGINE,WATCH_SEC,USER"];
+  for (const p of snap.plays || []) {
+    const cells = [p.contentType, p.playedPkt, p.title, p.ip, p.locationLabel, p.deviceType, p.browser, p.engine, p.watchDurationSec, p.userLabel];
+    lines.push(cells.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","));
+  }
+  for (const s of snap.sessions || []) {
+    const cells = ["SESSION", s.startedPkt, s.currentMedia || "-", s.ip, s.locationLabel, s.deviceType, s.browser, "-", s.durationSec, s.userEmail || s.userName];
+    lines.push(cells.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","));
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `barakatwave-analytics-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function bindAnalyticsDashboard() {
+  document.getElementById("anRefreshBtn")?.addEventListener("click", () => refreshAnalyticsDashboard());
+  document.getElementById("anExportBtn")?.addEventListener("click", downloadAnalyticsCsv);
+  document.getElementById("anClearBtn")?.addEventListener("click", async () => {
+    if (!window.confirm("Reset all analytics counters? Visitor sessions and play logs will be cleared.")) return;
+    try {
+      await fetch("/api/analytics", { method: "DELETE", credentials: "omit", headers: { Authorization: `Bearer ${await auth.currentUser?.getIdToken() || ""}` } });
+      refreshAnalyticsDashboard();
+    } catch {
+      // ignore
+    }
+  });
+
+  document.querySelectorAll('[data-adm-tab="analytics"]').forEach((btn) => {
+    btn.addEventListener("click", () => refreshAnalyticsDashboard());
+  });
+
+  const start = () => {
+    refreshAnalyticsDashboard({ silent: true });
+    if (anState.timer) clearInterval(anState.timer);
+    anState.timer = setInterval(() => {
+      if (document.hidden) return;
+      const panel = document.querySelector('[data-adm-panel="analytics"]');
+      if (panel && !panel.hidden) refreshAnalyticsDashboard({ silent: true });
+    }, 15_000);
+  };
+
+  if (document.readyState === "complete") start();
+  else window.addEventListener("load", start, { once: true });
+}
+
 function bindAdminTabs() {
   document.querySelectorAll("[data-adm-tab]").forEach((btn) => {
     btn.addEventListener("click", () => switchAdminTab(btn.dataset.admTab));
@@ -143,12 +345,27 @@ function bindAdminAuth() {
   const previewBox = document.getElementById("admPreviewBox");
   if (isSandboxPreviewHost() && previewBox) previewBox.hidden = false;
 
+  document.getElementById("admGoogleRedirectBtn")?.addEventListener("click", async () => {
+    showAdmErr("");
+    toast("Redirecting to Google sign-in…");
+    const res = await loginWithGoogleRedirect();
+    if (!res.ok) showAdmErr(res.error);
+  });
+
   document.getElementById("adminGoogleBtn")?.addEventListener("click", async () => {
+    showAdmErr("");
+    const btn = document.getElementById("adminGoogleBtn");
+    if (btn) btn.disabled = true;
     const res = await loginWithGoogle();
+    if (btn) btn.disabled = false;
     if (!res.ok) {
+      const redirectWrap = document.getElementById("admGoogleRedirectWrap");
+      if (redirectWrap && (res.suggestRedirect || isInAppBrowser() || /pop-?up/i.test(res.error || ""))) {
+        redirectWrap.hidden = false;
+      }
       const hint =
         res.code === "auth/unauthorized-domain"
-          ? " Add this exact domain in Firebase → Authentication → Settings → Authorized domains, OR simply use the Owner PIN below (it always works)."
+          ? ` Add ${location.hostname} in Firebase → Authentication → Settings → Authorized domains, OR use the Owner PIN below (it always works), OR tap "Continue with Google (Redirect mode)".`
           : res.code === "auth/operation-not-allowed"
           ? " Enable both 'Google' and 'Email/Password' providers in Firebase → Authentication → Sign-in method."
           : "";
@@ -314,6 +531,15 @@ async function evaluateAdminAccess(user) {
   if (outBtn) outBtn.hidden = false;
   if (gate) gate.hidden = true;
 
+  // Paint the studio immediately (0 ms perceived login time) — data streams in
+  // afterwards from local cache and then from Firebase.
+  if (workspace) workspace.hidden = false;
+  if (claimSec) claimSec.hidden = true;
+  if (badge) {
+    badge.hidden = false;
+    badge.textContent = `⏳ ${user.displayName || user.email || "ADMIN"}`;
+  }
+
   const emailLower = String(user.email || "").toLowerCase();
   const isOwnerEmail = emailLower === BRAND.ownerEmail || Boolean(user.isAdminHint);
   const adminsMap = (await dbRead("admins", null)) || {};
@@ -387,17 +613,37 @@ async function loadAllAdminData() {
   }
 
   // Hydrate full 1,570+ (2000–2026) IMDb Movies & Series catalog + merge RTDB overrides cleanly!
+  // Paint instantly from the bundled seed, then fold in the server catalog while
+  // the browser is idle (the catalog payload is ~1 MB and must never block login).
   let baseMovies = [...DEFAULT_MOVIES];
   let baseSeries = [...DEFAULT_SERIES];
-  try {
-    const catRes = await fetch("/api/imdb?action=catalog");
-    if (catRes.ok) {
-      const catJson = await catRes.json();
-      if (Array.isArray(catJson.movies) && catJson.movies.length) baseMovies = catJson.movies;
-      if (Array.isArray(catJson.series) && catJson.series.length) baseSeries = catJson.series;
-    }
-  } catch {
-    // keep built-in seed fallback
+  if (!admState.catalogHydrated) {
+    scheduleAdminIdle(async () => {
+      try {
+        const local = await loadFullCatalog();
+        if (local.movies?.length) admState.movies = local.movies;
+        if (local.series?.length) admState.series = local.series;
+        admState.catalogHydrated = local.movies?.length > 0;
+        renderAdminImdbTable?.();
+      } catch {
+        // bundled seed stays
+      }
+      try {
+        const catRes = await fetch("/api/imdb?action=catalog");
+        if (!catRes.ok) return;
+        const catJson = await catRes.json();
+        if (Array.isArray(catJson.movies) && catJson.movies.length) {
+          admState.movies = catJson.movies;
+        }
+        if (Array.isArray(catJson.series) && catJson.series.length) {
+          admState.series = catJson.series;
+        }
+        admState.catalogHydrated = true;
+        renderAdminImdbTable?.();
+      } catch {
+        // keep bundled seed catalog
+      }
+    }, 2200);
   }
 
   const mergeAdminImdb = (baseArr, rawObj) => {
@@ -841,7 +1087,7 @@ async function persistAllChannels() {
   // Instant server-cache sync for Xtream API & M3U endpoints
   fetch("/api/sync", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${await auth.currentUser?.getIdToken() || ""}` },
     body: JSON.stringify({ path: "channels", value: map })
   }).catch(() => {});
 }
@@ -1436,7 +1682,7 @@ async function persistSingleImdbItem(kind, rec) {
   await dbWrite(path, rec);
   fetch("/api/sync", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${await auth.currentUser?.getIdToken() || ""}` },
     body: JSON.stringify({ path, value: rec })
   }).catch(() => {});
 }
@@ -1763,7 +2009,7 @@ async function runGitHubPublish(previewOnly) {
   try {
     const res = await fetch("/api/github/push", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await auth.currentUser?.getIdToken() || ""}` },
       body: JSON.stringify({
         previewOnly,
         githubToken,
@@ -1982,10 +2228,13 @@ function bindXtreamManager() {
       plan,
       status: "Active",
       maxConnections,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      expDate: plan === "pro" ? Math.floor(Date.now() / 1000) + 30 * 86400 : null
     };
 
-    await dbWrite(`xtreamAccounts/${username}`, record);
+    try {
+      await dbWriteStrict(`xtreamAccounts/${username}`, record);
+    } catch { toast("Could not save account to Firebase. Check your connection and permissions."); return; }
     admState.xtreamAccounts = [
       record,
       ...admState.xtreamAccounts.filter((x) => x.username !== username)
@@ -2014,15 +2263,16 @@ function renderXtreamTable() {
         <td>${esc(x.email || x.displayName || "Viewer")}</td>
         <td>
           <span class="badge ${x.plan === "pro" ? "badge-gold" : "badge-cyan"}">
-            ${x.plan === "pro" ? "👑 PRO VIP" : "FREE"}
+            ${effectiveMembershipPlan(x) === "pro" ? "👑 PRO VIP" : "FREE"}
           </span>
+          ${x.expDate ? `<div class="muted-sm">Expires: ${esc(new Date(Number(x.expDate) * 1000).toLocaleString())}</div>` : ""}
         </td>
         <td>${x.maxConnections || (x.plan === "pro" ? 5 : 1)}</td>
         <td>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button type="button" class="btn btn-sm ${x.plan === "pro" ? "btn-outline" : "btn-gold"}" data-xt-upgrade="${escAttr(x.username)}">
-              ${x.plan === "pro" ? "Set Free" : "👑 Upgrade to PRO VIP"}
-            </button>
+            <button type="button" class="btn btn-sm btn-outline" data-xt-action="trial" data-username="${escAttr(x.username)}" ${x.trialUsedAt ? "disabled" : ""}>1-day trial</button>
+            <button type="button" class="btn btn-sm btn-gold" data-xt-action="month" data-username="${escAttr(x.username)}">Add 30 days</button>
+            <button type="button" class="btn btn-sm btn-outline" data-xt-action="free" data-username="${escAttr(x.username)}">Set free</button>
             <button type="button" class="btn btn-sm btn-danger" data-xt-del="${escAttr(x.username)}">Delete</button>
           </div>
         </td>
@@ -2030,20 +2280,22 @@ function renderXtreamTable() {
     )
     .join("");
 
-  tbody.querySelectorAll("[data-xt-upgrade]").forEach((btn) => {
+  tbody.querySelectorAll("[data-xt-action]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const acct = admState.xtreamAccounts.find((x) => x.username === btn.dataset.xtUpgrade);
+      const acct = admState.xtreamAccounts.find((x) => x.username === btn.dataset.username);
       if (!acct) return;
-      const newPlan = acct.plan === "pro" ? "free" : "pro";
-      acct.plan = newPlan;
-      acct.maxConnections = newPlan === "pro" ? 5 : 1;
-      await dbWrite(`xtreamAccounts/${acct.username}`, acct);
-      if (acct.uid && !acct.uid.startsWith("manual_")) {
-        await dbMerge(`users/${acct.uid}`, { plan: newPlan });
+      btn.disabled = true;
+      try {
+        const updated = membershipUpdate(acct, btn.dataset.xtAction);
+        await dbWriteStrict(`xtreamAccounts/${acct.username}`, updated);
+        Object.assign(acct, updated);
+        renderXtreamTable();
+        renderKpis();
+        toast(`Membership updated for ${acct.username}.`);
+      } catch (error) {
+        toast(error.message || "Could not save membership. Check Firebase permissions.");
+        btn.disabled = false;
       }
-      renderXtreamTable();
-      renderKpis();
-      toast(`🎉 ${acct.username} is now ${newPlan.toUpperCase()}!`);
     });
   });
 
@@ -2056,6 +2308,73 @@ function renderXtreamTable() {
       renderKpis();
       toast(`Removed Xtream user ${u}`);
     });
+  });
+}
+
+/* Admin-only manual ledger. A record is not a payment or activation. */
+function bindResellerLedger() {
+  const uidInput = document.getElementById("resellerUidInput");
+  const nameInput = document.getElementById("resellerNameInput");
+  const status = document.getElementById("resellerAdminStatus");
+  const rows = document.getElementById("resellerAdminRows");
+  let loadedUid = "";
+  let current = null;
+  const setStatus = (message) => { status.textContent = message; };
+  window.addEventListener("bw-admin-identity-change", () => {
+    loadedUid = ""; current = null;
+    uidInput.value = ""; nameInput.value = ""; rows.textContent = ""; setStatus("");
+  });
+  function render() {
+    const entries = ledgerRows(current?.charges);
+    rows.innerHTML = entries.length ? entries.map((x) => `<tr><td>${esc(x.period)}</td><td>${esc(x.username)}</td><td>Rs ${x.amount}</td><td>${esc(x.status)}</td><td><button type="button" class="btn btn-sm btn-outline" data-period="${escAttr(x.period)}" data-user="${escAttr(x.username)}" data-next="${x.status === "paid" ? "due" : "paid"}">Mark ${x.status === "paid" ? "due" : "paid"}</button></td></tr>`).join("") : `<tr><td colspan="5">No charges recorded.</td></tr>`;
+  }
+  async function load(uid) {
+    loadedUid = ""; current = null; render();
+    if (!validLedgerKey(uid)) throw new Error("Enter a valid Firebase UID.");
+    const data = await dbReadStrict(`resellers/${uid}`);
+    loadedUid = uid; current = data;
+    nameInput.value = data?.name || "";
+    setStatus(data ? `Loaded ${uid}.` : `No reseller record for ${uid}. Enter a name and save.`);
+    render();
+  }
+  document.getElementById("resellerLookupForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try { await load(uidInput.value.trim()); } catch (err) { setStatus(`Could not load ledger: ${err.message}`); }
+  });
+  document.getElementById("resellerSaveBtn")?.addEventListener("click", async () => {
+    const uid = uidInput.value.trim(), name = nameInput.value.trim();
+    if (!validLedgerKey(uid) || !name || name.length > 80 || uid !== loadedUid) return setStatus("Load this UID and enter a name first.");
+    try {
+      // Update only the name; never replace the charges subtree.
+      await dbWriteStrict(`resellers/${uid}/name`, name);
+      await load(uid);
+    } catch (err) { setStatus(`Could not save reseller: ${err.message}`); }
+  });
+  document.getElementById("resellerChargeForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const uid = uidInput.value.trim();
+    const username = document.getElementById("resellerChargeUser").value.trim();
+    const period = document.getElementById("resellerChargePeriod").value;
+    if (!current || uid !== loadedUid || !validLedgerKey(username) || !validBillingPeriod(period)) return setStatus("Load a saved reseller and enter a valid username and period.");
+    try {
+      const account = await dbReadStrict(`xtreamAccounts/${username}`);
+      if (!account || account.username !== username) throw new Error("Xtream account not found.");
+      const path = `resellers/${uid}/charges/${period}/${username}`;
+      if (await dbReadStrict(path)) throw new Error("A charge already exists for this username and period.");
+      await dbWriteStrict(path, { amount: 100, status: "due", createdAt: new Date().toISOString() });
+      await load(uid);
+      setStatus("Charge recorded. It does not activate service.");
+    } catch (err) { setStatus(`Could not record charge: ${err.message}`); }
+  });
+  rows?.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-period]");
+    const uid = uidInput.value.trim();
+    if (!btn || !current || uid !== loadedUid || !validBillingPeriod(btn.dataset.period) || !validLedgerKey(btn.dataset.user) || !["paid", "due"].includes(btn.dataset.next)) return;
+    if (btn.dataset.next === "paid" && !confirm("Have you manually verified this payment?")) return;
+    try {
+      await dbWriteStrict(`resellers/${uid}/charges/${btn.dataset.period}/${btn.dataset.user}/status`, btn.dataset.next);
+      await load(uid);
+    } catch (err) { setStatus(`Could not update charge: ${err.message}`); }
   });
 }
 
@@ -2330,6 +2649,9 @@ async function openMiniVideoPreview(videoId, wrapId, url, drmRaw = "") {
     }
   }
 
+  if (!isMp4 && !window.Hls) {
+    await loadHlsOnDemand();
+  }
   if (!isMp4 && window.Hls && window.Hls.isSupported()) {
     let triedRelay = false;
     const attach = (srcUrl) => {
@@ -2353,6 +2675,23 @@ async function openMiniVideoPreview(videoId, wrapId, url, drmRaw = "") {
     video.src = url;
     video.play().catch(() => {});
   }
+}
+
+let hlsLoadPromise = null;
+/** Media engines are no longer loaded on page load — fetch HLS only when a preview plays. */
+function loadHlsOnDemand() {
+  if (window.Hls) return Promise.resolve(true);
+  if (!hlsLoadPromise) {
+    hlsLoadPromise = new Promise((resolve) => {
+      const tag = document.createElement("script");
+      tag.src = "/assets/vendor/hls.min.js";
+      tag.async = true;
+      tag.onload = () => resolve(Boolean(window.Hls));
+      tag.onerror = () => resolve(false);
+      document.head.appendChild(tag);
+    });
+  }
+  return hlsLoadPromise;
 }
 
 function stopMiniPreview(videoId, wrapId) {

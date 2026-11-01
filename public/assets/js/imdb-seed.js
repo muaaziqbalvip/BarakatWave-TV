@@ -7,7 +7,7 @@
  * Cast, Plots, Posters & Multi-Season Episodes.
  */
 
-import { COMPACT_MOVIES_2000, COMPACT_SERIES_2000 } from "./imdb-catalog-2000.js";
+import { COMPACT_MOVIES_CORE, COMPACT_SERIES_CORE } from "./imdb-catalog-core.js";
 
 export const VOD_CATEGORIES = [
   {
@@ -138,7 +138,9 @@ export function buildSeriesEpisodes(seriesId, title, seasonsCount = 1, epsPerSea
   return out;
 }
 
-export const DEFAULT_MOVIES = COMPACT_MOVIES_2000.map((m, idx) => {
+/** Options lookup: bundle only the core (fast) or the full 1,570+ catalog (lazy). */
+export function buildMovies(compact) {
+  return compact.map((m, idx) => {
   const streamId = 5001 + idx;
   return {
     id: `mov_${m.imdbId}`,
@@ -163,9 +165,11 @@ export const DEFAULT_MOVIES = COMPACT_MOVIES_2000.map((m, idx) => {
     streamUrl: "",
     order: idx + 1
   };
-});
+  });
+}
 
-export const DEFAULT_SERIES = COMPACT_SERIES_2000.map((s, idx) => {
+export function buildSeries(compact) {
+  return compact.map((s, idx) => {
   const seriesId = 10001 + idx;
   const seasonsCount = Math.max(1, Number(s.seasonsCount) || 1);
   return {
@@ -193,7 +197,30 @@ export const DEFAULT_SERIES = COMPACT_SERIES_2000.map((s, idx) => {
     episodes: buildSeriesEpisodes(seriesId, s.title, Math.min(seasonsCount, 3), 3),
     order: idx + 1
   };
-});
+  });
+}
+
+// Instant, bundled seed (48 movies + 36 series) — no network, no big parse.
+export const DEFAULT_MOVIES = buildMovies(COMPACT_MOVIES_CORE);
+export const DEFAULT_SERIES = buildSeries(COMPACT_SERIES_CORE);
+
+let fullCatalogPromise = null;
+
+/**
+ * Lazily import the complete 1,570+ (2000–2026) IMDb catalog.
+ * Never call this on the critical path — call it from requestIdleCallback.
+ */
+export function loadFullCatalog() {
+  if (!fullCatalogPromise) {
+    fullCatalogPromise = import("./imdb-catalog-2000.js")
+      .then((mod) => ({
+        movies: buildMovies(mod.COMPACT_MOVIES_2000 || []),
+        series: buildSeries(mod.COMPACT_SERIES_2000 || [])
+      }))
+      .catch(() => ({ movies: [], series: [] }));
+  }
+  return fullCatalogPromise;
+}
 
 export function extractImdbId(input) {
   const m = String(input || "").match(/(tt\d{6,10})/i);

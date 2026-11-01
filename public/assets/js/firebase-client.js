@@ -79,6 +79,27 @@ export function isSandboxPreviewHost() {
 }
 
 /**
+ * Resolves on the first auth state emission OR after `ms` (default 2.5s), so the
+ * UI can never hang waiting for Firebase to restore a session.
+ */
+export function authReady(ms = 2500) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      resolve(v);
+    };
+    const timer = setTimeout(() => finish(auth?.currentUser || null), ms);
+    const unsub = onAuthStateChanged(auth, (u) => {
+      clearTimeout(timer);
+      unsub();
+      finish(u);
+    });
+  });
+}
+
+/**
  * Subscribe to Auth State (merges real Firebase Auth user with preview fallback session if active)
  */
 const previewListeners = new Set();
@@ -118,20 +139,90 @@ export function subscribeAuth(callback) {
   };
 }
 
-export async function loginWithGoogle() {
+/** Detect in-app browsers (WhatsApp / Instagram / Facebook / TikTok webviews). */
+export function isInAppBrowser() {
+  const ua = String(navigator.userAgent || "");
+  return /(FBAN|FBAV|Instagram|Line\/|WhatsApp|Twitter|TikTok|GSA\/|; wv\))/i.test(ua);
+}
+
+/**
+ * Detect hosts where Firebase Auth cannot complete (domain not whitelisted in
+ * Firebase Console -> Authentication -> Settings -> Authorized domains).
+ */
+export function isUnauthorizedDomainError(code) {
+  return code === "auth/unauthorized-domain" || code === "auth/invalid-api-key";
+}
+
+const POPUP_TIMEOUT_MS = 75_000;
+
+function withAuthWatchdog(promise, ms = POPUP_TIMEOUT_MS) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) =>
+      setTimeout(
+        () => resolve({ ok: false, code: "auth/popup-timeout", error: "The Google window did not finish. Please retry, or use Gmail + Password / Redirect sign-in." }),
+        ms
+      )
+    )
+  ]);
+}
+
+/** Explicit redirect flow — works in in-app browsers where popups are blocked. */
+export async function loginWithGoogleRedirect() {
   try {
-    const cred = await signInWithPopup(auth, googleProvider);
-    await ensureUserProfileInRtdb(cred.user, "google");
+    await signInWithRedirect(auth, googleProvider);
+    return { ok: true, redirecting: true };
+  } catch (err) {
+    return { ok: false, code: err?.code || "", error: formatAuthError(err) };
+  }
+}
+
+export async function loginWithGoogle() {
+  // In-app webviews (very common on WhatsApp links) cannot open popups at all.
+  if (isInAppBrowser()) {
+    return {
+      ok: false,
+      code: "auth/operation-not-supported-in-this-environment",
+      suggestRedirect: true,
+      error:
+        "This in-app browser blocks Google pop-ups. Tap 'Open in Chrome/Safari' or use Google Redirect sign-in below."
+    };
+  }
+
+  try {
+    const cred = await withAuthWatchdog(signInWithPopup(auth, googleProvider));
+    if (cred && cred.ok === false) return cred; // watchdog result
+    void ensureUserProfileInRtdb(cred.user, "google");
     return { ok: true, user: cred.user };
   } catch (err) {
     const code = err?.code || "";
-    if (code === "auth/popup-blocked") {
-      await signInWithRedirect(auth, googleProvider);
-      return { ok: true, redirecting: true };
+    // Every popup-related failure can be rescued with the redirect flow.
+    if (
+      code === "auth/popup-blocked" ||
+      code === "auth/popup-closed-by-user" ||
+      code === "auth/cancelled-popup-request" ||
+      code === "auth/operation-not-supported-in-this-environment" ||
+      code === "auth/web-storage-unsupported" ||
+      code === "auth/operation-not-allowed"
+    ) {
+      try {
+        await signInWithRedirect(auth, googleProvider);
+        return { ok: true, redirecting: true };
+      } catch (redirectErr) {
+        return {
+          ok: false,
+          code: redirectErr?.code || code,
+          suggestRedirect: false,
+          error: formatAuthError(redirectErr) || formatAuthError(err)
+        };
+      }
     }
     return {
       ok: false,
       code,
+      // unauthorized-domain: the fix is a Firebase Console setting, so surface a
+      // clear path (owner still has the Owner PIN / email login available).
+      suggestOwnerPin: isUnauthorizedDomainError(code),
       error: formatAuthError(err)
     };
   }
@@ -260,19 +351,61 @@ function formatAuthError(err) {
 /**
  * Realtime Database Read/Write Helpers with instant local cache + server API mirror
  */
-export async function dbRead(path, fallback = null) {
+// Sensitive dashboards must not silently fall back to another user's local cache.
+export async function dbReadStrict(path, timeoutMs = 3500) {
   const clean = path.replace(/^\/+|\/+$/g, "");
   try {
-    const snap = await withTimeout(get(ref(db, clean)), 4500);
+    const snap = await withTimeout(get(ref(db, clean)), timeoutMs);
+    if (snap && snap.exists()) {
+      const val = snap.val();
+      saveLocalCache(clean, val);
+      return val;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+const inflightReads = new Map();
+
+function refreshInBackground(clean) {
+  if (inflightReads.has(clean)) return inflightReads.get(clean);
+  const p = withTimeout(get(ref(db, clean)), 3000)
+    .then((snap) => {
+      if (snap && snap.exists()) saveLocalCache(clean, snap.val());
+      return snap;
+    })
+    .catch(() => null)
+    .finally(() => inflightReads.delete(clean));
+  inflightReads.set(clean, p);
+  return p;
+}
+
+/**
+ * Stale-while-revalidate read: when a local snapshot exists we return it
+ * synchronously and refresh in the background, so no click ever waits on the
+ * network. `{ force: true }` restores strict read-through behaviour.
+ */
+export async function dbRead(path, fallback = null, opts = {}) {
+  const clean = path.replace(/^\/+|\/+$/g, "");
+  const cached = loadLocalCache(clean);
+
+  if (cached !== undefined && !opts.force) {
+    refreshInBackground(clean);
+    return cached;
+  }
+
+  try {
+    const snap = await withTimeout(get(ref(db, clean)), opts.timeoutMs || 2500);
     if (snap && snap.exists()) {
       const val = snap.val();
       saveLocalCache(clean, val);
       return val;
     }
   } catch {
-    // Fallback to cached state if RTDB rules not published yet
+    // Offline / rules not published yet -> keep local cache or fallback
   }
-  const cached = loadLocalCache(clean);
   return cached !== undefined ? cached : fallback;
 }
 
@@ -314,12 +447,22 @@ export function dbWatch(path, callback, fallback = null) {
   return unsub;
 }
 
+// Writes that must be durable (billing/entitlement changes) fail rather than
+// reporting a successful local-only save.
+export async function dbWriteStrict(path, value) {
+  const clean = path.replace(/^\/+|\/+$/g, "");
+  await withTimeout(set(ref(db, clean), value), 5000);
+  saveLocalCache(clean, value);
+  mirrorToServer(clean, value);
+  return { ok: true, syncedRemote: true };
+}
+
 export async function dbWrite(path, value) {
   const clean = path.replace(/^\/+|\/+$/g, "");
   saveLocalCache(clean, value);
   mirrorToServer(clean, value);
   try {
-    await withTimeout(set(ref(db, clean), value), 5000);
+    await withTimeout(set(ref(db, clean), value), 3500);
     return { ok: true, syncedRemote: true };
   } catch (err) {
     return { ok: true, syncedRemote: false, warning: err?.message || "Saved locally & synced to server" };
@@ -333,7 +476,7 @@ export async function dbMerge(path, partial) {
   saveLocalCache(clean, merged);
   mirrorToServer(clean, merged);
   try {
-    await withTimeout(update(ref(db, clean), partial), 5000);
+    await withTimeout(update(ref(db, clean), partial), 3500);
     return { ok: true, syncedRemote: true, data: merged };
   } catch (err) {
     return { ok: true, syncedRemote: false, data: merged, warning: err?.message };
@@ -345,7 +488,7 @@ export async function dbDelete(path) {
   removeLocalCache(clean);
   mirrorToServer(clean, null);
   try {
-    await withTimeout(remove(ref(db, clean)), 4500);
+    await withTimeout(remove(ref(db, clean)), 3000);
     return { ok: true };
   } catch {
     return { ok: true };
@@ -360,7 +503,7 @@ export async function dbPushItem(collectionPath, item) {
     const id = newRef.key || genId;
     const payload = { id, ...item };
     saveLocalChild(clean, id, payload);
-    await withTimeout(set(newRef, payload), 4500);
+    await withTimeout(set(newRef, payload), 3000);
     return { ok: true, id, item: payload };
   } catch {
     const payload = { id: genId, ...item };
@@ -388,17 +531,21 @@ async function ensureUserProfileInRtdb(user, providerName) {
     createdAt: existing?.createdAt || now,
     lastLoginAt: now
   };
-  await dbMerge(`users/${user.uid}`, profile);
+  // Never block the sign-in click on a network write: UI updates instantly and
+  // the profile lands in the background (cache is already updated synchronously).
+  void dbMerge(`users/${user.uid}`, profile).catch(() => {});
   if (isOwner) {
-    await dbWrite(`admins/${user.uid}`, true);
+    void dbWrite(`admins/${user.uid}`, true).catch(() => {});
   }
   return profile;
 }
 
-function mirrorToServer(path, value) {
+async function mirrorToServer(path, value) {
+  const token = await auth.currentUser?.getIdToken().catch(() => "");
+  if (!token) return;
   fetch("/api/sync", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ path, value })
   }).catch(() => {});
 }
