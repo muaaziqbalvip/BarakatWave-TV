@@ -33,6 +33,17 @@ export default async function handler(req, res) {
           `${siteUrl}/`,
           `${siteUrl}/blog`,
           `${siteUrl}/sitemap.xml`,
+          `${siteUrl}/pricing`,
+          `${siteUrl}/reseller`,
+          `${siteUrl}/legal`,
+          `${siteUrl}/legal/terms`,
+          `${siteUrl}/legal/privacy`,
+          `${siteUrl}/legal/license`,
+          `${siteUrl}/legal/refund`,
+          `${siteUrl}/legal/reseller-agreement`,
+          `${siteUrl}/legal/dmca`,
+          `${siteUrl}/legal/founder`,
+          `${siteUrl}/about-founder`,
           ...blogs.map((b) => `${siteUrl}/blog/${b.slug}`)
         ];
 

@@ -718,6 +718,302 @@ async function run() {
         stylesCssText.includes("--rx")
     );
 
+    /* ================= IPTV RESELLER PANEL & LICENSING SUITE ================= */
+
+    const panelCfg = await (await fetch(`${base}/api/panel?action=config`)).json();
+    check(
+      "Panel config exposes approved pricing (Rs 200 direct / Rs 100 reseller) and a free 1-day PRO trial",
+      panelCfg.ok &&
+        panelCfg.directPerUserMonthly === 200 &&
+        panelCfg.resellerPerUserMonthly === 100 &&
+        panelCfg.trialDays === 1 &&
+        panelCfg.plans.length >= 5 &&
+        panelCfg.payment.accountNumber === "03062015326"
+    );
+
+    const postPanel = (body, headers = {}) =>
+      fetch(`${base}/api/panel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(body)
+      });
+
+    const orderRes = await (await postPanel({
+      action: "order",
+      name: "Ali Hassan",
+      whatsapp: "03001234567",
+      email: "ali@example.com",
+      planId: "monthly",
+      audience: "direct",
+      quantity: 1,
+      txnId: "TID123456"
+    })).json();
+    check(
+      "Client order creation returns Rs 200 monthly total + JazzCash 0306-2015326 payment instructions",
+      orderRes.ok &&
+        orderRes.order.total === 200 &&
+        orderRes.order.status === "pending" &&
+        orderRes.payment.number === "03062015326" &&
+        orderRes.next.length === 3
+    );
+
+    const resellerOrder = await (await postPanel({
+      action: "order",
+      name: "Dealer Khan",
+      whatsapp: "03009998887",
+      planId: "monthly",
+      audience: "reseller",
+      quantity: 5,
+      txnId: "TID999"
+    })).json();
+    check(
+      "Reseller credit order charges wholesale Rs 100/user (5 credits = Rs 500)",
+      resellerOrder.ok && resellerOrder.order.total === 500 && resellerOrder.order.audience === "reseller"
+    );
+
+    const trackRes = await (await postPanel({ action: "order-status", orderId: orderRes.order.id })).json();
+    check("Order tracking returns pending status for a fresh order ID", trackRes.ok && trackRes.order.status === "pending");
+
+    const badOrder = await postPanel({ action: "order", name: "X", whatsapp: "12", planId: "monthly" });
+    check("Order API rejects invalid name / WhatsApp number with HTTP 400", badOrder.status === 400);
+
+    const trialDevice = "selftest-device-" + Math.random().toString(36).slice(2, 8);
+    const trialRes = await (await postPanel({
+      action: "trial",
+      email: `trial${Date.now()}@example.com`,
+      deviceId: trialDevice
+    })).json();
+    check(
+      "Free 1-day PRO trial issues Xtream credentials + M3U + EPG links",
+      trialRes.ok &&
+        trialRes.credentials.username &&
+        trialRes.credentials.password &&
+        trialRes.credentials.m3u.includes("/get.php?username=") &&
+        trialRes.credentials.expiresAt > Date.now() / 1000
+    );
+
+    const trialAgain = await (await postPanel({
+      action: "trial",
+      email: `trial2${Date.now()}@example.com`,
+      deviceId: trialDevice
+    })).json();
+    check("Trial abuse guard blocks a second trial from the same device", trialAgain.ok === false);
+
+    const trialM3u = await fetch(trialRes.credentials.m3u);
+    const trialM3uText = await trialM3u.text();
+    check(
+      "Trial Xtream account can actually pull a working M3U Plus playlist",
+      trialM3u.status === 200 && trialM3uText.startsWith("#EXTM3U") && trialM3uText.includes("/live/")
+    );
+
+    // Secure signed playback links (HMAC, anti-leech)
+    const signRes = await (await postPanel({
+      action: "admin/pin-login",
+      pin: "03062015326"
+    })).json();
+    check(
+      "Owner PIN bootstrap login returns a 12-hour HMAC admin session token",
+      signRes.ok && String(signRes.token).startsWith("bwp_") && signRes.expiresIn >= 3600
+    );
+
+    const badPin = await postPanel({ action: "admin/pin-login", pin: "0000" });
+    check("Owner PIN rejects a wrong PIN with HTTP 401", badPin.status === 401);
+
+    const pinHeaders = { Authorization: `Bearer ${signRes.token}` };
+    const meRes = await (await postPanel({ action: "admin/me" }, pinHeaders)).json();
+    check("Admin session authenticates against /api/panel admin/me", meRes.ok && meRes.admin.role === "owner");
+
+    const noAuth = await postPanel({ action: "admin/analytics" });
+    check("Admin analytics endpoint refuses unauthenticated requests (HTTP 401)", noAuth.status === 401);
+
+    const analytics = await (await postPanel({ action: "admin/analytics" }, pinHeaders)).json();
+    check(
+      "Admin analytics aggregates revenue, pending orders and 7-day chart data",
+      analytics.ok && analytics.totals.orders >= 2 && Array.isArray(analytics.last7) && analytics.last7.length === 7
+    );
+
+    const secureLink = await (await postPanel(
+      { action: "admin/secure-link", username: "selftest", file: "index.m3u8", kind: "live" },
+      pinHeaders
+    )).json();
+    check(
+      "Admin can mint a signed /s/<token> playback link with short expiry",
+      secureLink.ok && secureLink.url.includes("/s/") && secureLink.ttlSec > 0 && secureLink.ttlSec <= 900
+    );
+
+    // MAG / Stalker portal (MAC-based IPTV boxes)
+    const magHandshake = await (await fetch(`${base}/portal.php?type=stb&action=handshake&mac=00:1A:79:00:00:01`)).json();
+    check(
+      "MAG/Stalker portal handshake issues a signed token for a MAC address",
+      Boolean(magHandshake.js?.token) && String(magHandshake.js.token).includes(".")
+    );
+
+    const magGenres = await (await fetch(`${base}/server/load.php?action=get_genres&mac=00:1A:79:00:00:01`)).json();
+    check(
+      "MAG portal get_genres returns channel groups for the box",
+      Array.isArray(magGenres.js) && magGenres.js.length > 1 && magGenres.js[0].title === "All channels"
+    );
+
+    const magList = await (await fetch(`${base}/portal.php?action=get_ordered_list&type=itv&p=1&mac=00:1A:79:00:00:01`)).json();
+    check(
+      "MAG portal get_ordered_list returns playable channel commands with logos",
+      magList.js && magList.js.total_items > 0 && /^ffmpeg http/.test(magList.js.data[0].cmd) && Boolean(magList.js.data[0].logo)
+    );
+
+    const magProfile = await (await fetch(`${base}/portal.php?action=get_profile&mac=00:1A:79:00:00:01`)).json();
+    check(
+      "MAG portal get_profile exposes plan, expiry and support number",
+      magProfile.js?.mac === "00:1A:79:00:00:01" && magProfile.js?.phone === "0306-2015326"
+    );
+
+    const magUnknown = await (await fetch(`${base}/portal.php?action=handshake&mac=00:1A:79:FF:FF:99`)).json();
+    check(
+      "Unbound MAC address is told to WhatsApp support instead of failing silently",
+      String(magUnknown.js?.block_msg || "").includes("0306-2015326")
+    );
+
+    const resolveRes = await fetch(`${base}/s/${secureLink.token}`, { redirect: "manual" });
+    check(
+      "Signed playback token resolves to a live stream redirect (302)",
+      resolveRes.status === 302 && String(resolveRes.headers.get("location")).includes("/api/media?ep=live")
+    );
+
+    const tampered = secureLink.token.slice(0, -3) + "abc";
+    const tamperedRes = await (await fetch(`${base}/api/panel?action=resolve&token=${encodeURIComponent(tampered)}`)).json();
+    check("Tampered signed link is rejected by the HMAC verifier", tamperedRes.ok === false && tamperedRes.reason === "bad_signature");
+
+    const approve = await (await postPanel(
+      { action: "admin/order-review", orderId: orderRes.order.id, decision: "approve" },
+      pinHeaders
+    )).json();
+    check(
+      "Approving an order auto-creates the Xtream client and returns M3U + EPG links",
+      approve.ok && approve.order.status === "approved" && approve.activated.client?.username && approve.links.m3u.includes("/get.php")
+    );
+
+    const dealerApprove = await (await postPanel(
+      { action: "admin/order-review", orderId: resellerOrder.order.id, decision: "approve" },
+      pinHeaders
+    )).json();
+    check(
+      "Approving a reseller order creates the dealer with credits and an API key",
+      dealerApprove.ok && dealerApprove.activated.type === "reseller" && dealerApprove.activated.credits >= 5
+    );
+
+    const dealers = await (await postPanel({ action: "admin/resellers" }, pinHeaders)).json();
+    const dealer = dealers.resellers[0];
+    check(
+      "Dealer list exposes codes, API keys and credit balances to the owner",
+      dealers.ok && dealer?.code?.startsWith("RS-") && String(dealer.apiKey).startsWith("bwr_")
+    );
+
+    const dealerLogin = await (await postPanel({
+      action: "reseller/login",
+      resellerCode: dealer.code,
+      apiKey: dealer.apiKey
+    })).json();
+    check(
+      "Dealer can log into the reseller panel with code + API key",
+      dealerLogin.ok &&
+        dealerLogin.reseller.code === dealer.code &&
+        dealerLogin.reseller.credits >= 1 &&
+        dealerLogin.stats.clients === 0
+    );
+
+    const dealerClient = await (await postPanel(
+      { action: "reseller/client-create", username: "dealercli" + (Date.now() % 1000), password: "Test1234" },
+      { "x-api-key": dealer.apiKey }
+    )).json();
+    check(
+      "Dealer client creation consumes exactly one credit and returns playback links",
+      dealerClient.ok && dealerClient.creditsLeft === dealerLogin.reseller.credits - 1 && dealerClient.links.m3u.includes("/get.php")
+    );
+
+    const noCreditDealer = await (await postPanel({ action: "reseller/login", resellerCode: "RS-NOPE1", apiKey: "bwr_deadbeef" })).json();
+    check("Reseller panel rejects unknown dealer codes / API keys", noCreditDealer.ok === false);
+
+    const legalTerms = await fetch(`${base}/legal/terms`);
+    const legalTermsHtml = await legalTerms.text();
+    check(
+      "SSR Terms of Service page renders sections, pricing policy and WhatsApp support",
+      legalTerms.status === 200 && legalTermsHtml.includes("Terms of Service") && legalTermsHtml.includes("0306-2015326")
+    );
+
+    const privacyRes = await fetch(`${base}/privacy`);
+    check("Privacy Policy route renders a full GDPR-style policy page", (await privacyRes.text()).includes("Privacy Policy"));
+
+    const licenseRes = await fetch(`${base}/license`);
+    const licenseHtml = await licenseRes.text();
+    check(
+      "Software license page documents HMAC signed-link + reseller API key rules",
+      licenseRes.status === 200 && licenseHtml.includes("HMAC") && licenseHtml.includes("License")
+    );
+
+    const founderRes = await fetch(`${base}/about-founder`);
+    const founderHtml = await founderRes.text();
+    check(
+      "About-the-founder page publishes Muaaz Iqbal bio with repo-hosted photos + Person JSON-LD",
+      founderRes.status === 200 &&
+        founderHtml.includes("Muaaz Iqbal") &&
+        founderHtml.includes("/assets/img/founder/") &&
+        founderHtml.includes("ProfilePage") &&
+        founderHtml.includes('"@type":"Person"')
+    );
+
+    const pricingRes = await fetch(`${base}/pricing`);
+    const pricingHtml = await pricingRes.text();
+    check(
+      "Pricing page renders Rs 200 / Rs 100 plan cards, JazzCash guide, feature matrix and FAQ schema",
+      pricingRes.status === 200 &&
+        pricingHtml.includes("Rs 200") &&
+        pricingHtml.includes("0306-2015326") &&
+        pricingHtml.includes("FAQPage") &&
+        pricingHtml.includes("Reseller")
+    );
+
+    const resellerPage = await fetch(`${base}/reseller`);
+    const resellerHtml = await resellerPage.text();
+    check(
+      "Reseller panel page ships pricing hero, order form, dealer login and admin control tabs",
+      resellerPage.status === 200 &&
+        resellerHtml.includes("id=\"orderForm\"") &&
+        resellerHtml.includes("id=\"dealerForm\"") &&
+        resellerHtml.includes("id=\"adminPinForm\"") === false &&
+        resellerHtml.includes("data-panel-tab=\"admin\"")
+    );
+
+    const sitemapPanel = await (await fetch(`${base}/sitemap.xml`)).text();
+    check(
+      "Sitemap includes /pricing, /reseller and every legal policy URL",
+      sitemapPanel.includes("/pricing") && sitemapPanel.includes("/reseller") && sitemapPanel.includes("/legal/terms")
+    );
+
+    const logoServed = await fetch(`${base}/assets/img/brand/barakatwave-logo.png`);
+    const founderPhoto = await fetch(`${base}/assets/img/founder/muaaz-iqbal-official.jpg`);
+    check(
+      "Repo-hosted brand logo + founder photos are served with HTTP 200",
+      logoServed.status === 200 && founderPhoto.status === 200
+    );
+
+    const panelCss = await fetch(`${base}/assets/css/panel.css`);
+    check(
+      "Panel stylesheet is served AND linked by the pricing + legal SSR pages",
+      panelCss.status === 200 && pricingHtml.includes("/assets/css/panel.css") && legalTermsHtml.includes("/assets/css/panel.css")
+    );
+
+    const weakPinGuard = await (await import("../api/_lib/licenses.js"));
+    const signed = weakPinGuard.signPlayRequest({ username: "x", target: "index.m3u8", ttlSec: 60 });
+    const verified = weakPinGuard.verifyPlayToken(signed.token);
+    const clamped = weakPinGuard.signPlayRequest({ username: "x", target: "index.m3u8", ttlSec: -999 });
+    const brokenSig = weakPinGuard.verifyPlayToken(signed.token.slice(0, -4) + "zzzz");
+    check(
+      "Signed-link engine round-trips valid tokens, clamps tiny TTLs to 30s and rejects bad signatures",
+      verified.valid === true &&
+        clamped.exp - Math.floor(Date.now() / 1000) >= 25 &&
+        brokenSig.valid === false &&
+        brokenSig.reason === "bad_signature"
+    );
+
     const idxNow = await (await fetch(`${base}/api/seo/indexnow`)).json();
     check("/api/seo/indexnow returns >= 18 candidate URLs for search indexing", idxNow.ok && idxNow.indexedCandidateCount >= 18);
   } finally {

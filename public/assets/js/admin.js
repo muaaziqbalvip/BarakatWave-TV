@@ -31,6 +31,9 @@ import {
   loginWithGoogle,
   loginWithEmailPassword,
   registerWithEmailPassword,
+  resetUserPassword,
+  getFirebaseIdToken,
+  getCurrentUserSnapshot,
   startPreviewSession,
   logoutUser,
   isSandboxPreviewHost,
@@ -142,7 +145,15 @@ function bindAdminAuth() {
 
   document.getElementById("adminGoogleBtn")?.addEventListener("click", async () => {
     const res = await loginWithGoogle();
-    if (!res.ok) showAdmErr(res.error);
+    if (!res.ok) {
+      const hint =
+        res.code === "auth/unauthorized-domain"
+          ? " Add this exact domain in Firebase → Authentication → Settings → Authorized domains, OR simply use the Owner PIN below (it always works)."
+          : res.code === "auth/operation-not-allowed"
+          ? " Enable both 'Google' and 'Email/Password' providers in Firebase → Authentication → Sign-in method."
+          : "";
+      showAdmErr(`${res.error}${hint}`);
+    }
   });
 
   document.getElementById("adminLoginForm")?.addEventListener("submit", async (e) => {
@@ -166,6 +177,55 @@ function bindAdminAuth() {
     if (!res.ok) showAdmErr(res.error);
   });
 
+  document.getElementById("admResetBtn")?.addEventListener("click", async () => {
+    const email = document.getElementById("admEmail").value.trim();
+    if (!email) {
+      showAdmErr("Enter your admin email first, then tap 'Send reset link'.");
+      return;
+    }
+    const res = await resetUserPassword(email);
+    if (!res.ok) return showAdmErr(res.error);
+    showAdmErr("");
+    toast(`Password reset link sent to ${email}. Check inbox + spam.`);
+  });
+
+  document.getElementById("adminPinForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    showAdmErr("");
+    const pin = document.getElementById("admPin").value.trim();
+    if (!pin) return showAdmErr("Enter the Owner PIN.");
+    try {
+      const res = await fetch("/api/panel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "admin/pin-login", pin })
+      }).then((r) => r.json());
+      if (!res.ok) return showAdmErr(res.error || "Owner PIN rejected.");
+      localStorage.setItem(
+        "bw_admin_session",
+        JSON.stringify({ token: res.token, exp: Math.floor(Date.now() / 1000) + (res.expiresIn || 43200) - 60 })
+      );
+      // Verify the session server-side before unlocking the studio
+      const me = await fetch("/api/panel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": res.token },
+        body: JSON.stringify({ action: "admin/me" })
+      }).then((r) => r.json());
+      if (!me.ok) return showAdmErr(me.error || "PIN session could not be verified.");
+      admState.user = {
+        uid: me.admin?.uid || "owner-pin",
+        email: me.admin?.email || BRAND.ownerEmail,
+        displayName: "Muaaz Iqbal (Owner PIN)",
+        isAdminHint: true,
+        viaPin: true
+      };
+      await evaluateAdminAccess(admState.user);
+      toast("👑 Owner PIN accepted — welcome back!");
+    } catch (err) {
+      showAdmErr(`PIN login failed: ${err?.message || err}`);
+    }
+  });
+
   document.getElementById("admPreviewBtn")?.addEventListener("click", async () => {
     await startPreviewSession({
       name: "Muaaz Iqbal",
@@ -176,7 +236,15 @@ function bindAdminAuth() {
   });
 
   document.getElementById("adminLogoutBtn")?.addEventListener("click", async () => {
+    try {
+      localStorage.removeItem("bw_admin_session");
+    } catch {
+      /* ignore */
+    }
     await logoutUser();
+    admState.user = null;
+    await evaluateAdminAccess(null);
+    toast("Signed out of Admin Studio.");
   });
 
   document.getElementById("claimFirstAdminBtn")?.addEventListener("click", async () => {
@@ -186,6 +254,22 @@ function bindAdminAuth() {
     toast("👑 Super Admin Ownership Claimed!");
     await evaluateAdminAccess(admState.user);
   });
+}
+
+function readPinSession() {
+  try {
+    const raw = localStorage.getItem("bw_admin_session");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.token || !String(parsed.token).startsWith("bwp_")) return null;
+    if (parsed.exp && parsed.exp < Date.now() / 1000) {
+      localStorage.removeItem("bw_admin_session");
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 function showAdmErr(msg) {
@@ -203,6 +287,22 @@ async function evaluateAdminAccess(user) {
   const outBtn = document.getElementById("adminLogoutBtn");
 
   if (!user) {
+    // Owner PIN sessions are independent of Firebase Auth — keep the studio
+    // open as long as a valid signed PIN session exists in localStorage.
+    const pinSession = readPinSession();
+    if (pinSession) {
+      admState.isAdmin = true;
+      if (gate) gate.hidden = true;
+      if (claimSec) claimSec.hidden = true;
+      if (workspace) workspace.hidden = false;
+      if (badge) {
+        badge.hidden = false;
+        badge.textContent = "👑 Owner PIN Session";
+      }
+      if (outBtn) outBtn.hidden = false;
+      await loadAllAdminData();
+      return;
+    }
     if (gate) gate.hidden = false;
     if (claimSec) claimSec.hidden = true;
     if (workspace) workspace.hidden = true;

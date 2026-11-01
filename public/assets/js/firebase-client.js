@@ -66,8 +66,16 @@ const PREVIEW_USER_KEY = "bw_preview_session_user";
 getRedirectResult(auth).catch(() => {});
 
 export function isSandboxPreviewHost() {
-  const h = window.location.hostname;
-  return h.endsWith(".e2b.app") || h === "localhost" || h === "127.0.0.1";
+  const h = String(window.location.hostname || "").toLowerCase();
+  // Any temporary preview/preview-deployment host: Firebase has NOT whitelisted
+  // these in "Authorized domains", so Google popup login fails there. We surface
+  // the local Owner/Preview mode instead of leaving the user stuck.
+  if (!h) return true;
+  if (h === "localhost" || h === "127.0.0.1" || h.endsWith(".local")) return true;
+  if (h.endsWith(".e2b.app")) return true;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return true;
+  if (h.endsWith(".vercel.app") && h !== "barakatwave.vercel.app") return true;
+  return false;
 }
 
 /**
@@ -184,6 +192,35 @@ export async function startPreviewSession({ name, email, asAdmin = false }) {
   await ensureUserProfileInRtdb(mockUser, "preview");
   for (const fn of previewListeners) fn();
   return { ok: true, user: mockUser };
+}
+
+/** Current Firebase ID token (used by the panel/admin APIs as a Bearer token). */
+export async function getFirebaseIdToken(forceRefresh = false) {
+  try {
+    if (!auth || !auth.currentUser) return "";
+    return (await auth.currentUser.getIdToken(forceRefresh)) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function getCurrentUserSnapshot() {
+  const u = auth?.currentUser;
+  if (u) {
+    return {
+      uid: u.uid,
+      email: String(u.email || "").toLowerCase(),
+      displayName: u.displayName || "",
+      photoURL: u.photoURL || "",
+      isPreviewSession: false
+    };
+  }
+  try {
+    const raw = localStorage.getItem(PREVIEW_USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function logoutUser() {

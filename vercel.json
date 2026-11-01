@@ -8,74 +8,291 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/media/:folder/:seg.ts", "destination": "/media/:folder/:seg.m2ts" },
-    { "source": "/player_api.php", "destination": "/api/xtream?ep=player" },
-    { "source": "/panel_api.php", "destination": "/api/xtream?ep=player" },
-    { "source": "/get.php", "destination": "/api/xtream?ep=get" },
-    { "source": "/xmltv.php", "destination": "/api/xtream?ep=xmltv" },
-    { "source": "/live/:user/:pass/:file", "destination": "/api/media?ep=live&kind=live&user=:user&pass=:pass&file=:file" },
-    { "source": "/movie/:user/:pass/:file", "destination": "/api/media?ep=live&kind=movie&user=:user&pass=:pass&file=:file" },
-    { "source": "/series/:user/:pass/:file", "destination": "/api/media?ep=live&kind=series&user=:user&pass=:pass&file=:file" },
-    { "source": "/:user/:pass/:id(\\d+)", "destination": "/api/media?ep=live&kind=live&user=:user&pass=:pass&file=:id.m3u8" },
-    { "source": "/:user/:pass/:id(\\d+).:ext(m3u8|ts)", "destination": "/api/media?ep=live&kind=live&user=:user&pass=:pass&file=:id.:ext" },
-    { "source": "/ch/:slug", "destination": "/api/media?ep=live&kind=live&slug=:slug" },
-    { "source": "/playlist/:id", "destination": "/api/media?ep=playlist&id=:id" },
-    { "source": "/api/stream", "destination": "/api/media?ep=stream" },
-    { "source": "/api/proxy", "destination": "/api/media?ep=proxy" },
-    { "source": "/api/playlist", "destination": "/api/media?ep=playlist" },
-    { "source": "/blog/feed.xml", "destination": "/api/seo?ep=rss" },
-    { "source": "/blog", "destination": "/api/seo?ep=blog" },
-    { "source": "/blog/:slug", "destination": "/api/seo?ep=blog&slug=:slug" },
-    { "source": "/sitemap.xml", "destination": "/api/seo?ep=sitemap" },
-    { "source": "/rss.xml", "destination": "/api/seo?ep=rss" },
-    { "source": "/llms.txt", "destination": "/api/seo?ep=llms" },
-    { "source": "/llms-full.txt", "destination": "/api/seo?ep=llms&full=1" },
-    { "source": "/.well-known/ai.txt", "destination": "/api/seo?ep=llms" },
-    { "source": "/barakatwave2026mizanoraseokey.txt", "destination": "/api/seo?ep=indexnow&verify=1" },
-    { "source": "/api/seo/indexnow", "destination": "/api/seo?ep=indexnow" },
-    { "source": "/api/probe", "destination": "/api/admin?ep=probe" },
-    { "source": "/api/sync", "destination": "/api/admin?ep=sync" },
-    { "source": "/api/github/push", "destination": "/api/admin?ep=github_push" },
-    { "source": "/api/imdb", "destination": "/api/admin?ep=imdb" },
-    { "source": "/admin", "destination": "/admin.html" }
+    {
+      "source": "/media/:folder/:seg.ts",
+      "destination": "/media/:folder/:seg.m2ts"
+    },
+    {
+      "source": "/player_api.php",
+      "destination": "/api/xtream?ep=player"
+    },
+    {
+      "source": "/panel_api.php",
+      "destination": "/api/xtream?ep=player"
+    },
+    {
+      "source": "/get.php",
+      "destination": "/api/xtream?ep=get"
+    },
+    {
+      "source": "/xmltv.php",
+      "destination": "/api/xtream?ep=xmltv"
+    },
+    {
+      "source": "/portal.php",
+      "destination": "/api/xtream?ep=portal"
+    },
+    {
+      "source": "/server/load.php",
+      "destination": "/api/xtream?ep=portal"
+    },
+    {
+      "source": "/stalker_portal/server/load.php",
+      "destination": "/api/xtream?ep=portal"
+    },
+    {
+      "source": "/c/portal.php",
+      "destination": "/api/xtream?ep=portal"
+    },
+    {
+      "source": "/live/:user/:pass/:file",
+      "destination": "/api/media?ep=live&kind=live&user=:user&pass=:pass&file=:file"
+    },
+    {
+      "source": "/movie/:user/:pass/:file",
+      "destination": "/api/media?ep=live&kind=movie&user=:user&pass=:pass&file=:file"
+    },
+    {
+      "source": "/series/:user/:pass/:file",
+      "destination": "/api/media?ep=live&kind=series&user=:user&pass=:pass&file=:file"
+    },
+    {
+      "source": "/:user/:pass/:id(\\d+)",
+      "destination": "/api/media?ep=live&kind=live&user=:user&pass=:pass&file=:id.m3u8"
+    },
+    {
+      "source": "/:user/:pass/:id(\\d+).:ext(m3u8|ts)",
+      "destination": "/api/media?ep=live&kind=live&user=:user&pass=:pass&file=:id.:ext"
+    },
+    {
+      "source": "/ch/:slug",
+      "destination": "/api/media?ep=live&kind=live&slug=:slug"
+    },
+    {
+      "source": "/playlist/:id",
+      "destination": "/api/media?ep=playlist&id=:id"
+    },
+    {
+      "source": "/s/:token",
+      "destination": "/api/admin?ep=panel&action=resolve&token=:token"
+    },
+    {
+      "source": "/pricing",
+      "destination": "/api/seo?ep=pricing"
+    },
+    {
+      "source": "/plans",
+      "destination": "/api/seo?ep=pricing"
+    },
+    {
+      "source": "/packages",
+      "destination": "/api/seo?ep=pricing"
+    },
+    {
+      "source": "/reseller-panel",
+      "destination": "/reseller.html"
+    },
+    {
+      "source": "/reseller",
+      "destination": "/reseller.html"
+    },
+    {
+      "source": "/legal",
+      "destination": "/api/seo?ep=legal"
+    },
+    {
+      "source": "/legal/:slug",
+      "destination": "/api/seo?ep=legal&slug=:slug"
+    },
+    {
+      "source": "/terms",
+      "destination": "/api/seo?ep=legal&slug=terms"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/api/seo?ep=legal&slug=privacy"
+    },
+    {
+      "source": "/privacy-policy",
+      "destination": "/api/seo?ep=legal&slug=privacy"
+    },
+    {
+      "source": "/license",
+      "destination": "/api/seo?ep=legal&slug=license"
+    },
+    {
+      "source": "/refund-policy",
+      "destination": "/api/seo?ep=legal&slug=refund"
+    },
+    {
+      "source": "/reseller-agreement",
+      "destination": "/api/seo?ep=legal&slug=reseller-agreement"
+    },
+    {
+      "source": "/dmca",
+      "destination": "/api/seo?ep=legal&slug=dmca"
+    },
+    {
+      "source": "/about-founder",
+      "destination": "/api/seo?ep=legal&slug=founder"
+    },
+    {
+      "source": "/about",
+      "destination": "/api/seo?ep=legal&slug=founder"
+    },
+    {
+      "source": "/api/stream",
+      "destination": "/api/media?ep=stream"
+    },
+    {
+      "source": "/api/proxy",
+      "destination": "/api/media?ep=proxy"
+    },
+    {
+      "source": "/api/playlist",
+      "destination": "/api/media?ep=playlist"
+    },
+    {
+      "source": "/blog/feed.xml",
+      "destination": "/api/seo?ep=rss"
+    },
+    {
+      "source": "/blog",
+      "destination": "/api/seo?ep=blog"
+    },
+    {
+      "source": "/blog/:slug",
+      "destination": "/api/seo?ep=blog&slug=:slug"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/seo?ep=sitemap"
+    },
+    {
+      "source": "/rss.xml",
+      "destination": "/api/seo?ep=rss"
+    },
+    {
+      "source": "/llms.txt",
+      "destination": "/api/seo?ep=llms"
+    },
+    {
+      "source": "/llms-full.txt",
+      "destination": "/api/seo?ep=llms&full=1"
+    },
+    {
+      "source": "/.well-known/ai.txt",
+      "destination": "/api/seo?ep=llms"
+    },
+    {
+      "source": "/barakatwave2026mizanoraseokey.txt",
+      "destination": "/api/seo?ep=indexnow&verify=1"
+    },
+    {
+      "source": "/api/seo/indexnow",
+      "destination": "/api/seo?ep=indexnow"
+    },
+    {
+      "source": "/api/panel",
+      "destination": "/api/admin?ep=panel"
+    },
+    {
+      "source": "/api/probe",
+      "destination": "/api/admin?ep=probe"
+    },
+    {
+      "source": "/api/sync",
+      "destination": "/api/admin?ep=sync"
+    },
+    {
+      "source": "/api/github/push",
+      "destination": "/api/admin?ep=github_push"
+    },
+    {
+      "source": "/api/imdb",
+      "destination": "/api/admin?ep=imdb"
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin.html"
+    }
   ],
   "headers": [
     {
       "source": "/media/(.*)\\.(ts|m2ts)",
       "headers": [
-        { "key": "Content-Type", "value": "video/mp2t" },
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Cache-Control", "value": "public, max-age=86400" }
+        {
+          "key": "Content-Type",
+          "value": "video/mp2t"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400"
+        }
       ]
     },
     {
       "source": "/media/(.*)\\.mp4",
       "headers": [
-        { "key": "Content-Type", "value": "video/mp4" },
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Cache-Control", "value": "public, max-age=86400" }
+        {
+          "key": "Content-Type",
+          "value": "video/mp4"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400"
+        }
       ]
     },
     {
       "source": "/media/(.*)\\.m3u8",
       "headers": [
-        { "key": "Content-Type", "value": "application/vnd.apple.mpegurl; charset=utf-8" },
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Cache-Control", "value": "public, max-age=3600" }
+        {
+          "key": "Content-Type",
+          "value": "application/vnd.apple.mpegurl; charset=utf-8"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
+        }
       ]
     },
     {
       "source": "/media/(.*)\\.mpd",
       "headers": [
-        { "key": "Content-Type", "value": "application/dash+xml; charset=utf-8" },
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Cache-Control", "value": "public, max-age=3600" }
+        {
+          "key": "Content-Type",
+          "value": "application/dash+xml; charset=utf-8"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
+        }
       ]
     },
     {
       "source": "/assets/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=604800" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=604800"
+        }
       ]
     }
   ]

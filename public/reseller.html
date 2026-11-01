@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="daylight">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IPTV Reseller Panel &amp; Client Dashboard | BarakatWave TV by Muaaz Iqbal</title>
+  <meta name="description" content="BarakatWave TV reseller panel: create IPTV clients at PKR 100/user/month, sell at PKR 200, generate M3U and Xtream links, claim a free 1-day PRO trial and pay by JazzCash 0306-2015326." />
+  <meta name="keywords" content="IPTV reseller panel Pakistan, IPTV panel price per user, BarakatWave reseller, JazzCash IPTV, free IPTV trial Pakistan, Muaaz Iqbal IPTV" />
+  <meta name="author" content="Muaaz Iqbal — Mizanora Projects" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <link rel="canonical" href="https://barakatwave.vercel.app/reseller" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="BarakatWave TV IPTV Reseller Panel — PKR 100/user wholesale" />
+  <meta property="og:description" content="Create clients, issue Xtream + M3U links, track expiry and renew in one click. JazzCash 0306-2015326." />
+  <meta property="og:image" content="/assets/img/brand/barakatwave-logo.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" type="image/png" href="/assets/img/brand/barakatwave-logo.png" />
+  <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
+  <link rel="stylesheet" href="/assets/css/styles.css" />
+  <link rel="stylesheet" href="/assets/css/panel.css" />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "BarakatWave TV Reseller Panel",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "offers": { "@type": "Offer", "price": "100", "priceCurrency": "PKR" },
+      "author": { "@type": "Person", "name": "Muaaz Iqbal" },
+      "publisher": { "@type": "Organization", "name": "Mizanora Projects" }
+    }
+  </script>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("bw_theme");
+        if (t) document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="/" class="brand-link">
+        <img src="/assets/img/brand/barakatwave-logo.png" onerror="this.onerror=null;this.src='/assets/logo-fallback.svg';" alt="BarakatWave logo" class="brand-logo" />
+        <div>
+          <span class="brand-title">BarakatWave Dealer Panel</span>
+          <span class="brand-sub">Mizanora Projects &bull; Muaaz Iqbal</span>
+        </div>
+      </a>
+      <div class="header-actions">
+        <a href="/pricing" class="btn btn-sm btn-outline">💳 Pricing</a>
+        <a href="/" class="btn btn-sm btn-outline">📺 Live TV</a>
+        <a href="https://wa.me/923062015326" target="_blank" rel="noopener" class="btn btn-sm btn-primary">📲 0306-2015326</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container panel-wrap">
+    <!-- HERO -->
+    <section class="panel-hero glass-card">
+      <div class="panel-hero-copy">
+        <span class="badge badge-gold">IPTV RESELLER &amp; CLIENT PANEL v3</span>
+        <h1>Run your own IPTV business — buy at <span class="hl">Rs 100</span>, sell at <span class="hl">Rs 200</span></h1>
+        <p class="muted-sm">
+          One dashboard for everything: claim a <strong>free 1-day PRO trial</strong>, buy monthly packages with
+          <strong>JazzCash 0306-2015326</strong>, create clients in one click, issue Xtream Codes + M3U + EPG links,
+          track expiry, renew with credits, and see live revenue analytics.
+        </p>
+        <div class="panel-hero-stats" id="heroStats">
+          <div class="stat-chip"><span id="statFree">—</span><small>Free trial</small></div>
+          <div class="stat-chip"><span id="statDirect">Rs 200</span><small>Direct / month</small></div>
+          <div class="stat-chip"><span id="statReseller">Rs 100</span><small>Reseller / month</small></div>
+          <div class="stat-chip"><span id="statPlans">5</span><small>Packages</small></div>
+        </div>
+        <div class="panel-hero-actions">
+          <button class="btn btn-primary" data-panel-jump="order">🛒 Buy Package</button>
+          <button class="btn btn-gold" data-panel-jump="trial">🎁 Free 1-Day Trial</button>
+          <button class="btn btn-outline" data-panel-jump="login">🏪 Dealer Login</button>
+        </div>
+      </div>
+      <div class="panel-hero-art">
+        <img src="/assets/img/founder/muaaz-iqbal-mizanora-banner.jpg" alt="Muaaz Iqbal — founder of BarakatWave TV and Mizanora Projects" />
+        <div class="panel-hero-badge">👑 Muaaz Iqbal<br /><small>Founder, Mizanora Projects</small></div>
+      </div>
+    </section>
+
+    <!-- TABS -->
+    <nav class="panel-tabs" id="panelTabs">
+      <button class="panel-tab active" data-panel-tab="order">🛒 Buy / Order</button>
+      <button class="panel-tab" data-panel-tab="trial">🎁 Free Trial</button>
+      <button class="panel-tab" data-panel-tab="login">🏪 Dealer Login</button>
+      <button class="panel-tab" data-panel-tab="dashboard">📊 My Panel</button>
+      <button class="panel-tab" data-panel-tab="admin">🛡 Admin Control</button>
+      <button class="panel-tab" data-panel-tab="payment">💳 Payment Guide</button>
+      <button class="panel-tab" data-panel-tab="help">❓ Help &amp; Players</button>
+    </nav>
+
+    <!-- ============================ ORDER ============================ -->
+    <section class="panel-pane" data-panel-pane="order">
+      <div class="pane-grid">
+        <div class="glass-card pane-card">
+          <h2>Create your order</h2>
+          <p class="muted-sm">Pay by JazzCash, upload the screenshot reference, and we activate PRO after review.</p>
+          <form id="orderForm" class="form-stack">
+            <div class="field-row">
+              <label>I am a
+                <select id="ordAudience" class="input-field">
+                  <option value="direct">Direct client — Rs 200 / month</option>
+                  <option value="reseller">Reseller / dealer — Rs 100 / month</option>
+                </select>
+              </label>
+              <label>Package
+                <select id="ordPlan" class="input-field"></select>
+              </label>
+            </div>
+            <div class="field-row">
+              <label>Users / credits
+                <input type="number" id="ordQty" class="input-field" value="1" min="1" max="200" />
+              </label>
+              <label>Your name
+                <input type="text" id="ordName" class="input-field" placeholder="e.g. Ali Hassan" required />
+              </label>
+            </div>
+            <div class="field-row">
+              <label>WhatsApp number
+                <input type="tel" id="ordWhatsapp" class="input-field" placeholder="03062015326" required />
+              </label>
+              <label>Email (for credentials)
+                <input type="email" id="ordEmail" class="input-field" placeholder="you@email.com" />
+              </label>
+            </div>
+            <div class="field-row">
+              <label>Preferred username (optional)
+                <input type="text" id="ordUsername" class="input-field" placeholder="ali123" />
+              </label>
+              <label>JazzCash TID / Transaction ID
+                <input type="text" id="ordTxn" class="input-field" placeholder="e.g. 0039182211" />
+              </label>
+            </div>
+            <label>Dealer code (resellers only)
+              <input type="text" id="ordResellerCode" class="input-field" placeholder="RS-XXXXXX" />
+            </label>
+            <label>Note (optional)
+              <input type="text" id="ordNote" class="input-field" placeholder="Anything we should know" />
+            </label>
+            <div class="order-summary" id="orderSummary">
+              <div><span>Package</span><strong id="sumPlan">—</strong></div>
+              <div><span>Unit price</span><strong id="sumUnit">Rs 0</strong></div>
+              <div><span>Users</span><strong id="sumQty">1</strong></div>
+              <div class="sum-total"><span>Total payable</span><strong id="sumTotal">Rs 0</strong></div>
+            </div>
+            <label>Payment screenshot (optional but speeds up activation)
+              <input type="file" id="ordProofFile" class="input-field" accept="image/*" />
+            </label>
+            <input type="hidden" id="ordProof" />
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="submit" class="btn btn-primary" style="flex:1;">✅ Place Order &amp; Get Payment Steps</button>
+              <button type="button" class="btn btn-outline" id="ordCopyBtn">📋 Copy JazzCash Info</button>
+            </div>
+          </form>
+          <div id="orderResult" class="result-box" hidden></div>
+        </div>
+
+        <div class="glass-card pane-card">
+          <h2>Order tracking</h2>
+          <p class="muted-sm">Check any order instantly with its order ID.</p>
+          <div class="field-row">
+            <input type="text" id="trackId" class="input-field" placeholder="Order ID e.g. BWM3X9AB12" />
+            <button class="btn btn-outline" id="trackBtn">🔍 Track</button>
+          </div>
+          <div id="trackResult" class="result-box" hidden></div>
+
+          <h3 style="margin-top:22px;">Why dealers choose BarakatWave</h3>
+          <ul class="check-list">
+            <li>PKR 100 wholesale, PKR 200 retail — you keep 50% margin.</li>
+            <li>Credits never expire, no monthly minimum.</li>
+            <li>Instant client creation with auto-generated passwords.</li>
+            <li>HMAC-signed links — leaked URLs die in minutes.</li>
+            <li>Pakistan + India channel banks, 4K sports, IMDb VOD.</li>
+            <li>Direct WhatsApp line to Muaaz Iqbal: 0306-2015326.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ TRIAL ============================ -->
+    <section class="panel-pane" data-panel-pane="trial" hidden>
+      <div class="pane-grid">
+        <div class="glass-card pane-card">
+          <h2>🎁 Free 1-Day PRO Trial</h2>
+          <p class="muted-sm">
+            Full PRO access for 24 hours — every HD/4K channel, IMDb movies, Xtream login and EPG.
+            One trial per person/device. No payment required.
+          </p>
+          <form id="trialForm" class="form-stack">
+            <label>Email
+              <input type="email" id="trEmail" class="input-field" placeholder="you@email.com" required />
+            </label>
+            <label>WhatsApp (optional)
+              <input type="tel" id="trWhatsapp" class="input-field" placeholder="03062015326" />
+            </label>
+            <button type="submit" class="btn btn-gold">🚀 Activate Free Trial Now</button>
+          </form>
+          <div id="trialResult" class="result-box" hidden></div>
+        </div>
+        <div class="glass-card pane-card">
+          <h2>What you get in the trial</h2>
+          <ul class="check-list">
+            <li>Xtream Codes host + username + password.</li>
+            <li>M3U Plus playlist link (Siravex, Smarters, TiviMate, VLC).</li>
+            <li>XMLTV EPG guide link.</li>
+            <li>All PRO categories unlocked for exactly 1 day.</li>
+            <li>Upgrade anytime: pay Rs 200 on JazzCash 0306-2015326.</li>
+          </ul>
+          <div class="tip-box">
+            <strong>Recommended player:</strong>
+            <a href="https://siravex.vercel.app" target="_blank" rel="noopener">siravex.vercel.app</a> — fast web IPTV
+            player with search, favorites and stream switching.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ DEALER LOGIN ============================ -->
+    <section class="panel-pane" data-panel-pane="login" hidden>
+      <div class="pane-grid">
+        <div class="glass-card pane-card">
+          <h2>🏪 Dealer Login</h2>
+          <p class="muted-sm">Enter the dealer code and API key issued by BarakatWave admin.</p>
+          <form id="dealerForm" class="form-stack">
+            <label>Dealer code
+              <input type="text" id="dlCode" class="input-field" placeholder="RS-XXXXXX" required />
+            </label>
+            <label>API key
+              <input type="text" id="dlKey" class="input-field" placeholder="bwr_..." required />
+            </label>
+            <label>License key (optional)
+              <input type="text" id="dlLicense" class="input-field" placeholder="RS-XXXX-XXXX-XXXX" />
+            </label>
+            <button type="submit" class="btn btn-primary">🔓 Open My Panel</button>
+          </form>
+          <div id="dealerResult" class="result-box" hidden></div>
+        </div>
+        <div class="glass-card pane-card">
+          <h2>Need a dealer account?</h2>
+          <p class="muted-sm">
+            Buy a minimum of 5 credits (Rs 500) and admin will issue your dealer code + API key.
+          </p>
+          <ol class="num-list">
+            <li>Send JazzCash to <strong>0306-2015326</strong> (Muaaz Iqbal).</li>
+            <li>WhatsApp the screenshot with your name and city.</li>
+            <li>Receive your <code>RS-XXXXXX</code> dealer code + <code>bwr_</code> API key.</li>
+            <li>Login above, create clients, export M3U links.</li>
+          </ol>
+          <a href="https://wa.me/923062015326" target="_blank" rel="noopener" class="btn btn-primary" style="width:100%;">📲 Request Dealer Access</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ DASHBOARD ============================ -->
+    <section class="panel-pane" data-panel-pane="dashboard" hidden>
+      <div class="glass-card pane-card" id="dashEmpty">
+        <h2>📊 Dealer Dashboard</h2>
+        <p class="muted-sm">Login in the Dealer Login tab to load your panel, clients and links.</p>
+      </div>
+
+      <div id="dashBody" hidden>
+        <div class="stat-grid" id="dashStats"></div>
+
+        <div class="pane-grid">
+          <div class="glass-card pane-card">
+            <h2>➕ Create new client</h2>
+            <p class="muted-sm">Each client costs 1 credit (30 days). Links are generated instantly.</p>
+            <form id="clientForm" class="form-stack">
+              <div class="field-row">
+                <label>Username
+                  <input type="text" id="clUser" class="input-field" placeholder="ali123" required />
+                </label>
+                <label>Password
+                  <input type="text" id="clPass" class="input-field" placeholder="auto-generate" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Client WhatsApp
+                  <input type="tel" id="clWhatsapp" class="input-field" placeholder="03001234567" />
+                </label>
+                <label>Devices
+                  <input type="number" id="clDevices" class="input-field" value="1" min="1" max="5" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Plan
+                  <select id="clPlan" class="input-field"></select>
+                </label>
+                <label>MAC address (MAG boxes)
+                  <input type="text" id="clMac" class="input-field" placeholder="00:1A:79:XX:XX:XX" />
+                </label>
+              </div>
+              <button type="submit" class="btn btn-primary">✨ Create Client &amp; Generate Links</button>
+            </form>
+            <div id="clientResult" class="result-box" hidden></div>
+          </div>
+
+          <div class="glass-card pane-card">
+            <h2>🔗 Server details</h2>
+            <div class="kv-list" id="serverKv"></div>
+            <div class="tip-box">
+              <strong>Player setup:</strong> Xtream Codes → Host <code id="kvHost">…</code>, Port <code>443</code>,
+              then the client's username/password. Or paste the M3U Plus URL directly.
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card pane-card" style="margin-top:16px;">
+          <div class="pane-head-row">
+            <h2 style="margin:0;">👥 My clients</h2>
+            <input type="search" id="clSearch" class="input-field" placeholder="Search username…" style="max-width:240px;" />
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="clientsTable">
+              <thead>
+                <tr>
+                  <th>Username</th><th>Password</th><th>Plan</th><th>Expiry</th><th>Days left</th><th>Status</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody><tr><td colspan="7" class="muted-sm">No clients yet.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ ADMIN ============================ -->
+    <section class="panel-pane" data-panel-pane="admin" hidden>
+      <div class="glass-card pane-card" id="adminGate">
+        <h2>🛡 Admin Control Center</h2>
+        <p class="muted-sm">
+          Sign in three ways: Firebase Google/Email (full access), Owner PIN (works even if the domain is not yet
+          authorized in Firebase), or open the full studio at <a href="/admin.html">/admin.html</a>.
+        </p>
+        <div class="field-row">
+          <input type="password" id="adminPin" class="input-field" placeholder="Owner PIN (default: 03062015326)" />
+          <button class="btn btn-primary" id="adminPinBtn">🔓 Owner PIN Login</button>
+        </div>
+        <div class="panel-hero-actions" style="margin-top:12px;">
+          <button class="btn btn-outline" id="adminGoogleBtn2">Continue with Google</button>
+          <a class="btn btn-outline" href="/admin.html">⚙️ Full Admin Studio</a>
+          <button class="btn btn-danger" id="adminSignOutBtn" hidden>Sign Out</button>
+        </div>
+        <div id="adminAuthMsg" class="result-box" hidden></div>
+      </div>
+
+      <div id="adminBody" hidden>
+        <div class="stat-grid" id="adminStats"></div>
+
+        <div class="pane-grid">
+          <div class="glass-card pane-card">
+            <h2>🧾 Pending orders</h2>
+            <p class="muted-sm">Verify the JazzCash screenshot on WhatsApp, then approve to activate PRO / credits.</p>
+            <div class="table-wrap">
+              <table class="data-table" id="ordersTable">
+                <thead><tr><th>Order</th><th>Client</th><th>Plan</th><th>Amount</th><th>TID</th><th>Actions</th></tr></thead>
+                <tbody><tr><td colspan="6" class="muted-sm">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="glass-card pane-card">
+            <h2>🏪 Dealers</h2>
+            <form id="resellerForm" class="form-stack" style="margin-bottom:12px;">
+              <div class="field-row">
+                <input type="text" id="rsName" class="input-field" placeholder="Dealer name" required />
+                <input type="tel" id="rsWhatsapp" class="input-field" placeholder="WhatsApp" />
+              </div>
+              <div class="field-row">
+                <input type="email" id="rsEmail" class="input-field" placeholder="Email" />
+                <input type="number" id="rsCredits" class="input-field" placeholder="Credits" value="5" min="1" />
+              </div>
+              <button type="submit" class="btn btn-primary">➕ Create Dealer</button>
+            </form>
+            <div class="table-wrap">
+              <table class="data-table" id="resellersTable">
+                <thead><tr><th>Code</th><th>Dealer</th><th>Credits</th><th>Clients</th><th>Top-up</th></tr></thead>
+                <tbody><tr><td colspan="5" class="muted-sm">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="pane-grid" style="margin-top:16px;">
+          <div class="glass-card pane-card">
+            <h2>👥 All clients</h2>
+            <div class="table-wrap">
+              <table class="data-table" id="adminClientsTable">
+                <thead><tr><th>User</th><th>Dealer</th><th>Plan</th><th>Expiry</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody><tr><td colspan="6" class="muted-sm">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="glass-card pane-card">
+            <h2>📈 Analytics &amp; audit</h2>
+            <div class="kv-list" id="adminKv"></div>
+            <div class="bars" id="adminBars"></div>
+            <h3 style="margin-top:16px;">Recent activity</h3>
+            <ul class="audit-list" id="auditList"><li class="muted-sm">Loading…</li></ul>
+          </div>
+        </div>
+
+        <div class="glass-card pane-card" style="margin-top:16px;">
+          <h2>🔐 Security</h2>
+          <div class="field-row">
+            <input type="password" id="pinCurrent" class="input-field" placeholder="Current PIN" />
+            <input type="password" id="pinNew" class="input-field" placeholder="New PIN (6+ chars)" />
+            <button class="btn btn-gold" id="pinSaveBtn">Update PIN</button>
+          </div>
+          <p class="muted-sm" style="margin-bottom:0;">
+            Stream playback links are HMAC-SHA256 signed with a short expiry, so shared URLs stop working quickly.
+            Set <code>BARAKATWAVE_ADMIN_PIN</code> in Vercel env vars to override the bootstrap PIN.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ PAYMENT ============================ -->
+    <section class="panel-pane" data-panel-pane="payment" hidden>
+      <div class="pane-grid">
+        <div class="glass-card pane-card">
+          <h2>💳 JazzCash Payment</h2>
+          <div class="payment-card">
+            <p class="muted-sm" style="margin:0;">Send payment to</p>
+            <p class="pay-number">0306-2015326</p>
+            <p class="muted-sm" style="margin:0 0 10px;">JazzCash &bull; Account Title: Muaaz Iqbal &bull; +92 306 2015326</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn btn-primary btn-sm" id="copyJazzBtn">📋 Copy Number</button>
+              <a class="btn btn-sm btn-outline" href="https://wa.me/923062015326" target="_blank" rel="noopener">📲 WhatsApp Screenshot</a>
+            </div>
+          </div>
+          <ol class="num-list" id="paymentSteps"></ol>
+        </div>
+        <div class="glass-card pane-card">
+          <h2>Price list</h2>
+          <div class="table-wrap">
+            <table class="data-table" id="priceTable">
+              <thead><tr><th>Package</th><th>Direct</th><th>Reseller</th><th>Days</th></tr></thead>
+              <tbody><tr><td colspan="4" class="muted-sm">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <h3 style="margin-top:18px;">Dealer slabs</h3>
+          <div class="table-wrap">
+            <table class="data-table" id="tierTable">
+              <thead><tr><th>Tier</th><th>Min credits</th><th>Rate</th></tr></thead>
+              <tbody><tr><td colspan="3" class="muted-sm">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ HELP ============================ -->
+    <section class="panel-pane" data-panel-pane="help" hidden>
+      <div class="pane-grid">
+        <div class="glass-card pane-card">
+          <h2>❓ Setup in any player</h2>
+          <div class="help-block">
+            <h3>Xtream Codes (Siravex, Smarters, TiviMate, XCIPTV)</h3>
+            <p class="muted-sm">Host: <code>https://barakatwave.vercel.app</code> &middot; Port: <code>443</code> &middot; Username + Password from your order.</p>
+            <h3>M3U Plus URL</h3>
+            <p class="muted-sm"><code>https://barakatwave.vercel.app/get.php?username=USER&amp;password=PASS&amp;type=m3u_plus&amp;output=m3u8</code></p>
+            <h3>EPG / XMLTV</h3>
+            <p class="muted-sm"><code>https://barakatwave.vercel.app/xmltv.php?username=USER&amp;password=PASS</code></p>
+            <h3>MAG / MAC portal</h3>
+            <p class="muted-sm">Send your MAC address to 0306-2015326 and we bind it to your account.</p>
+            <h3>VLC (PC / Android)</h3>
+            <p class="muted-sm">Media → Open Network Stream → paste the M3U Plus URL.</p>
+          </div>
+        </div>
+        <div class="glass-card pane-card">
+          <h2>🛟 Support</h2>
+          <p class="muted-sm">Average reply time: under 15 minutes (10:00–02:00 PKT).</p>
+          <div class="panel-hero-actions">
+            <a class="btn btn-primary" href="https://wa.me/923062015326" target="_blank" rel="noopener">📲 WhatsApp 0306-2015326</a>
+            <a class="btn btn-outline" href="mailto:muaaziqbal.vip@gmail.com">✉️ Email</a>
+            <a class="btn btn-outline" href="/legal">📜 Policies</a>
+            <a class="btn btn-outline" href="/blog">📰 Guides</a>
+          </div>
+          <h3 style="margin-top:18px;">Common fixes</h3>
+          <ul class="check-list">
+            <li><strong>Buffering:</strong> switch quality to Auto, or use 5 GHz Wi-Fi / LAN.</li>
+            <li><strong>Login failed:</strong> reset the password from your dealer panel and refresh the playlist.</li>
+            <li><strong>Black screen:</strong> our standby broadcast should appear — if not, report the channel.</li>
+            <li><strong>Too many connections:</strong> close other devices or upgrade to multi-device.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <footer class="panel-footer muted-sm">
+      <p>
+        BarakatWave TV IPTV Panel — <strong>Mizanora Projects</strong> by <strong>Muaaz Iqbal</strong> &bull;
+        Direct Rs 200/month &bull; Reseller Rs 100/month &bull; JazzCash 0306-2015326 &bull;
+        <a href="/legal/terms">Terms</a> &bull; <a href="/legal/privacy">Privacy</a> &bull;
+        <a href="/legal/reseller-agreement">Reseller Agreement</a> &bull; <a href="/legal/refund">Refunds</a>
+      </p>
+    </footer>
+  </main>
+
+  <div id="toastContainer" class="toast-container"></div>
+  <script type="module" src="/assets/js/panel.js"></script>
+</body>
+</html>

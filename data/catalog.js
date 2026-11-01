@@ -1157,6 +1157,204 @@ export const DEFAULT_BLOGS = [
     faqs: [
       { q: "Can Admin customize the Channel Offline fallback video?", a: "Yes! In Admin -> Broadcast Videos (Tab 5), Admin can set any custom .m3u8 or .mp4 URL for the Channel Offline standby broadcast." }
     ]
+  },
+  {
+    slug: "iptv-reseller-panel-pakistan-price-per-user-jazzcash",
+    title: "IPTV Reseller Panel in Pakistan: Rs 100 Per User Wholesale, Rs 200 Retail, JazzCash Activation",
+    excerpt: "Complete walkthrough of the BarakatWave IPTV reseller panel — credit purchases at PKR 100 per user, one-click client creation, M3U/Xtream link generation, renewal tracking and JazzCash 0306-2015326 payments.",
+    category: "Reseller Business",
+    author: "Muaaz Iqbal",
+    publishedAt: "2026-11-01T06:00:00Z",
+    readTime: "7 min read",
+    tags: ["IPTV Reseller Panel", "IPTV price per user Pakistan", "JazzCash IPTV payment", "BarakatWave dealer", "Muaaz Iqbal"],
+    content: `
+      <h2>How the BarakatWave Reseller Panel Works</h2>
+      <p>Selling IPTV in Pakistan used to mean spreadsheets, WhatsApp screenshots and expired subscriptions nobody remembered. The <strong>BarakatWave IPTV Reseller Panel</strong> (<a href="/reseller">barakatwave.vercel.app/reseller</a>) replaces all of that with one dashboard built by <strong>Muaaz Iqbal</strong> under <strong>Mizanora Projects</strong>.</p>
+      <h3>Wholesale and retail pricing</h3>
+      <ul>
+        <li><strong>Dealer buying rate:</strong> <strong>PKR 100</strong> per user per month (minimum 5 credits).</li>
+        <li><strong>Direct client price:</strong> <strong>PKR 200</strong> per user per month.</li>
+        <li><strong>Volume slabs:</strong> PKR 95 at 25+ credits, PKR 90 at 50+ credits, PKR 85 at 100+ credits.</li>
+        <li><strong>Free trial:</strong> every end-customer can test PRO free for <strong>1 day</strong> before buying.</li>
+      </ul>
+      <h3>What one credit gives you</h3>
+      <p>One credit activates a single user for 30 days with the full PRO channel list, IMDb Movies &amp; Series VOD, Xtream Codes login, M3U Plus playlist URL and XMLTV EPG. Credits never expire, and you can reassign them to any client at any time.</p>
+      <h3>Creating a client in 15 seconds</h3>
+      <ol>
+        <li>Login with your <code>RS-XXXXXX</code> dealer code and <code>bwr_...</code> API key.</li>
+        <li>Type a username and password (or leave the password blank to auto-generate one).</li>
+        <li>Pick the plan, add the client's WhatsApp number and optionally a MAG MAC address.</li>
+        <li>Press <em>Create Client</em> — the panel returns the M3U Plus link, EPG link and Xtream credentials ready to forward on WhatsApp.</li>
+      </ol>
+      <h3>Renewals, expiry tracking and suspensions</h3>
+      <p>The dashboard shows every client with days-left counters, expiring-soon warnings (3 days), active/suspended state, and one-tap renewal. Suspending a user instantly blocks playback without deleting their data.</p>
+      <h3>Payments: JazzCash 0306-2015326</h3>
+      <p>Send credits or subscriptions to <strong>JazzCash 0306-2015326</strong> (Account Title: Muaaz Iqbal), then WhatsApp the screenshot with your dealer code. Approved credits appear in the panel immediately, and every order gets a trackable ID.</p>
+    `,
+    faqs: [
+      { q: "What is the IPTV reseller price per user in Pakistan?", a: "BarakatWave dealers buy credits at PKR 100 per user per month and sell at PKR 200, keeping PKR 100 margin per user with no monthly minimum." },
+      { q: "How do I pay for IPTV credits?", a: "Send JazzCash to 0306-2015326 (Muaaz Iqbal) and WhatsApp the payment screenshot with your dealer code. Credits are activated after review." }
+    ]
+  },
+  {
+    slug: "best-free-iptv-trial-1-day-pakistan-india-2026",
+    title: "Free 1-Day IPTV Trial in Pakistan & India (2026): Test Before You Pay Rs 200",
+    excerpt: "Claim a genuinely free 24-hour PRO IPTV trial with full 4K channels, IMDb VOD and Xtream login — no card, no deposit. Then upgrade for PKR 200/month if you like it.",
+    category: "Free Trial",
+    author: "Muaaz Iqbal",
+    publishedAt: "2026-11-01T06:20:00Z",
+    readTime: "5 min read",
+    tags: ["free IPTV trial Pakistan", "1 day IPTV trial", "IPTV trial India", "BarakatWave trial", "IPTV 2026"],
+    content: `
+      <h2>Why a Real Trial Matters</h2>
+      <p>Most IPTV sellers ask for payment first and vanish when the stream buffers. <strong>BarakatWave TV</strong> does the opposite: the <strong>1-day PRO trial</strong> unlocks exactly the same servers, channel list and players as a paid plan, so you can test your own internet and device before spending a rupee.</p>
+      <h3>What the free trial includes</h3>
+      <ul>
+        <li>All PRO HD &amp; 4K channels (Pakistan, India, Islamic, Sports, News, Kids, World).</li>
+        <li>IMDb Movies &amp; Series VOD library.</li>
+        <li>Xtream Codes host + username + password.</li>
+        <li>M3U Plus playlist link and XMLTV EPG link.</li>
+        <li>Compatibility with Siravex, IPTV Smarters Pro, TiviMate, XCIPTV, OTT Navigator and VLC.</li>
+      </ul>
+      <h3>How to claim it</h3>
+      <ol>
+        <li>Open <a href="/reseller#trial">barakatwave.vercel.app/reseller</a> and choose the <strong>Free Trial</strong> tab.</li>
+        <li>Enter your email and WhatsApp number, then press <em>Activate Free Trial</em>.</li>
+        <li>Copy the generated credentials into your player — the trial starts instantly and expires in 24 hours.</li>
+      </ol>
+      <h3>Honest limits</h3>
+      <p>One trial per person and device, one simultaneous connection, and no re-issue after expiry. Loved it? Upgrade for <strong>PKR 200/month</strong> by sending JazzCash to <strong>0306-2015326</strong>.</p>
+    `,
+    faqs: [
+      { q: "Is the IPTV trial really free?", a: "Yes. The BarakatWave 1-day PRO trial requires no payment, no card and no deposit — only an email and a device." },
+      { q: "Can I get more than one free trial?", a: "No. Trials are limited to one per person/device to prevent abuse. After expiry, a paid plan costs PKR 200 per month." }
+    ]
+  },
+  {
+    slug: "mac-address-iptv-mag-portal-setup-guide",
+    title: "MAC Address IPTV & MAG Portal Setup Guide: Bind Your Box to BarakatWave in 2 Minutes",
+    excerpt: "How MAC-based IPTV portals work, how to find your MAG/STB MAC address, and how to bind it to a BarakatWave account for zero-typing playback on set-top boxes.",
+    category: "MAC IPTV",
+    author: "Muaaz Iqbal",
+    publishedAt: "2026-11-01T06:40:00Z",
+    readTime: "6 min read",
+    tags: ["MAC IPTV", "MAG portal setup", "IPTV set top box", "MAC address IPTV Pakistan", "Stalker portal"],
+    content: `
+      <h2>What Is MAC-Based IPTV?</h2>
+      <p>MAG boxes, Infomir STBs and many smart TVs identify themselves with a hardware <strong>MAC address</strong> (for example <code>00:1A:79:12:34:56</code>) instead of a username and password. The provider binds a subscription to that MAC in a portal, and the box simply boots into the channel list — no typing on a remote.</p>
+      <h3>Finding your MAC address</h3>
+      <ul>
+        <li><strong>MAG / Infomir:</strong> sticker on the bottom of the box, or Settings → Network Info.</li>
+        <li><strong>Android TV apps:</strong> most Stalker/MAC-based apps show it on the activation screen.</li>
+        <li><strong>Enigma2 receivers:</strong> Menu → Information → Network → MAC.</li>
+      </ul>
+      <h3>Binding a MAC in BarakatWave</h3>
+      <ol>
+        <li>Order a plan at <a href="/reseller#order">/reseller</a> or log into your dealer dashboard.</li>
+        <li>Create the client and paste the MAC address in the <em>MAC address (MAG boxes)</em> field.</li>
+        <li>Send the MAC on WhatsApp to <strong>0306-2015326</strong> if you need a manual bind for an unusual box.</li>
+        <li>Power-cycle the box; the portal loads the BarakatWave channel list automatically.</li>
+      </ol>
+      <h3>MAC reset policy</h3>
+      <p>Each account allows one free MAC change on the 6-month and 12-month plans. Monthly plans can request a reset through support if a box is replaced.</p>
+    `,
+    faqs: [
+      { q: "Does BarakatWave support MAG and MAC-based IPTV?", a: "Yes. You can bind a MAC address to any BarakatWave account for MAG, Infomir, Stalker and Enigma2 devices, or message 0306-2015326 for a manual bind." },
+      { q: "How many times can I change my MAC address?", a: "Longer plans include one free MAC change; monthly plans can request a reset through support." }
+    ]
+  },
+  {
+    slug: "iptv-backend-link-security-hmac-anti-leech-explained",
+    title: "IPTV Link Security Explained: HMAC Signed URLs, Anti-Leech Tokens & Connection Limits",
+    excerpt: "A technical breakdown of how BarakatWave protects its backend stream links — rotating HMAC-SHA256 signatures, short expiries, device fingerprinting and per-account connection caps.",
+    category: "Security Engineering",
+    author: "Muaaz Iqbal",
+    publishedAt: "2026-11-01T07:00:00Z",
+    readTime: "8 min read",
+    tags: ["IPTV link security", "anti leech IPTV", "HMAC signed URL", "IPTV backend protection", "Muaaz Iqbal"],
+    content: `
+      <h2>Why IPTV Panels Get Leaked</h2>
+      <p>Most IPTV panels publish permanent URLs such as <code>/live/username/password/1234.m3u8</code>. One careless screenshot and the whole playlist circulates on Telegram forever, burning bandwidth and reseller credits.</p>
+      <h3>Layer 1 — Opaque signed links</h3>
+      <p>BarakatWave never exposes credentials in playback URLs. Instead the API mints a token shaped like <code>/s/&lt;base64url payload&gt;.&lt;signature&gt;</code> where the payload records the user, channel and expiry, and the signature is an <strong>HMAC-SHA256</strong> digest produced with a server-only secret.</p>
+      <h3>Layer 2 — Short expiry windows</h3>
+      <p>Tokens expire in minutes (default 15, configurable via <code>BW_LINK_TTL_SEC</code>). A leaked URL simply stops resolving, and the player re-requests a fresh one through the authenticated panel.</p>
+      <h3>Layer 3 — Tamper detection</h3>
+      <p>Every verification uses constant-time comparison, so an attacker cannot learn the signature byte-by-byte. Changing even one character produces <code>bad_signature</code> and the request is rejected before any upstream fetch.</p>
+      <h3>Layer 4 — Connection fingerprinting</h3>
+      <p>The server hashes the user-agent plus a masked client IP into a device fingerprint. If a single account suddenly shows dozens of distinct fingerprints per minute, the request is throttled — the classic signature of a leaked playlist being fanned out.</p>
+      <h3>Layer 5 — SSRF and abuse guards</h3>
+      <p>Admin stream probing resolves DNS and refuses private ranges, loopback and cloud metadata addresses (169.254.169.254), so a malicious playlist entry cannot be used to scan the internal network.</p>
+      <h3>Layer 6 — Least-privilege data rules</h3>
+      <p>Firebase rules keep the reseller, order and client nodes server-only. Browsers never receive other dealers' lists, and admin actions require a verified Firebase token or a short-lived Owner PIN session.</p>
+    `,
+    faqs: [
+      { q: "Can someone steal my BarakatWave M3U link?", a: "Every playback link is HMAC-signed and expires in minutes, so a copied URL stops working quickly. Account credentials should still be treated as private." },
+      { q: "What happens if I share my link with many people?", a: "Connection limits and fingerprint throttling block fan-out abuse, and repeated violations can suspend the account." }
+    ]
+  },
+  {
+    slug: "iptv-pakistan-india-4k-cricket-sports-channels-guide",
+    title: "Pakistan & India IPTV Channel Guide 2026: 4K Cricket, Football, News & Islamic Channels",
+    excerpt: "The full BarakatWave channel map for Pakistan and India — cricket and football sports packs, breaking news, Islamic 24/7, Urdu and Hindi entertainment, kids and world feeds.",
+    category: "Channel Guides",
+    author: "Muaaz Iqbal",
+    publishedAt: "2026-11-01T07:20:00Z",
+    readTime: "6 min read",
+    tags: ["IPTV Pakistan channels", "IPTV India channels", "4K cricket IPTV", "Islamic IPTV channels", "live TV 2026"],
+    content: `
+      <h2>One Playlist, Two Massive Markets</h2>
+      <p><strong>BarakatWave TV</strong> ships with dedicated <strong>Pakistan</strong> and <strong>India / South Asia</strong> regions on the same server, so a viewer in Kasur and a viewer in Delhi use identical setup steps but see their own priority channel groups.</p>
+      <h3>Sports you can actually rely on</h3>
+      <ul>
+        <li><strong>Cricket:</strong> live match feeds, studio analysis and highlights windows.</li>
+        <li><strong>Football:</strong> Champions League style coverage, league previews and matchday shows.</li>
+        <li><strong>Extra sports:</strong> motorsport, wrestling, and multi-sport event channels.</li>
+      </ul>
+      <h3>News, Islamic and family</h3>
+      <p>Round-the-clock news from Pakistani, Indian, Gulf and international broadcasters, plus Makkah and Madinah live feeds, Quran recitation, Naat and Islamic kids content. A kids &amp; documentaries group sits alongside world feeds from Japan, Europe and the US.</p>
+      <h3>How categories are ordered</h3>
+      <p>Groups are prefixed with priority emojis (<strong>🇵🇰 Pakistan Top</strong> → <strong>🕌 Islamic</strong> → <strong>🎭 Drama</strong> → <strong>📰 News</strong> → <strong>🎬 Movies</strong>) so IPTV players that sort alphabetically still show the most-watched content first.</p>
+      <h3>Adding your own channels</h3>
+      <p>Admins can paste any M3U playlist in the Admin Studio's bulk importer, probe each link, tag it FREE or PRO, and publish individual <code>.m3u8</code> files back to GitHub automatically.</p>
+    `,
+    faqs: [
+      { q: "Does BarakatWave include Indian channels?", a: "Yes. BarakatWave includes an India / South Asia region with Hindi entertainment, news, music and sports alongside the Pakistan lineup." },
+      { q: "Are 4K sports channels included in PRO?", a: "Yes. The PRO tier unlocks the premium sports feeds including 4K cricket and football channels." }
+    ]
+  },
+  {
+    slug: "siravex-player-iptv-stream-search-favorites-guide",
+    title: "Siravex IPTV Player + BarakatWave: Fast Stream Search, Favorites & Multi-Link Playback",
+    excerpt: "Why Siravex (siravex.vercel.app) is the recommended browser player for BarakatWave subscriptions — instant channel search, favorites, multi-format playback and zero install.",
+    category: "Player Tutorials",
+    author: "Muaaz Iqbal",
+    publishedAt: "2026-11-01T07:40:00Z",
+    readTime: "5 min read",
+    tags: ["Siravex IPTV player", "IPTV web player", "M3U8 player online", "IPTV search favorites", "BarakatWave player"],
+    content: `
+      <h2>The Fastest Way to Watch Without Installing Anything</h2>
+      <p>Android boxes aside, most viewers just want to open a link and watch. <strong>Siravex</strong> (<a href="https://siravex.vercel.app" target="_blank" rel="noopener">siravex.vercel.app</a>) is a lightweight browser IPTV player that pairs perfectly with BarakatWave because it accepts both Xtream credentials and raw M3U links.</p>
+      <h3>Setup in 30 seconds</h3>
+      <ol>
+        <li>Open the player and choose <em>Add playlist</em>.</li>
+        <li>Paste your BarakatWave M3U Plus link (from the reseller panel or trial screen).</li>
+        <li>Search a channel, star your favorites, and press play.</li>
+      </ol>
+      <h3>Why it feels fast</h3>
+      <ul>
+        <li>Lazy channel loading — the list renders before the streams resolve.</li>
+        <li>Instant search across channel names and group titles.</li>
+        <li>Favorites and recents stored locally in your browser.</li>
+        <li>HLS playback with automatic retry, so a brief upstream hiccup doesn't kill the session.</li>
+      </ul>
+      <h3>Alternatives</h3>
+      <p>Prefer a native app? Use <strong>IPTV Smarters Pro</strong> or <strong>TiviMate</strong> on Android TV and Firestick, <strong>VLC</strong> on desktop, or the built-in BarakatWave web studio on any Smart TV browser.</p>
+    `,
+    faqs: [
+      { q: "Which player does BarakatWave recommend?", a: "Siravex (siravex.vercel.app) for browsers, IPTV Smarters Pro or TiviMate on Android TV/Firestick, and VLC on desktop." },
+      { q: "Can I use my BarakatWave M3U link in any player?", a: "Yes. Any standard M3U/M3U8 compatible player accepts the playlist link and EPG URL." }
+    ]
   }
 ];
 
