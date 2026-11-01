@@ -33,6 +33,7 @@ import {
   listResellers,
   listTrials,
   normalizeClient,
+  normalizePricing,
   renewClient,
   recordClientPayment,
   resellerFinance,
@@ -50,6 +51,7 @@ import {
 } from "../_lib/panelstore.js";
 import { PLANS, PANEL, PAYMENT, FEATURE_MATRIX, RESELLER_TIERS, SELF_SERVE, KEYWORDS, priceForPlan } from "../../data/panel.js";
 import { BRAND } from "../../data/catalog.js";
+import { getAnalyticsDashboardSnapshot, listClientErrors } from "../_lib/tracker.js";
 
 /**
  * BarakatWave TV — Unified IPTV Panel API
@@ -95,7 +97,9 @@ const ADMIN_ACTIONS = new Set([
   "admin/keys",
   "admin/pin-set",
   "admin/trials",
-  "admin/payments"
+  "admin/payments",
+  "admin/reseller-detail",
+  "admin/errors"
 ]);
 
 const RESELLER_ACTIONS = new Set([
@@ -648,11 +652,25 @@ export default async function handler(req, res) {
           creditsUsed: Number(reseller.creditsUsed || 0) + 1
         });
 
-        // Optional: reseller ne is waqt connection fee bhi collect ki ho
+        // Reseller ne client se kitne rupay liye? Do soorat hain:
+        //  1) collectAmount diya gaya → poora sale (fee + plan price) ek payment me.
+        //  2) sirf connection fee collect hui → wohi record hoti hai.
         const pricing = reseller.pricing || {};
         const connectionFee = Math.max(0, Number(body.connectionFee ?? pricing.connectionFee ?? 0) || 0);
+        const collectAmount = Math.max(0, Number(body.collectAmount) || 0) || 0;
         let feeRecord = null;
-        if (connectionFee > 0 && body.collectFee !== false) {
+        if (collectAmount > 0) {
+          const recorded = await recordClientPayment({
+            username: created.username,
+            amount: collectAmount,
+            months: Math.round((Number(body.days) || 30) / 30),
+            via: body.via || "cash",
+            note: "Client sale (connection + plan)",
+            resellerCode: reseller.code,
+            recordedBy: "reseller"
+          });
+          feeRecord = recorded.ok ? recorded.payment : null;
+        } else if (connectionFee > 0 && body.collectFee !== false) {
           const recorded = await recordClientPayment({
             username: created.username,
             amount: connectionFee,
@@ -675,7 +693,8 @@ export default async function handler(req, res) {
           mac: mac || undefined,
           stalker: mac
             ? {
-                portalUrl: `${base}/c/`,
+                portalUrl: `${base}/c/portal.php`,
+                portalUrlShort: `${base}/c/`,
                 mac,
                 note: "MAG / Stalker box me ye Portal URL aur MAC daalein."
               }
@@ -764,7 +783,107 @@ export default async function handler(req, res) {
       }
 
       if (action === "admin/analytics") {
-        return sendJson(res, 200, await getAnalytics());
+        // Business stats + LIVE visitor/stream analytics + collected frontend
+        // errors — sab ek hi response me, taake admin panel me sab kuch dikhe.
+        const [business, live, errors] = await Promise.all([
+          getAnalytics(),
+          getAnalyticsDashboardSnapshot().catch(() => null),
+          listClientErrors(20).catch(() => [])
+        ]);
+        return sendJson(res, 200, {
+          ...business,
+          live: live
+            ? {
+                summary: live.summary,
+                breakdowns: live.breakdowns,
+                sessions: (live.sessions || []).slice(0, 25),
+                plays: (live.plays || []).slice(0, 25),
+                generatedPkt: live.generatedPkt
+              }
+            : null,
+          errors: {
+            count: (live?.errors?.count ?? 0),
+            unique: (live?.errors?.unique ?? errors.length),
+            latest: errors.slice(0, 10)
+          }
+        });
+      }
+
+      if (action === "admin/errors") {
+        const errors = await listClientErrors(Number(body.limit) || 50);
+        return sendJson(res, 200, { ok: true, count: errors.length, errors });
+      }
+
+      if (action === "admin/reseller-detail") {
+        const code = String(body.code || q.code || "").trim().toUpperCase();
+        const reseller = await getResellerByCode(code);
+        if (!reseller) return sendJson(res, 404, { ok: false, error: "Reseller not found." });
+        const [clients, payments, finance] = await Promise.all([
+          listClients({ resellerCode: reseller.code }),
+          listPayments({ resellerCode: reseller.code, limit: 100 }),
+          resellerFinance(reseller.code)
+        ]);
+        return sendJson(res, 200, {
+          ok: true,
+          reseller: {
+            ...resellerPublic(reseller),
+            createdAt: reseller.createdAt,
+            lastLoginAt: reseller.lastLoginAt || "",
+            selfServe: Boolean(reseller.selfServe)
+          },
+          stats: resellerStats(clients),
+          finance,
+          payments,
+          clients: clients.map((c) => {
+            const exp = Number(c.expDate || 0);
+            return {
+              ...c,
+              password: c.password || "",
+              links: {
+                m3u: `${base}/get.php?username=${c.username}&password=${c.password || ""}&type=m3u_plus&output=m3u8`,
+                epg: `${base}/xmltv.php?username=${c.username}&password=${c.password || ""}`,
+                xtream: { host: base, port: 443, username: c.username, password: c.password || "" },
+                stalker: c.mac
+                  ? { portalUrl: `${base}/c/portal.php`, portalUrlShort: `${base}/c/`, mac: c.mac }
+                  : null
+              },
+              expiresPkt: exp ? new Date(exp * 1000).toISOString().slice(0, 10) : ""
+            };
+          })
+        });
+      }
+
+      if (action === "admin/resellers") {
+        const [resellers, clients, payments] = await Promise.all([
+          listResellers(),
+          listClients(),
+          listPayments({ limit: 500 })
+        ]);
+        return sendJson(res, 200, {
+          ok: true,
+          count: resellers.length,
+          resellers: resellers.map((r) => {
+            const mine = clients.filter((c) => c.resellerCode === r.code);
+            const collected = payments
+              .filter((p) => p.resellerCode === r.code)
+              .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+            return {
+              ...r,
+              password: undefined,
+              passwordHash: undefined,
+              passwordSalt: undefined,
+              licenseHash: undefined,
+              clients: mine.length,
+              activeClients: mine.filter((c) => c.status === "active").length,
+              expiredClients: mine.filter((c) => c.status === "expired").length,
+              macClients: mine.filter((c) => c.mac).length,
+              collected,
+              pricing: normalizePricing(r.pricing || {}),
+              clientNames: mine.slice(0, 6).map((c) => c.username)
+            };
+          }),
+          tiers: RESELLER_TIERS
+        });
       }
 
       if (action === "admin/orders") {
@@ -840,21 +959,6 @@ export default async function handler(req, res) {
                 epg: `${base}/xmltv.php?username=${activated.client.username}&password=${activated.client.password}`
               }
             : null
-        });
-      }
-
-      if (action === "admin/resellers") {
-        const resellers = await listResellers();
-        const clients = await listClients();
-        return sendJson(res, 200, {
-          ok: true,
-          count: resellers.length,
-          resellers: resellers.map((r) => ({
-            ...r,
-            clients: clients.filter((c) => c.resellerCode === r.code).length,
-            activeClients: clients.filter((c) => c.resellerCode === r.code && c.status === "active").length
-          })),
-          tiers: RESELLER_TIERS
         });
       }
 

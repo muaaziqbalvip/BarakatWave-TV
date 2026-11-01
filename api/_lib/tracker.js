@@ -51,6 +51,7 @@ const TZ_COUNTRY_FALLBACK = {
 
 const memSessions = new Map();
 const memPlays = [];
+const memErrors = [];
 let hydratedFromRtdb = false;
 let lastRtdbHydrateAt = 0;
 
@@ -208,9 +209,10 @@ async function ensureHydrated() {
   lastRtdbHydrateAt = now;
 
   try {
-    const [remoteSessions, remotePlays] = await Promise.all([
+    const [remoteSessions, remotePlays, remoteErrors] = await Promise.all([
       rtdbGet("analytics/sessions", { ttlMs: 4000 }),
-      rtdbGet("analytics/plays", { ttlMs: 4000 })
+      rtdbGet("analytics/plays", { ttlMs: 4000 }),
+      rtdbGet("analytics/errors", { ttlMs: 4000 }).catch(() => null)
     ]);
 
     if (remoteSessions && typeof remoteSessions === "object") {
@@ -234,6 +236,17 @@ async function ensureHydrated() {
       }
       memPlays.sort((a, b) => (Number(b.ts) || 0) - (Number(a.ts) || 0));
       if (memPlays.length > 350) memPlays.length = 350;
+    }
+    if (remoteErrors && typeof remoteErrors === "object") {
+      const seenErr = new Set(memErrors.map((e) => e.id));
+      for (const e of Object.values(remoteErrors)) {
+        if (e && e.id && !seenErr.has(e.id)) {
+          seenErr.add(e.id);
+          memErrors.push(e);
+        }
+      }
+      memErrors.sort((a, b) => (Number(b.lastSeenAt) || 0) - (Number(a.lastSeenAt) || 0));
+      if (memErrors.length > 150) memErrors.length = 150;
     }
   } catch {
     // non-blocking
@@ -378,12 +391,75 @@ export async function recordStreamPlay(req, payload = {}) {
   return playRec;
 }
 
+/**
+ * Client-side error collector.
+ * Site ya admin panel me koi JS error / failed API call ho to wo yahan record
+ * hota hai, taake owner ko admin panel me asli bug nazar aaye (console kholne ki
+ * zaroorat nahi).
+ */
+export async function recordClientError(req, payload = {}) {
+  const now = Date.now();
+  const meta = extractGeoAndClient(req, payload);
+  const fingerprint = cleanKey(
+    `${payload.message || ""}|${payload.source || ""}|${payload.lineno || ""}`,
+    `e_${now.toString(36)}`
+  ).slice(0, 120);
+
+  const existing = memErrors.find((e) => e.fingerprint === fingerprint);
+  if (existing) {
+    existing.count += 1;
+    existing.lastSeenAt = now;
+    existing.lastSeenPkt = formatPktTime(now);
+    existing.ips = [...new Set([...(existing.ips || []), meta.ip])].slice(0, 12);
+    rtdbSet(`analytics/errors/${existing.id}`, existing).catch(() => {});
+    return existing;
+  }
+
+  const record = {
+    id: `err_${now.toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    fingerprint,
+    message: String(payload.message || "Unknown error").slice(0, 240),
+    stack: String(payload.stack || "").slice(0, 900),
+    source: String(payload.source || "").slice(0, 200),
+    lineno: Number(payload.lineno) || 0,
+    colno: Number(payload.colno) || 0,
+    route: String(payload.route || payload.path || "").slice(0, 140),
+    app: String(payload.app || "site").slice(0, 24),
+    userLabel: String(payload.userEmail || payload.userName || "Guest").slice(0, 80),
+    userAgent: String(req?.headers?.["user-agent"] || "").slice(0, 180),
+    deviceType: meta.deviceType,
+    browser: meta.browser,
+    ip: meta.ip,
+    countryLabel: meta.countryLabel,
+    count: 1,
+    firstSeenAt: now,
+    firstSeenPkt: formatPktTime(now),
+    lastSeenAt: now,
+    lastSeenPkt: formatPktTime(now),
+    ips: [meta.ip]
+  };
+
+  memErrors.unshift(record);
+  if (memErrors.length > 150) memErrors.length = 150;
+  rtdbSet(`analytics/errors/${record.id}`, record).catch(() => {});
+  return record;
+}
+
+export async function listClientErrors(limit = 50) {
+  await ensureHydrated();
+  return [...memErrors]
+    .sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0))
+    .slice(0, Math.max(1, Number(limit) || 50));
+}
+
 export async function clearAllAnalytics() {
   memSessions.clear();
   memPlays.length = 0;
+  memErrors.length = 0;
   await Promise.all([
     rtdbSet("analytics/sessions", null),
-    rtdbSet("analytics/plays", null)
+    rtdbSet("analytics/plays", null),
+    rtdbSet("analytics/errors", null)
   ]);
 }
 
@@ -429,10 +505,19 @@ export async function getAnalyticsDashboardSnapshot() {
   const iptvPlays = plays.filter((p) => p.surface.toLowerCase().includes("iptv")).length;
   const webPlays = plays.length - iptvPlays;
 
+  const errorCount = memErrors.reduce((acc, e) => acc + (Number(e.count) || 1), 0);
+
   return {
     ok: true,
     generatedAt: new Date(now).toISOString(),
     generatedPkt: formatPktTime(now),
+    errors: {
+      count: errorCount,
+      unique: memErrors.length,
+      latest: [...memErrors]
+        .sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0))
+        .slice(0, 12)
+    },
     summary: {
       onlineNow,
       totalSessions: sessions.length,
@@ -458,6 +543,7 @@ export async function getAnalyticsDashboardSnapshot() {
       protocols: topCounts(plays, (p) => p.engine, 6)
     },
     sessions: sessions.slice(0, 150),
-    plays: plays.slice(0, 200)
+    plays: plays.slice(0, 200),
+    errorList: [...memErrors].sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0)).slice(0, 60)
   };
 }

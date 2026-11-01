@@ -46,7 +46,7 @@ import {
   dbWriteStrict,
   dbMerge,
   dbDelete
-} from "./firebase-client.js?v=14";
+} from "./firebase-client.js?v=15";
 import { ledgerRows, validLedgerKey, validBillingPeriod } from "./reseller-ledger.js";
 import { effectiveMembershipPlan, membershipUpdate } from "./membership.js";
 import { parseM3uPlaylist, exportChannelsToM3u, slugify } from "./m3u-parser.js";
@@ -173,12 +173,77 @@ function anBars(items) {
     .join("");
 }
 
+/**
+ * Admin API token: Firebase ID token jab available ho, warna Owner PIN session
+ * token (bw_admin_session). Pehle sirf Firebase token bheja jata tha, is liye
+ * PIN se login karne wale owner ko analytics 403 milta tha — "analytics admin
+ * tak nahi pohnch raha" wali asal wajah yehi thi.
+ */
+async function adminApiToken() {
+  try {
+    const fb = await auth?.currentUser?.getIdToken?.();
+    if (fb) return fb;
+  } catch {
+    // fall through to PIN session
+  }
+  try {
+    const raw = JSON.parse(localStorage.getItem("bw_admin_session") || "{}");
+    if (raw?.token && (!raw.exp || raw.exp * 1000 > Date.now())) return raw.token;
+  } catch {
+    // ignore
+  }
+  return "";
+}
+
+function paintSiteErrors(errorsMeta, list) {
+  const total = document.getElementById("anErrorTotal");
+  const unique = document.getElementById("anErrorUnique");
+  const body = document.getElementById("anErrorsBody");
+  const stamp = document.getElementById("anErrorStamp");
+  if (total) total.textContent = errorsMeta.count ?? list.length;
+  if (unique) unique.textContent = errorsMeta.unique ?? new Set(list.map((e) => e.message)).size;
+  if (stamp) stamp.textContent = `Updated ${new Date().toLocaleTimeString("en-PK", { hour12: true })}`;
+  if (!body) return;
+  if (!list.length) {
+    body.innerHTML = `<tr><td colspan="5" class="muted-sm">✅ Koi error report nahi — site saaf chal rahi hai.</td></tr>`;
+    return;
+  }
+  body.innerHTML = list
+    .slice(0, 25)
+    .map(
+      (e) => `<tr>
+        <td><strong>${anEsc(String(e.message || "").slice(0, 110))}</strong>${
+          e.stack ? `<div class="muted-sm" style="font-size:0.68rem;">${anEsc(String(e.stack).split("\n")[1] || "")}</div>` : ""
+        }</td>
+        <td>${anEsc(e.app || "site")}<div class="muted-sm" style="font-size:0.68rem;">${anEsc(e.route || "")} ${
+          e.source ? "• " + anEsc(String(e.source).slice(0, 60)) : ""
+        }</div></td>
+        <td>${anEsc(e.deviceType || "—")}<div class="muted-sm" style="font-size:0.68rem;">${anEsc(e.browser || "")}</div></td>
+        <td><strong>${e.count || 1}</strong></td>
+        <td>${anEsc(e.lastSeenPkt || "—")}</td>
+      </tr>`
+    )
+    .join("");
+}
+
 async function refreshAnalyticsDashboard({ silent = false } = {}) {
   if (anState.ticking) return;
   anState.ticking = true;
   try {
-    const res = await fetch("/api/analytics", { cache: "no-store", credentials: "omit", headers: { Authorization: `Bearer ${await auth.currentUser?.getIdToken() || ""}` } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const token = await adminApiToken();
+    if (!token) throw new Error("Admin session required — Owner PIN ya Google se login karein.");
+    const res = await fetch("/api/analytics", {
+      cache: "no-store",
+      credentials: "omit",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      throw new Error(
+        res.status === 403
+          ? "Analytics ke liye admin login zaroori hai (Owner PIN ya Google)."
+          : `Analytics HTTP ${res.status}`
+      );
+    }
     const data = await res.json();
     if (!data || !data.ok) throw new Error("Analytics unavailable");
     anState.snapshot = data;
@@ -192,6 +257,8 @@ async function refreshAnalyticsDashboard({ silent = false } = {}) {
     setTextSafe("anAvgSession", anFmtDuration(sum.avgSessionSec));
     setTextSafe("anTotalWatch", `${anFmtDuration(sum.totalWatchSec)} watched`);
     setTextSafe("anLastUpdated", `Updated ${data.generatedPkt || ""}`);
+
+    paintSiteErrors(data.errors || {}, Array.isArray(data.errorList) ? data.errorList : []);
 
     const b = data.breakdowns || {};
     setHtmlSafe("anCountriesBox", anBars(b.countries));
@@ -296,7 +363,11 @@ function bindAnalyticsDashboard() {
   document.getElementById("anClearBtn")?.addEventListener("click", async () => {
     if (!window.confirm("Reset all analytics counters? Visitor sessions and play logs will be cleared.")) return;
     try {
-      await fetch("/api/analytics", { method: "DELETE", credentials: "omit", headers: { Authorization: `Bearer ${await auth.currentUser?.getIdToken() || ""}` } });
+      await fetch("/api/analytics", {
+        method: "DELETE",
+        credentials: "omit",
+        headers: { Authorization: `Bearer ${await adminApiToken()}` }
+      });
       refreshAnalyticsDashboard();
     } catch {
       // ignore
@@ -664,7 +735,7 @@ async function loadAllAdminData() {
   if (!admState.catalogHydrated) {
     scheduleAdminIdle(async () => {
       try {
-        const { loadFullCatalog } = await import("./imdb-seed.js?v=14");
+        const { loadFullCatalog } = await import("./imdb-seed.js?v=15");
         const local = await loadFullCatalog();
         if (local.movies?.length) admState.movies = local.movies;
         if (local.series?.length) admState.series = local.series;

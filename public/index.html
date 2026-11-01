@@ -1184,7 +1184,8 @@
 
   <!-- Media engines are lazy-loaded on first playback (player.js ensure* helpers) so the
        first paint never waits on 620 KB of vendor JS. -->
-  <script type="module" src="/assets/js/app.js?v=14"></script>
+  <script src="/assets/js/error-beacon.js?v=15" defer></script>
+  <script type="module" src="/assets/js/app.js?v=15"></script>
   <!-- Boot watchdog: agar module graph purane cache ki wajah se fail ho jaye to
        blank page ke bajaye ek saaf "Update" banner dikhta hai (auto-refresh option). -->
   <script>

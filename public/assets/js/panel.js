@@ -17,6 +17,7 @@ const state = {
   dealerStats: null,
   dealerClients: [],
   dealerFinance: null,
+  adminResellers: [],
   adminToken: "",
   adminUser: null
 };
@@ -86,7 +87,7 @@ function readProofFile(file) {
  */
 async function mirrorToRtdb(path, value) {
   try {
-    const mod = await import("/assets/js/firebase-client.js?v=14");
+    const mod = await import("/assets/js/firebase-client.js?v=15");
     const user = mod.getCurrentUserSnapshot();
     if (!user || user.isPreviewSession) return false;
     await mod.dbWrite(path, value);
@@ -206,7 +207,7 @@ async function refreshAdminToken(force = false) {
   }
   // 2) Firebase ID token
   try {
-    const mod = await import("/assets/js/firebase-client.js?v=14");
+    const mod = await import("/assets/js/firebase-client.js?v=15");
     const idToken = await mod.getFirebaseIdToken(force);
     if (idToken) {
       state.adminToken = idToken;
@@ -701,7 +702,9 @@ function bindDashboard() {
         planId: months === 3 ? "quarterly" : months === 12 ? "yearly" : months === 6 ? "half-yearly" : "monthly",
         days: months * 30,
         mac: $("clMac").value.trim(),
-        connectionFee: feeField ? Number(feeField.value) || 0 : undefined
+        collectAmount: Number($("clSale")?.value) || 0,
+        connectionFee: feeField ? Number(feeField.value) || 0 : undefined,
+        via: $("clVia")?.value || "cash"
       });
       const c = res.client;
       const xtream = `Host: ${state.config?.baseUrl || location.origin}\nPort: 443\nUsername: ${c.username}\nPassword: ${c.password}`;
@@ -710,6 +713,12 @@ function bindDashboard() {
         `<strong>✅ Client <code>${esc(c.username)}</code> created</strong> — expiry ${fmtDate(c.expDate)}<br />
          M3U: <code style="word-break:break-all;">${esc(res.links.m3u)}</code><br />
          EPG: <code style="word-break:break-all;">${esc(res.links.epg)}</code><br />
+         ${
+           res.stalker
+             ? `MAC Portal: <code style="word-break:break-all;">${esc(res.stalker.portalUrl)}</code>
+                &nbsp;MAC <code>${esc(res.stalker.mac)}</code><br />`
+             : ""
+         }
          Credits left: <strong>${res.creditsLeft}</strong>
          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
            <button class="mini-btn" id="clCopyXtream">📋 Xtream</button>
@@ -728,6 +737,49 @@ function bindDashboard() {
   $("clSearch")?.addEventListener("input", (e) => {
     const term = e.target.value.trim().toLowerCase();
     paintClients(state.dealerClients.filter((c) => c.username.includes(term)));
+  });
+
+  // Admin: reseller detail drawer + copy buttons inside it
+  $("resellersTable")?.addEventListener("click", (e) => {
+    const viewBtn = e.target.closest("button[data-reseller-view]");
+    if (viewBtn) {
+      openResellerDetail(viewBtn.dataset.resellerView);
+      return;
+    }
+    const topBtn = e.target.closest("button[data-topup]");
+    if (topBtn) {
+      const code = topBtn.dataset.topup;
+      topBtn.disabled = true;
+      adminApi("admin/credits-topup", { code, amount: 10 })
+        .then(() => {
+          toast(`+10 credits → ${code}`);
+          return loadAdmin();
+        })
+        .catch((err) => toast(err.message))
+        .finally(() => {
+          topBtn.disabled = false;
+        });
+    }
+  });
+
+  $("rdCloseBtn")?.addEventListener("click", () => {
+    const card = $("resellerDetailCard");
+    if (card) card.hidden = true;
+  });
+
+  $("rdClientsTable")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-rd-copy]");
+    if (!btn) return;
+    const value = btn.dataset.value || "";
+    if (btn.dataset.rdCopy === "xtream") {
+      const [host, port, user, pass] = value.split("|");
+      copyText(
+        `Host: ${host}\nPort: ${port}\nUsername: ${user}\nPassword: ${pass}`,
+        "Xtream details copied"
+      );
+      return;
+    }
+    copyText(value, btn.dataset.rdCopy === "mac" ? "MAC copied" : "M3U link copied");
   });
 
   $("clientsTable")?.addEventListener("click", async (e) => {
@@ -850,7 +902,7 @@ async function adminLoginWithGoogle() {
   const msg = $("adminAuthMsg");
   try {
     showResult(msg, "Opening Google sign-in…", "warn");
-    const mod = await import("/assets/js/firebase-client.js?v=14");
+    const mod = await import("/assets/js/firebase-client.js?v=15");
     const res = await mod.loginWithGoogle();
     if (!res.ok) return showResult(msg, `❌ ${esc(res.error)}`, "error");
     const token = await mod.getFirebaseIdToken(true);
@@ -880,23 +932,66 @@ async function loadAdmin() {
     }
   }
   if (!state.adminToken) return;
-  try {
-    const [analytics, ordersRes, resellersRes, clientsRes, auditRes] = await Promise.all([
-      adminApi("admin/analytics"),
-      adminApi("admin/orders", { status: "pending" }),
-      adminApi("admin/resellers"),
-      adminApi("admin/clients"),
-      adminApi("admin/audit")
-    ]);
-    paintAdminAnalytics(analytics);
-    state.adminOrders = ordersRes.orders || [];
-    paintAdminOrders(state.adminOrders);
-    paintAdminResellers(resellersRes.resellers || []);
-    paintAdminClients(clientsRes.clients || []);
-    paintAudit(auditRes.audit || []);
-  } catch (err) {
-    showResult($("adminAuthMsg"), `❌ ${esc(err.message)}`, "error");
+
+  // Each call settles independently: ek API fail ho to baaki admin panel phir bhi
+  // bharna chahiye (pehle Promise.all ek failure par sab kuch khaali chhor deta tha).
+  const settle = (p) => p.then((v) => ({ ok: true, v })).catch((e) => ({ ok: false, e }));
+  const [analyticsR, ordersR, resellersR, clientsR, auditR, paymentsR] = await Promise.all([
+    settle(adminApi("admin/analytics")),
+    settle(adminApi("admin/orders", { status: "pending" })),
+    settle(adminApi("admin/resellers")),
+    settle(adminApi("admin/clients")),
+    settle(adminApi("admin/audit")),
+    settle(adminApi("admin/payments", { limit: 50 }))
+  ]);
+
+  const failures = [];
+  if (analyticsR.ok) {
+    paintAdminAnalytics(analyticsR.v);
+    paintLiveAnalytics(analyticsR.v.live);
+    paintErrors(analyticsR.v.errors);
+  } else {
+    failures.push(`analytics: ${analyticsR.e.message}`);
   }
+  if (ordersR.ok) {
+    state.adminOrders = ordersR.v.orders || [];
+    paintAdminOrders(state.adminOrders);
+  } else failures.push(`orders: ${ordersR.e.message}`);
+  if (resellersR.ok) paintAdminResellers(resellersR.v.resellers || []);
+  else failures.push(`resellers: ${resellersR.e.message}`);
+  if (clientsR.ok) paintAdminClients(clientsR.v.clients || []);
+  else failures.push(`clients: ${clientsR.e.message}`);
+  if (auditR.ok) paintAudit(auditR.v.audit || []);
+  if (paymentsR.ok) paintAdminPayments(paymentsR.v);
+
+  if (failures.length) {
+    showResult(
+      $("adminAuthMsg"),
+      `⚠️ Kuch sections load nahi hue (baaki chalu hain):<br /><span class="muted-sm">${esc(
+        failures.join(" | ")
+      )}</span>`,
+      "error"
+    );
+  } else {
+    const msg = $("adminAuthMsg");
+    if (msg) msg.hidden = true;
+  }
+}
+
+function paintAdminPayments(data) {
+  const kv = $("adminKv");
+  if (!kv || !data) return;
+  const total = Number(data.total || 0);
+  const count = Number(data.count || 0);
+  const rows = (data.payments || [])
+    .slice(0, 6)
+    .map((p) => `${esc(p.resellerCode || "direct")} &middot; ${money(p.amount)} &middot; ${esc(p.username || "")}`)
+    .join("<br />");
+  kv.insertAdjacentHTML(
+    "beforeend",
+    `<div><span>Reseller collections</span><strong>${money(total)} (${count} payments)</strong></div>
+     ${rows ? `<div><span>Latest payments</span><strong>${rows}</strong></div>` : ""}`
+  );
 }
 
 function paintAdminAnalytics(a) {
@@ -957,23 +1052,203 @@ function paintAdminOrders(orders) {
 }
 
 function paintAdminResellers(list) {
+  state.adminResellers = list || [];
   const tbody = $("resellersTable")?.querySelector("tbody");
   if (!tbody) return;
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="5" class="muted-sm">No dealers yet — create the first one.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="muted-sm">Abhi koi dealer nahi — pehla dealer banayein.</td></tr>`;
     return;
   }
   tbody.innerHTML = list
+    .map((r) => {
+      const created = r.createdAt ? fmtDate(r.createdAt) : "—";
+      const fresh = r.createdAt && Date.now() - new Date(r.createdAt).getTime() < 7 * 86400 * 1000;
+      const tone = r.status === "active" ? "badge badge-cyan" : "badge badge-gold";
+      return `<tr>
+        <td>
+          <strong>${esc(r.code)}</strong> ${fresh ? '<span class="badge badge-gold">NEW</span>' : ""}
+          <br /><span class="muted-sm">${esc(String(r.apiKey || "").slice(0, 18))}…</span>
+        </td>
+        <td>
+          ${esc(r.name)}${r.selfServe ? ' <span class="muted-sm">(self-serve)</span>' : ""}
+          <br /><span class="muted-sm">${esc(r.brandName || "")} ${esc(r.whatsapp || r.email || "")}</span>
+          <br /><span class="${tone}">${esc(r.status || "active")}</span>
+        </td>
+        <td>${created}${r.lastLoginAt ? `<br /><span class="muted-sm">login: ${fmtDate(r.lastLoginAt)}</span>` : ""}</td>
+        <td>${r.credits ?? 0} <span class="muted-sm">(used ${r.creditsUsed || 0})</span>
+          <br /><span class="muted-sm">Rs ${Number((r.pricing || {}).monthly || 0)}/mo sale</span>
+        </td>
+        <td>${r.clients || 0} <span class="muted-sm">(${r.activeClients || 0} active &middot; ${r.macClients || 0} MAC)</span></td>
+        <td>${money(r.collected || 0)}</td>
+        <td>
+          <div class="cell-actions">
+            <button class="mini-btn" data-reseller-view="${esc(r.code)}">🔍 Detail</button>
+            <button class="mini-btn" data-topup="${esc(r.code)}">+10</button>
+          </div>
+        </td>
+      </tr>`;
+    })
+    .join("");
+}
+
+function paintLiveAnalytics(live) {
+  const stats = $("liveStatsMini");
+  const kv = $("liveKv");
+  const stamp = $("liveUpdated");
+  if (!stats || !kv) return;
+
+  if (!live || !live.summary) {
+    stats.innerHTML = `<div class="stat-card"><strong>—</strong><span>Live data pending</span></div>`;
+    kv.innerHTML = "";
+    if (stamp) stamp.textContent = "Visitor tracking se data aate hi yahan dikhega.";
+    return;
+  }
+
+  const s = live.summary || {};
+  const b = live.breakdowns || {};
+  const mins = Math.round((s.avgSessionSec || 0) / 60);
+  stats.innerHTML = `
+    <div class="stat-card gold"><strong>${s.onlineNow ?? 0}</strong><span>Online now</span></div>
+    <div class="stat-card"><strong>${s.totalSessions ?? 0}</strong><span>Sessions</span></div>
+    <div class="stat-card"><strong>${s.totalPlays ?? 0}</strong><span>Streams played</span></div>
+    <div class="stat-card"><strong>${s.uniqueIps ?? 0}</strong><span>Unique IPs</span></div>`;
+
+  const top = (arr, n) =>
+    (arr || [])
+      .slice(0, n || 4)
+      .map((x) => `${esc(x.label)} (${x.count})`)
+      .join("<br />") || "—";
+
+  kv.innerHTML = `
+    <div><span>Countries</span><strong>${top(b.countries, 4)}</strong></div>
+    <div><span>Devices</span><strong>${top(b.devices, 3)}</strong></div>
+    <div><span>Top watching</span><strong>${top(b.topWatched, 3)}</strong></div>
+    <div><span>Engines</span><strong>${top(b.protocols, 3)}</strong></div>
+    <div><span>Avg session</span><strong>${mins} min</strong></div>
+    <div><span>IPTV vs Web</span><strong>${s.iptvPlays ?? 0} IPTV &middot; ${s.webPlays ?? 0} web</strong></div>`;
+
+  const recent = (live.sessions || []).slice(0, 5);
+  if (recent.length) {
+    kv.innerHTML += `<div><span>Latest visitors</span><strong>${recent
+      .map(
+        (x) =>
+          `${x.isOnline ? "🟢" : "⚪"} ${esc(x.countryLabel || "")} &middot; ${esc(x.deviceType || "")} &middot; ${esc(
+            x.currentView || "live"
+          )}`
+      )
+      .join("<br />")}</strong></div>`;
+  }
+
+  if (stamp) stamp.textContent = `Updated ${live.generatedPkt || ""}`;
+}
+
+function paintErrors(errorData, errorList) {
+  const kv = $("errorKv");
+  const list = $("errorList");
+  if (!kv || !list) return;
+  const count = (errorData || {}).count ?? 0;
+  const unique = (errorData || {}).unique ?? 0;
+  kv.innerHTML = `
+    <div><span>Total errors</span><strong>${count}</strong></div>
+    <div><span>Unique bugs</span><strong>${unique}</strong></div>`;
+
+  const items = errorList || (errorData || {}).latest || [];
+  if (!items.length) {
+    list.innerHTML = `<li class="muted-sm">✅ Koi error record nahi hua — sab theek chal raha hai.</li>`;
+    return;
+  }
+  list.innerHTML = items
+    .slice(0, 8)
     .map(
-      (r) => `<tr>
-        <td><strong>${esc(r.code)}</strong><br /><span class="muted-sm">${esc(r.apiKey || "")}</span></td>
-        <td>${esc(r.name)}<br /><span class="muted-sm">${esc(r.whatsapp || r.email || "")}</span></td>
-        <td>${r.credits} <span class="muted-sm">(used ${r.creditsUsed || 0})</span></td>
-        <td>${r.activeClients || 0}/${r.clients || 0}</td>
-        <td><button class="mini-btn" data-topup="${esc(r.code)}">+10 credits</button></td>
-      </tr>`
+      (e) => `<li>
+        <strong>${esc(String(e.message || "").slice(0, 90))}</strong> &times;${e.count || 1}
+        <div class="muted-sm">
+          ${esc(e.app || "site")} &middot; ${esc(e.route || "")} &middot; ${esc(e.source || "")}${
+        e.browser ? " &middot; " + esc(e.browser) : ""
+      } &middot; last: ${esc(e.lastSeenPkt || "")}
+        </div>
+      </li>`
     )
     .join("");
+}
+
+async function openResellerDetail(code) {
+  const card = $("resellerDetailCard");
+  if (!card) return;
+  card.hidden = false;
+  $("rdTitle").textContent = `Reseller ${code}`;
+  $("rdInfo").innerHTML = `<div><span>Loading</span><strong>…</strong></div>`;
+  try {
+    const d = await adminApi("admin/reseller-detail", { code });
+    const r = d.reseller || {};
+    const price = r.pricing || {};
+    $("rdTitle").textContent = `${r.brandName || r.name || code} — ${r.code}`;
+    $("rdInfo").innerHTML = `
+      <div><span>Name / brand</span><strong>${esc(r.name || "")} ${r.brandName ? "&middot; " + esc(r.brandName) : ""}</strong></div>
+      <div><span>Contact</span><strong>${esc(r.whatsapp || "—")} ${r.email ? "&middot; " + esc(r.email) : ""}</strong></div>
+      <div><span>Bana</span><strong>${r.createdAt ? fmtDate(r.createdAt) : "—"}${r.selfServe ? " (self-serve)" : ""}</strong></div>
+      <div><span>Last login</span><strong>${r.lastLoginAt ? fmtDate(r.lastLoginAt) : "never"}</strong></div>
+      <div><span>Selling price</span><strong>Conn ${money(price.connectionFee || 0)} &middot; ${money(
+      price.monthly || 0
+    )}/mo &middot; ${money(price.quarterly || 0)}/3mo &middot; ${money(price.yearly || 0)}/yr</strong></div>
+      <div><span>Credits</span><strong>${r.credits ?? 0} left (used ${r.creditsUsed || 0})</strong></div>
+      <div><span>Collected / profit</span><strong>${money((d.finance || {}).revenue || 0)} &middot; profit ${money(
+      (d.finance || {}).profit || 0
+    )}</strong></div>
+      <div><span>API key</span><strong>${esc(r.apiKey || "")}</strong></div>`;
+
+    const st = d.stats || {};
+    $("rdStats").innerHTML = `
+      <div class="stat-card"><strong>${st.clients ?? 0}</strong><span>Clients</span></div>
+      <div class="stat-card"><strong>${st.active ?? 0}</strong><span>Active</span></div>
+      <div class="stat-card"><strong>${st.expired ?? 0}</strong><span>Unpaid / expired</span></div>
+      <div class="stat-card"><strong>${st.suspended ?? 0}</strong><span>Blocked</span></div>`;
+
+    const rows = (d.clients || []).map((c) => {
+      const mac = c.mac || "";
+      const xtreamValue = `${((c.links || {}).xtream || {}).host || ""}|${((c.links || {}).xtream || {}).port || 443}|${
+        c.username
+      }|${c.password || ""}`;
+      return `<tr>
+        <td><strong>${esc(c.username)}</strong><br /><span class="muted-sm">${esc(c.whatsapp || "")}</span></td>
+        <td><code>${esc(c.password || "")}</code></td>
+        <td>${
+          mac
+            ? `<code>${esc(mac)}</code><br /><span class="muted-sm">${esc(
+                ((c.links || {}).stalker || {}).portalUrl || ""
+              )}</span>`
+            : "—"
+        }</td>
+        <td>${esc(c.expiresPkt || fmtDate(c.expDate))}</td>
+        <td>${esc(c.status)}</td>
+        <td>
+          <div class="cell-actions">
+            <button class="mini-btn" data-rd-copy="m3u" data-value="${esc(((c.links || {}).m3u) || "")}">📋 M3U</button>
+            <button class="mini-btn" data-rd-copy="xtream" data-value="${esc(xtreamValue)}">📋 Xtream</button>
+            ${mac ? `<button class="mini-btn" data-rd-copy="mac" data-value="${esc(mac)}">📋 MAC</button>` : ""}
+          </div>
+        </td>
+      </tr>`;
+    });
+    $("rdClientsTable").querySelector("tbody").innerHTML =
+      rows.join("") || `<tr><td colspan="6" class="muted-sm">Is reseller ke paas abhi koi client nahi.</td></tr>`;
+
+    const payments = d.payments || [];
+    $("rdPayments").innerHTML =
+      payments
+        .slice(0, 10)
+        .map(
+          (pay) =>
+            `<li>${money(pay.amount)} &middot; ${pay.months ? pay.months + " month" : "connection fee"} &middot; ${esc(
+              pay.username
+            )} &middot; ${esc(pay.via || "cash")} <span class="muted-sm">${fmtDate(pay.createdAt)}</span></li>`
+        )
+        .join("") || `<li class="muted-sm">Koi payment record nahi.</li>`;
+
+    card.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    $("rdInfo").innerHTML = `<div><span>Error</span><strong>${esc(err.message)}</strong></div>`;
+  }
 }
 
 function paintAdminClients(list) {
@@ -1027,7 +1302,7 @@ function bindAdmin() {
     state.adminToken = "";
     localStorage.removeItem(ADMIN_SESSION_KEY);
     try {
-      const mod = await import("/assets/js/firebase-client.js?v=14");
+      const mod = await import("/assets/js/firebase-client.js?v=15");
       await mod.logoutUser();
     } catch {
       /* ignore */
@@ -1201,6 +1476,16 @@ async function init() {
     paintOrderSummary();
     switchTab("order");
   }
+
+  window.__BW_BOOTED = true;
 }
 
-init();
+init().catch((err) => {
+  // Kabhi bhi silently fail na ho — console + user ko saaf message.
+  console.error("Panel init failed", err);
+  const msg = $("adminAuthMsg") || $("cfgMsg");
+  if (msg) {
+    msg.hidden = false;
+    msg.textContent = `❌ Panel load nahi hua: ${err && err.message ? err.message : err}. Page refresh karein.`;
+  }
+});

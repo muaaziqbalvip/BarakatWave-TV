@@ -4,6 +4,8 @@ import { checkRateLimit } from "../_lib/security.js";
 import {
   clearAllAnalytics,
   getAnalyticsDashboardSnapshot,
+  recordClientError,
+  listClientErrors,
   recordStreamPlay,
   recordVisitorSession
 } from "../_lib/tracker.js";
@@ -26,6 +28,10 @@ export default async function handler(req, res) {
   }
 
   if (req.method === "GET") {
+    if (q.errors === "1" || q.action === "errors") {
+      const errors = await listClientErrors(Number(q.limit) || 50);
+      return sendJson(res, 200, { ok: true, count: errors.length, errors }, "no-store");
+    }
     const snap = await getAnalyticsDashboardSnapshot();
     return sendJson(res, 200, snap, "no-store");
   }
@@ -43,6 +49,15 @@ export default async function handler(req, res) {
       if (!(await isFirebaseAdmin(req))) return sendJson(res, 403, { ok: false, error: "Administrator authentication required" }, "no-store");
       await clearAllAnalytics();
       return sendJson(res, 200, { ok: true, cleared: true });
+    }
+
+    if (evtType === "error" || evtType === "js_error") {
+      // Frontend errors are collected here so the owner sees real bugs in admin
+      // instead of having to open the browser console.
+      const errRl = checkRateLimit(req, "analytics_error", 40, 60_000);
+      if (!errRl.allowed) return sendJson(res, 429, { ok: false, error: "Rate limit exceeded" });
+      const record = await recordClientError(req, body);
+      return sendJson(res, 200, { ok: true, errorId: record.id });
     }
 
     if (evtType === "play" || evtType === "play_progress") {
