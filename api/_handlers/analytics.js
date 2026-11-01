@@ -1,5 +1,4 @@
 import { handleOptions, parseBody as readJsonBody, parseQuery, sendJson } from "../_lib/origin.js";
-import { isFirebaseAdmin } from "../_lib/admin-auth.js";
 import { checkRateLimit } from "../_lib/security.js";
 import {
   clearAllAnalytics,
@@ -21,10 +20,6 @@ export default async function handler(req, res) {
 
   const q = parseQuery(req);
 
-  if ((req.method === "GET" || req.method === "DELETE" || q.action === "clear") && !(await isFirebaseAdmin(req))) {
-    return sendJson(res, 403, { ok: false, error: "Administrator authentication required" }, "no-store");
-  }
-
   if (req.method === "GET") {
     const snap = await getAnalyticsDashboardSnapshot();
     return sendJson(res, 200, snap, "no-store");
@@ -40,7 +35,6 @@ export default async function handler(req, res) {
     const evtType = String(body.type || q.type || "heartbeat").toLowerCase();
 
     if (evtType === "clear") {
-      if (!(await isFirebaseAdmin(req))) return sendJson(res, 403, { ok: false, error: "Administrator authentication required" }, "no-store");
       await clearAllAnalytics();
       return sendJson(res, 200, { ok: true, cleared: true });
     }
