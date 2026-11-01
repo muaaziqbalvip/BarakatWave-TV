@@ -67,7 +67,7 @@ export default async function handler(req, res) {
   const createdSec = acct.createdAt
     ? Math.floor(new Date(acct.createdAt).getTime() / 1000) || nowSec - 86400
     : nowSec - 86400;
-  const expSec = acct.expDate ? String(acct.expDate) : String(nowSec + 365 * 86400 * 5);
+  const expSec = acct.effectivePlan === "pro" && acct.expDate ? String(acct.expDate) : String(nowSec + 365 * 86400 * 5);
 
   const userInfo = {
     username: acct.username,

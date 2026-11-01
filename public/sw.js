@@ -1,10 +1,11 @@
-const CACHE_NAME = "barakatwave-tv-3d-v5";
+const CACHE_NAME = "barakatwave-tv-3d-v9";
 const SHELL_ASSETS = [
   "/",
   "/index.html",
   "/manifest.webmanifest",
   "/assets/css/styles.css",
   "/assets/logo-fallback.svg",
+  "/assets/brand/barakatwave-logo.png",
   "/assets/icons/icon-192.png",
   "/assets/icons/icon-512.png",
   "/assets/icons/apple-touch-icon.png",
@@ -15,6 +16,8 @@ const SHELL_ASSETS = [
   "/assets/js/app.js",
   "/assets/js/player.js",
   "/assets/js/vault.js",
+  "/assets/js/membership.js",
+  "/assets/js/reseller-ledger.js",
   "/assets/js/analytics.js",
   "/assets/js/cinema-player.js"
 ];

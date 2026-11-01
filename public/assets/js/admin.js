@@ -27,6 +27,7 @@ import {
 } from "./default-data.js";
 import { fetchImdbTitle } from "./imdb-client.js";
 import {
+  auth,
   subscribeAuth,
   loginWithGoogle,
   loginWithEmailPassword,
@@ -35,10 +36,14 @@ import {
   logoutUser,
   isSandboxPreviewHost,
   dbRead,
+  dbReadStrict,
   dbWrite,
+  dbWriteStrict,
   dbMerge,
   dbDelete
 } from "./firebase-client.js";
+import { ledgerRows, validLedgerKey, validBillingPeriod } from "./reseller-ledger.js";
+import { effectiveMembershipPlan, membershipUpdate } from "./membership.js";
 import { parseM3uPlaylist, exportChannelsToM3u, slugify } from "./m3u-parser.js";
 
 const admState = {
@@ -70,11 +75,13 @@ function initAdmin() {
   bindGitHubPublisher();
   bindDefaultsEditor();
   bindXtreamManager();
+  bindResellerLedger();
   bindSeoAndBlogs();
   bindSupportAndRules();
   bindAnalyticsDashboard();
 
   subscribeAuth(async (user) => {
+    window.dispatchEvent(new Event("bw-admin-identity-change"));
     admState.user = user;
     await evaluateAdminAccess(user);
   });
@@ -160,7 +167,7 @@ async function refreshAnalyticsDashboard({ silent = false } = {}) {
   if (anState.ticking) return;
   anState.ticking = true;
   try {
-    const res = await fetch("/api/analytics", { cache: "no-store", credentials: "omit" });
+    const res = await fetch("/api/analytics", { cache: "no-store", credentials: "omit", headers: { Authorization: `Bearer ${await auth.currentUser?.getIdToken() || ""}` } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data || !data.ok) throw new Error("Analytics unavailable");
@@ -279,7 +286,7 @@ function bindAnalyticsDashboard() {
   document.getElementById("anClearBtn")?.addEventListener("click", async () => {
     if (!window.confirm("Reset all analytics counters? Visitor sessions and play logs will be cleared.")) return;
     try {
-      await fetch("/api/analytics", { method: "DELETE", credentials: "omit" });
+      await fetch("/api/analytics", { method: "DELETE", credentials: "omit", headers: { Authorization: `Bearer ${await auth.currentUser?.getIdToken() || ""}` } });
       refreshAnalyticsDashboard();
     } catch {
       // ignore
@@ -928,7 +935,7 @@ async function persistAllChannels() {
   // Instant server-cache sync for Xtream API & M3U endpoints
   fetch("/api/sync", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${await auth.currentUser?.getIdToken() || ""}` },
     body: JSON.stringify({ path: "channels", value: map })
   }).catch(() => {});
 }
@@ -1523,7 +1530,7 @@ async function persistSingleImdbItem(kind, rec) {
   await dbWrite(path, rec);
   fetch("/api/sync", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${await auth.currentUser?.getIdToken() || ""}` },
     body: JSON.stringify({ path, value: rec })
   }).catch(() => {});
 }
@@ -1850,7 +1857,7 @@ async function runGitHubPublish(previewOnly) {
   try {
     const res = await fetch("/api/github/push", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await auth.currentUser?.getIdToken() || ""}` },
       body: JSON.stringify({
         previewOnly,
         githubToken,
@@ -2069,10 +2076,13 @@ function bindXtreamManager() {
       plan,
       status: "Active",
       maxConnections,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      expDate: plan === "pro" ? Math.floor(Date.now() / 1000) + 30 * 86400 : null
     };
 
-    await dbWrite(`xtreamAccounts/${username}`, record);
+    try {
+      await dbWriteStrict(`xtreamAccounts/${username}`, record);
+    } catch { toast("Could not save account to Firebase. Check your connection and permissions."); return; }
     admState.xtreamAccounts = [
       record,
       ...admState.xtreamAccounts.filter((x) => x.username !== username)
@@ -2101,15 +2111,16 @@ function renderXtreamTable() {
         <td>${esc(x.email || x.displayName || "Viewer")}</td>
         <td>
           <span class="badge ${x.plan === "pro" ? "badge-gold" : "badge-cyan"}">
-            ${x.plan === "pro" ? "👑 PRO VIP" : "FREE"}
+            ${effectiveMembershipPlan(x) === "pro" ? "👑 PRO VIP" : "FREE"}
           </span>
+          ${x.expDate ? `<div class="muted-sm">Expires: ${esc(new Date(Number(x.expDate) * 1000).toLocaleString())}</div>` : ""}
         </td>
         <td>${x.maxConnections || (x.plan === "pro" ? 5 : 1)}</td>
         <td>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button type="button" class="btn btn-sm ${x.plan === "pro" ? "btn-outline" : "btn-gold"}" data-xt-upgrade="${escAttr(x.username)}">
-              ${x.plan === "pro" ? "Set Free" : "👑 Upgrade to PRO VIP"}
-            </button>
+            <button type="button" class="btn btn-sm btn-outline" data-xt-action="trial" data-username="${escAttr(x.username)}" ${x.trialUsedAt ? "disabled" : ""}>1-day trial</button>
+            <button type="button" class="btn btn-sm btn-gold" data-xt-action="month" data-username="${escAttr(x.username)}">Add 30 days</button>
+            <button type="button" class="btn btn-sm btn-outline" data-xt-action="free" data-username="${escAttr(x.username)}">Set free</button>
             <button type="button" class="btn btn-sm btn-danger" data-xt-del="${escAttr(x.username)}">Delete</button>
           </div>
         </td>
@@ -2117,20 +2128,22 @@ function renderXtreamTable() {
     )
     .join("");
 
-  tbody.querySelectorAll("[data-xt-upgrade]").forEach((btn) => {
+  tbody.querySelectorAll("[data-xt-action]").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const acct = admState.xtreamAccounts.find((x) => x.username === btn.dataset.xtUpgrade);
+      const acct = admState.xtreamAccounts.find((x) => x.username === btn.dataset.username);
       if (!acct) return;
-      const newPlan = acct.plan === "pro" ? "free" : "pro";
-      acct.plan = newPlan;
-      acct.maxConnections = newPlan === "pro" ? 5 : 1;
-      await dbWrite(`xtreamAccounts/${acct.username}`, acct);
-      if (acct.uid && !acct.uid.startsWith("manual_")) {
-        await dbMerge(`users/${acct.uid}`, { plan: newPlan });
+      btn.disabled = true;
+      try {
+        const updated = membershipUpdate(acct, btn.dataset.xtAction);
+        await dbWriteStrict(`xtreamAccounts/${acct.username}`, updated);
+        Object.assign(acct, updated);
+        renderXtreamTable();
+        renderKpis();
+        toast(`Membership updated for ${acct.username}.`);
+      } catch (error) {
+        toast(error.message || "Could not save membership. Check Firebase permissions.");
+        btn.disabled = false;
       }
-      renderXtreamTable();
-      renderKpis();
-      toast(`🎉 ${acct.username} is now ${newPlan.toUpperCase()}!`);
     });
   });
 
@@ -2143,6 +2156,73 @@ function renderXtreamTable() {
       renderKpis();
       toast(`Removed Xtream user ${u}`);
     });
+  });
+}
+
+/* Admin-only manual ledger. A record is not a payment or activation. */
+function bindResellerLedger() {
+  const uidInput = document.getElementById("resellerUidInput");
+  const nameInput = document.getElementById("resellerNameInput");
+  const status = document.getElementById("resellerAdminStatus");
+  const rows = document.getElementById("resellerAdminRows");
+  let loadedUid = "";
+  let current = null;
+  const setStatus = (message) => { status.textContent = message; };
+  window.addEventListener("bw-admin-identity-change", () => {
+    loadedUid = ""; current = null;
+    uidInput.value = ""; nameInput.value = ""; rows.textContent = ""; setStatus("");
+  });
+  function render() {
+    const entries = ledgerRows(current?.charges);
+    rows.innerHTML = entries.length ? entries.map((x) => `<tr><td>${esc(x.period)}</td><td>${esc(x.username)}</td><td>Rs ${x.amount}</td><td>${esc(x.status)}</td><td><button type="button" class="btn btn-sm btn-outline" data-period="${escAttr(x.period)}" data-user="${escAttr(x.username)}" data-next="${x.status === "paid" ? "due" : "paid"}">Mark ${x.status === "paid" ? "due" : "paid"}</button></td></tr>`).join("") : `<tr><td colspan="5">No charges recorded.</td></tr>`;
+  }
+  async function load(uid) {
+    loadedUid = ""; current = null; render();
+    if (!validLedgerKey(uid)) throw new Error("Enter a valid Firebase UID.");
+    const data = await dbReadStrict(`resellers/${uid}`);
+    loadedUid = uid; current = data;
+    nameInput.value = data?.name || "";
+    setStatus(data ? `Loaded ${uid}.` : `No reseller record for ${uid}. Enter a name and save.`);
+    render();
+  }
+  document.getElementById("resellerLookupForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try { await load(uidInput.value.trim()); } catch (err) { setStatus(`Could not load ledger: ${err.message}`); }
+  });
+  document.getElementById("resellerSaveBtn")?.addEventListener("click", async () => {
+    const uid = uidInput.value.trim(), name = nameInput.value.trim();
+    if (!validLedgerKey(uid) || !name || name.length > 80 || uid !== loadedUid) return setStatus("Load this UID and enter a name first.");
+    try {
+      // Update only the name; never replace the charges subtree.
+      await dbWriteStrict(`resellers/${uid}/name`, name);
+      await load(uid);
+    } catch (err) { setStatus(`Could not save reseller: ${err.message}`); }
+  });
+  document.getElementById("resellerChargeForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const uid = uidInput.value.trim();
+    const username = document.getElementById("resellerChargeUser").value.trim();
+    const period = document.getElementById("resellerChargePeriod").value;
+    if (!current || uid !== loadedUid || !validLedgerKey(username) || !validBillingPeriod(period)) return setStatus("Load a saved reseller and enter a valid username and period.");
+    try {
+      const account = await dbReadStrict(`xtreamAccounts/${username}`);
+      if (!account || account.username !== username) throw new Error("Xtream account not found.");
+      const path = `resellers/${uid}/charges/${period}/${username}`;
+      if (await dbReadStrict(path)) throw new Error("A charge already exists for this username and period.");
+      await dbWriteStrict(path, { amount: 100, status: "due", createdAt: new Date().toISOString() });
+      await load(uid);
+      setStatus("Charge recorded. It does not activate service.");
+    } catch (err) { setStatus(`Could not record charge: ${err.message}`); }
+  });
+  rows?.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-period]");
+    const uid = uidInput.value.trim();
+    if (!btn || !current || uid !== loadedUid || !validBillingPeriod(btn.dataset.period) || !validLedgerKey(btn.dataset.user) || !["paid", "due"].includes(btn.dataset.next)) return;
+    if (btn.dataset.next === "paid" && !confirm("Have you manually verified this payment?")) return;
+    try {
+      await dbWriteStrict(`resellers/${uid}/charges/${btn.dataset.period}/${btn.dataset.user}/status`, btn.dataset.next);
+      await load(uid);
+    } catch (err) { setStatus(`Could not update charge: ${err.message}`); }
   });
 }
 

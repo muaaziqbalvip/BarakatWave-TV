@@ -101,6 +101,7 @@
         <button class="admin-nav-btn" data-adm-tab="github">🐙 GitHub M3U8 Push</button>
         <button class="admin-nav-btn" data-adm-tab="defaults">🎥 Intro, Offline &amp; PRO Videos</button>
         <button class="admin-nav-btn" data-adm-tab="xtream">⚡ Xtream &amp; PRO Users</button>
+        <button class="admin-nav-btn" data-adm-tab="resellers">🤝 Reseller Ledger</button>
         <button class="admin-nav-btn" data-adm-tab="seo">🚀 Blogs &amp; Search Console</button>
         <button class="admin-nav-btn" data-adm-tab="support">🎫 Tickets, Reviews &amp; Rules</button>
       </aside>
@@ -814,7 +815,7 @@
                 </select>
               </div>
               <div class="form-group">
-                <label>Max Connections</label>
+                <label>Max Connections (informational, not enforced)</label>
                 <input type="number" id="manXtConn" class="input-field" value="5" min="1" max="20" />
               </div>
               <button type="submit" class="btn btn-gold">+ Create Xtream User</button>
@@ -823,7 +824,7 @@
 
           <div class="glass-card" style="padding:22px;">
             <h3 style="margin-top:0;">⚡ Registered Xtream Server Accounts</h3>
-            <p class="muted-sm">When a customer contacts <strong>0306-2015326</strong>, click <strong>Upgrade to PRO VIP</strong> next to their username for instant activation across Web &amp; IPTV apps!</p>
+            <p class="muted-sm">After manually reviewing the payment, use <strong>Add 30 days</strong> for a paid account or <strong>1-day trial</strong> for an eligible account. Access expires automatically for Xtream playback. Web PRO playback is currently unavailable.</p>
             <div class="table-wrap">
               <table class="data-table">
                 <thead>
@@ -839,6 +840,31 @@
                 <tbody id="admXtreamTbody"></tbody>
               </table>
             </div>
+          </div>
+        </section>
+
+        <section data-adm-panel="resellers" hidden>
+          <div class="glass-card" style="padding:22px;">
+            <h2>Reseller ledger</h2>
+            <p class="muted-sm">Record manually reviewed charges at Rs 100 per user per 30 days. Ledger entries do not activate subscriptions or verify payments. Ask the reseller to sign in and share the UID shown on their Reseller page.</p>
+            <form id="resellerLookupForm" class="form-stack">
+              <label for="resellerUidInput">Reseller Firebase UID</label>
+              <input id="resellerUidInput" class="input-field" required pattern="[A-Za-z0-9_-]{1,128}" placeholder="Firebase UID" />
+              <label for="resellerNameInput">Reseller display name</label>
+              <input id="resellerNameInput" class="input-field" maxlength="80" placeholder="Name" />
+              <div><button class="btn btn-outline" type="submit">Load ledger</button> <button class="btn btn-gold" type="button" id="resellerSaveBtn">Save reseller</button></div>
+            </form>
+            <div id="resellerAdminStatus" class="muted-sm" role="status"></div>
+          </div>
+          <div class="glass-card" style="padding:22px;margin-top:18px;">
+            <h3>Add a charge</h3>
+            <form id="resellerChargeForm" class="form-stack">
+              <label for="resellerChargeUser">Existing Xtream username</label><input id="resellerChargeUser" class="input-field" required pattern="[A-Za-z0-9_-]{1,128}" />
+              <label for="resellerChargePeriod">Billing period (label)</label><input id="resellerChargePeriod" class="input-field" type="month" required />
+              <button type="submit" class="btn btn-primary">Record Rs 100 due</button>
+            </form>
+            <p class="muted-sm">One charge per username and period. Confirm payment outside the app before marking it paid. Manage activation separately in Xtream &amp; PRO Users.</p>
+            <div class="table-wrap"><table class="data-table"><thead><tr><th>Period</th><th>Username</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead><tbody id="resellerAdminRows"></tbody></table></div>
           </div>
         </section>
 

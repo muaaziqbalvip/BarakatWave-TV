@@ -4,6 +4,7 @@ import {
   parseBody,
   sendJson
 } from "../_lib/origin.js";
+import { isFirebaseAdmin } from "../_lib/admin-auth.js";
 import { checkRateLimit } from "../_lib/security.js";
 import { getChannels, normalizeChannel } from "../_lib/rtdb.js";
 import { BRAND } from "../../data/catalog.js";
@@ -79,6 +80,9 @@ export default async function handler(req, res) {
   }
 
   const body = await parseBody(req);
+  if (!body.previewOnly && !(await isFirebaseAdmin(req))) {
+    return sendJson(res, 403, { ok: false, error: "Administrator authentication required" }, "no-store");
+  }
   const token = String(body.githubToken || process.env.GITHUB_TOKEN || "").trim();
   const repo = String(body.repo || process.env.GITHUB_REPO || "muaaziqbalvip/BarakatWave-TV").trim();
   const branch = String(body.branch || process.env.GITHUB_BRANCH || "main").trim();
