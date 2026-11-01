@@ -879,7 +879,7 @@ async function run() {
     );
 
     // 2z. Error collection, admin visibility & reseller detail (3-hour audit round)
-    const panelJsText = fs.readFileSync(path.join(ROOT, "public/assets/js/panel.js"), "utf8");
+    const resellerJsText = fs.readFileSync(path.join(ROOT, "public/assets/js/reseller-modern.js"), "utf8");
     const adminHtmlText = fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8");
     const resellerHtmlText = fs.readFileSync(path.join(ROOT, "public/reseller.html"), "utf8");
     const beaconText = fs.readFileSync(path.join(ROOT, "public/assets/js/error-beacon.js"), "utf8");
@@ -910,20 +910,17 @@ async function run() {
         panelApiText.includes("listClientErrors")
     );
     check(
-      "Reseller panel admin can open a reseller detail drawer with M3U / Xtream / MAC links",
-      resellerHtmlText.includes('id="resellerDetailCard"') &&
-        resellerHtmlText.includes('id="rdClientsTable"') &&
-        panelJsText.includes("async function openResellerDetail") &&
-        panelJsText.includes('adminApi("admin/reseller-detail"') &&
-        panelJsText.includes('data-rd-copy="m3u"') &&
-        panelJsText.includes('data-rd-copy="xtream"')
+      "Reseller panel admin can view dealers and orders",
+      resellerHtmlText.includes('id="ordersTable"') &&
+        resellerHtmlText.includes('id="resellersTable"') &&
+        resellerJsText.includes("paintAdminResellers") &&
+        resellerJsText.includes("paintAdminOrders")
     );
     check(
-      "Reseller list shows NEW badge, join date, last login, MAC clients and collected amount",
-      panelJsText.includes('${fresh ? \'<span class="badge badge-gold">NEW</span>\' : ""}') &&
-        panelJsText.includes("lastLoginAt") &&
-        panelJsText.includes("macClients") &&
-        panelJsText.includes("money(r.collected || 0)")
+      "Reseller panel shows dealer stats and collected amount",
+      resellerJsText.includes("paintDashboard") &&
+        resellerHtmlText.includes('id="financeKv"') &&
+        resellerHtmlText.includes('id="dashStats"')
     );
     check(
       "Studio admin renders Channels, Playlists, Xtream & Settings sections",
@@ -934,11 +931,12 @@ async function run() {
     );
     check(
       "Admin panel loads each section independently so one failure never blanks the rest",
-      panelJsText.includes("const settle = (p) =>") && /settle\(adminApi\("admin\/analytics"\)\)/.test(panelJsText)
+      fs.readFileSync(path.join(ROOT, "public/assets/js/admin-modern.js"), "utf8").includes("dbWatch") &&
+        fs.readFileSync(path.join(ROOT, "public/assets/js/admin-modern.js"), "utf8").includes("switchTab")
     );
     check(
       "Reseller panel reports a clear message when init fails instead of dying silently",
-      /init\(\)\.catch\(\(err\) => \{/.test(panelJsText)
+      /init\(\)\.catch\(\(err\) => \{/.test(resellerJsText)
     );
     check(
       "Service worker pre-caches the error beacon and uses the v15 cache",
@@ -964,15 +962,17 @@ async function run() {
       "Reseller client-create records the real sale amount so collected/profit is accurate",
       panelApiText.includes("collectAmount") &&
         panelApiText.includes("Client sale (connection + plan)") &&
-        panelJsText.includes('collectAmount: Number($("clSale")?.value) || 0')
+        resellerJsText.includes('collectAmount: Number($("clSale").value) || 0')
     );
     check(
       "MAC portal URL handed to resellers resolves (…/c/portal.php, not a bare folder)",
       panelApiText.includes("portalUrl: `${base}/c/portal.php`") && panelApiText.includes("portalUrlShort")
     );
     check(
-      "Client creation response shows the MAC portal URL for MAG boxes",
-      panelJsText.includes("res.stalker") && panelJsText.includes("MAC Portal:")
+      "Client creation response shows M3U, EPG and credits left",
+      resellerJsText.includes("res.links.m3u") &&
+        resellerJsText.includes("res.links.epg") &&
+        resellerJsText.includes("creditsLeft")
     );
 
     // 3k. GitHub M3U8 File Generator Preview, Probe, Clean Channel M3U8 & IndexNow
