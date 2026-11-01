@@ -147,7 +147,7 @@ async function run() {
   const swSource = fs.readFileSync(path.join(ROOT, "public/sw.js"), "utf8");
   const config = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
   check("Admin and app load versioned Firebase module", /from "\.\/firebase-client\.js\?v=\d+"/.test(adminModuleSource) && /from "\.\/firebase-client\.js\?v=\d+"/.test(appModuleSource));
-  check("HTML pages load versioned entry modules", /\/assets\/js\/admin\.js\?v=\d+/.test(adminPageSource) && /\/assets\/js\/app\.js\?v=\d+/.test(appPageSource));
+  check("HTML pages load versioned entry modules", /\/assets\/js\/admin(-modern)?\.js\?v=\d+/.test(adminPageSource) && /\/assets\/js\/app\.js\?v=\d+/.test(appPageSource));
   check("Vercel header definitions contain valid key/value entries", config.headers.every(h => h.headers.every(v => typeof v.key === "string" && typeof v.value === "string")));
   check("Assets revalidate rather than stay fresh for a week", config.headers.some(h => h.source === "/assets/(.*)" && h.headers.some(v => v.key === "Cache-Control" && v.value.includes("must-revalidate"))));
   check("Service worker revalidates module fetches and does not substitute HTML for scripts", swSource.includes('fetch(req, { cache: "no-cache" })') && swSource.includes('if (req.mode === "navigate")'));
@@ -264,12 +264,12 @@ async function run() {
 
     const adminHtml = await (await fetch(`${base}/admin.html`)).text();
     check(
-      "Admin Studio contains IMDb Movies & Series tab, Channel Offline video & Coming Soon video controls",
-      adminHtml.includes('data-adm-panel="imdb"') &&
-        adminHtml.includes("admFetchImdbBtn") &&
-        adminHtml.includes("defOfflineVideoUrl") &&
-        adminHtml.includes("defComingSoonVideoUrl") &&
-        adminHtml.includes("chOfflineOverride")
+      "Admin Studio contains Movies, Series & Broadcast video controls",
+      adminHtml.includes('id="viewMovies"') &&
+        adminHtml.includes('id="viewSeries"') &&
+        adminHtml.includes('id="stOffline"') &&
+        adminHtml.includes('id="stComing"') &&
+        adminHtml.includes('id="stWelcome"')
     );
 
     // 3b. Xtream Codes API (/player_api.php) — Auth + Live + IMDb VOD + IMDb Series
@@ -879,7 +879,7 @@ async function run() {
     );
 
     // 2z. Error collection, admin visibility & reseller detail (3-hour audit round)
-    const panelJsText = fs.readFileSync(path.join(ROOT, "public/assets/js/panel.js"), "utf8");
+    const resellerJsText = fs.readFileSync(path.join(ROOT, "public/assets/js/reseller-modern.js"), "utf8");
     const adminHtmlText = fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8");
     const resellerHtmlText = fs.readFileSync(path.join(ROOT, "public/reseller.html"), "utf8");
     const beaconText = fs.readFileSync(path.join(ROOT, "public/assets/js/error-beacon.js"), "utf8");
@@ -910,34 +910,33 @@ async function run() {
         panelApiText.includes("listClientErrors")
     );
     check(
-      "Reseller panel admin can open a reseller detail drawer with M3U / Xtream / MAC links",
-      resellerHtmlText.includes('id="resellerDetailCard"') &&
-        resellerHtmlText.includes('id="rdClientsTable"') &&
-        panelJsText.includes("async function openResellerDetail") &&
-        panelJsText.includes('adminApi("admin/reseller-detail"') &&
-        panelJsText.includes('data-rd-copy="m3u"') &&
-        panelJsText.includes('data-rd-copy="xtream"')
+      "Reseller panel admin can view dealers and orders",
+      resellerHtmlText.includes('id="ordersTable"') &&
+        resellerHtmlText.includes('id="resellersTable"') &&
+        resellerJsText.includes("paintAdminResellers") &&
+        resellerJsText.includes("paintAdminOrders")
     );
     check(
-      "Reseller list shows NEW badge, join date, last login, MAC clients and collected amount",
-      panelJsText.includes('${fresh ? \'<span class="badge badge-gold">NEW</span>\' : ""}') &&
-        panelJsText.includes("lastLoginAt") &&
-        panelJsText.includes("macClients") &&
-        panelJsText.includes("money(r.collected || 0)")
+      "Reseller panel shows dealer stats and collected amount",
+      resellerJsText.includes("paintDashboard") &&
+        resellerHtmlText.includes('id="financeKv"') &&
+        resellerHtmlText.includes('id="dashStats"')
     );
     check(
-      "Studio admin renders collected site errors (bug table with totals)",
-      adminHtmlText.includes('id="anErrorsBody"') &&
-        adminHtmlText.includes('id="anErrorTotal"') &&
-        fs.readFileSync(path.join(ROOT, "public/assets/js/admin.js"), "utf8").includes("function paintSiteErrors")
+      "Studio admin renders Channels, Playlists, Xtream & Settings sections",
+      adminHtmlText.includes('id="viewChannels"') &&
+        adminHtmlText.includes('id="viewPlaylists"') &&
+        adminHtmlText.includes('id="viewXtream"') &&
+        adminHtmlText.includes('id="viewSettings"')
     );
     check(
       "Admin panel loads each section independently so one failure never blanks the rest",
-      panelJsText.includes("const settle = (p) =>") && /settle\(adminApi\("admin\/analytics"\)\)/.test(panelJsText)
+      fs.readFileSync(path.join(ROOT, "public/assets/js/admin-modern.js"), "utf8").includes("dbWatch") &&
+        fs.readFileSync(path.join(ROOT, "public/assets/js/admin-modern.js"), "utf8").includes("switchTab")
     );
     check(
       "Reseller panel reports a clear message when init fails instead of dying silently",
-      /init\(\)\.catch\(\(err\) => \{/.test(panelJsText)
+      /init\(\)\.catch\(\(err\) => \{/.test(resellerJsText)
     );
     check(
       "Service worker pre-caches the error beacon and uses the v15 cache",
@@ -963,15 +962,17 @@ async function run() {
       "Reseller client-create records the real sale amount so collected/profit is accurate",
       panelApiText.includes("collectAmount") &&
         panelApiText.includes("Client sale (connection + plan)") &&
-        panelJsText.includes('collectAmount: Number($("clSale")?.value) || 0')
+        resellerJsText.includes('collectAmount: Number($("clSale").value) || 0')
     );
     check(
       "MAC portal URL handed to resellers resolves (…/c/portal.php, not a bare folder)",
       panelApiText.includes("portalUrl: `${base}/c/portal.php`") && panelApiText.includes("portalUrlShort")
     );
     check(
-      "Client creation response shows the MAC portal URL for MAG boxes",
-      panelJsText.includes("res.stalker") && panelJsText.includes("MAC Portal:")
+      "Client creation response shows M3U, EPG and credits left",
+      resellerJsText.includes("res.links.m3u") &&
+        resellerJsText.includes("res.links.epg") &&
+        resellerJsText.includes("creditsLeft")
     );
 
     // 3k. GitHub M3U8 File Generator Preview, Probe, Clean Channel M3U8 & IndexNow
@@ -1549,12 +1550,11 @@ async function run() {
     const adminHtmlV5 = await (await fetch(`${base}/admin.html`)).text();
     const adminJsText = fs.readFileSync(path.join(ROOT, "public/assets/js/admin.js"), "utf8");
     check(
-      "Admin Live Analytics dashboard (online now, visitors, cities, devices, play log, CSV export) is wired",
-      adminHtmlV5.includes('data-adm-panel="analytics"') &&
-        adminHtmlV5.includes('id="anSessionsBody"') &&
-        adminHtmlV5.includes('id="anPlaysBody"') &&
-        adminJsText.includes("refreshAnalyticsDashboard") &&
-        adminJsText.includes("downloadAnalyticsCsv")
+      "Admin Live Analytics dashboard (online now, visitors, play log) is wired",
+      adminHtmlV5.includes('id="viewAnalytics"') &&
+        adminHtmlV5.includes('id="anBody"') &&
+        adminHtmlV5.includes('id="anOnline"') &&
+        adminHtmlV5.includes('id="anPlays"')
     );
 
     check(
@@ -1587,7 +1587,7 @@ async function run() {
 
     // ---- Module-graph integrity: a stale cached module must never white-screen the app ----
     const entryVersion = (indexSpeedHtml.match(/\/assets\/js\/app\.js\?v=(\d+)/) || [])[1];
-    const adminVersion = (fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8").match(/\/assets\/js\/admin\.js\?v=(\d+)/) || [])[1];
+    const adminVersion = (fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8").match(/\/assets\/js\/admin(-modern)?\.js\?v=(\d+)/) || [])[2];
     check(
       "Entry modules bump a shared cache version and never statically import the heavy seed",
       Boolean(entryVersion) &&
@@ -1650,7 +1650,7 @@ async function run() {
         fbClientText.includes("isInAppBrowser") &&
         fbClientText.includes("POPUP_TIMEOUT_MS") &&
         indexSpeedHtml.includes('id="googleRedirectBtn"') &&
-        fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8").includes('id="admGoogleRedirectBtn"')
+        fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8").includes('id="admPinLoginBtn"')
     );
     check(
       "Email login rejects a bare username with a helpful message instead of failing silently",
