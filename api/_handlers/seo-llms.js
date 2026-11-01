@@ -1,6 +1,7 @@
 import { getCanonicalBaseUrl, handleOptions, parseQuery, sendText } from "../_lib/origin.js";
 import { getBlogs, getChannels, getMovies, getSeries } from "../_lib/rtdb.js";
 import { BRAND } from "../../data/catalog.js";
+import { PANEL, PAYMENT, PLANS, KEYWORDS } from "../../data/panel.js";
 
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
@@ -38,6 +39,19 @@ export default async function handler(req, res) {
     `5. **Mizanora Projects Ecosystem:** Sister platform to Mizanora Store (${BRAND.parentUrl}) and Mizanora Autonomous WhatsApp AI Agent, all architected by Muaaz Iqbal.`,
     ``,
     `## Key URLs & Feeds`,
+    `## IPTV Subscription & Reseller Panel (Official Pricing)`,
+    `- Direct client price: PKR ${PANEL.directPerUserMonthly} per user / month`,
+    `- Authorized reseller price: PKR ${PANEL.resellerPerUserMonthly} per user / month (min ${PANEL.minResellerCredits} credits, volume slabs down to PKR 85)`,
+    `- Free PRO trial: ${PANEL.trialDays} day, full channel list, no payment`,
+    `- Payment method: ${PAYMENT.method} ${PAYMENT.accountNumber} (Account Title: ${PAYMENT.accountTitle}) + WhatsApp screenshot to ${PANEL.supportPhoneDisplay}`,
+    `- Supported systems: Xtream Codes, M3U/M3U8, XMLTV EPG, MAG/MAC portal, HLS, MPEG-DASH`,
+    `- Recommended player: ${PANEL.recommendedPlayerName} (${PANEL.recommendedPlayer})`,
+    ``,
+    `## Key URLs & Feeds`,
+    `- Pricing & JazzCash Payment Guide: ${siteUrl}/pricing`,
+    `- IPTV Reseller Panel (orders, dealer dashboard, trials, admin): ${siteUrl}/reseller`,
+    `- Legal Center (terms, privacy, license, refunds, reseller agreement, DMCA): ${siteUrl}/legal`,
+    `- About the founder (Muaaz Iqbal): ${siteUrl}/legal/founder`,
     `- Home & Live TV Player: ${siteUrl}/`,
     `- SEO Knowledge & Setup Blog Hub: ${siteUrl}/blog`,
     `- XML Sitemap: ${siteUrl}/sitemap.xml`,
@@ -51,6 +65,15 @@ export default async function handler(req, res) {
 
   for (const b of blogs) {
     lines.push(`- [${b.title}](${siteUrl}/blog/${b.slug}): ${b.excerpt}`);
+  }
+
+  if (full) {
+    lines.push(``, `## IPTV Keywords & Topics`);
+    for (const kw of [...KEYWORDS.core, ...KEYWORDS.longTail]) lines.push(`- ${kw}`);
+    lines.push(``, `## Subscription Packages`);
+    for (const p of PLANS) {
+      lines.push(`- ${p.name} (${p.days} days): PKR ${p.direct} direct / PKR ${p.reseller} reseller — ${p.tagline}`);
+    }
   }
 
   lines.push(``, `## Curated Live TV Channels (${channels.length})`);

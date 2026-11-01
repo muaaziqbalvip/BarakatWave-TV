@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://i.ibb.co/tpx2wHGY/Barakat-Wave-Streaming-Network-Logo.png" alt="Barakat Wave Streaming Network Logo" width="220px" />
+<img src="public/assets/img/brand/barakatwave-logo.png" alt="Barakat Wave Streaming Network Logo" width="200px" />
 
 # 🌊 BarakatWave Live TV (`BarakatWave-TV`) 📺
 
@@ -32,6 +32,70 @@
 | **☀️ 6 Luxury Light & Dark Broadcast Themes** | First-class Light Themes (*☀️ Pearl Daylight* default, *📜 Ivory Studio*, *💎 Sky Breeze*) aur Dark Broadcast Themes (*🌊 Barakat Midnight*, *👑 Mizanora Gold*, *🔮 Noor Amethyst*). |
 | **🚀 Viral Google Search Console, AI SEO & Muaaz Iqbal Blogs** | Dynamic `/sitemap.xml`, `/rss.xml`, `/llms.txt`, `/llms-full.txt`, IndexNow auto-ping, aur **16 Server-Side Rendered (SSR) SEO Blogs** (`/blog/<slug>`) — jin me **Muaaz Iqbal** aur **Mizanora Projects** par dedicated biographical aur engineering articles shamil hain! |
 | **👑 BarakatWave TV PRO VIP & Support** | PRO VIP channels unlock karwane ke liye official rabta: **0306-2015326** (`+92 306 2015326` WhatsApp/Call) + Reviews & Support Ticket system. |
+
+---
+
+## 💳 IPTV Subscriptions, Reseller Panel & JazzCash Payments (v3.0)
+
+The flagship **IPTV Reseller Panel** lives at **`/reseller`**, with public pricing at **`/pricing`** and all policies at **`/legal`**.
+
+| Offering | Price | Notes |
+| --- | --- | --- |
+| **Free PRO Trial** | **PKR 0** | 1 day (24h), full PRO channel list + IMDb VOD, one per person/device |
+| **Direct client** | **PKR 200** / user / month | 1 device, Xtream + M3U + EPG, WhatsApp support |
+| **Reseller / dealer** | **PKR 100** / user / month | Min 5 credits, credits never expire, retail floor PKR 200 |
+| Volume slabs | 25+ → 95, 50+ → 90, 100+ → 85 | Per user / month |
+
+**Payment (manual, verified):**
+1. Send the amount to **JazzCash `0306-2015326`** (Account Title: *Muaaz Iqbal*).
+2. Screenshot the JazzCash confirmation (keep the TID).
+3. WhatsApp the screenshot to **0306-2015326** with your username / dealer code.
+4. Admin approves the order → PRO or dealer credits are activated (usually < 30 min).
+
+### Panel feature set
+
+- **Public:** plan cards, order creation with auto total (Rs 200 direct / Rs 100 reseller), order tracking by ID, free 1-day trial with auto-generated Xtream credentials, optional payment-screenshot upload.
+- **Dealer dashboard:** code + `bwr_…` API key login, credit balance, create client (1 credit = 30 days), auto M3U Plus + XMLTV EPG link generation, password auto-generation, MAC field for MAG boxes, renew / suspend, expiry + days-left tracking, retail value estimate.
+- **Admin control:** pending order review with one-click approve/reject auto-provisioning, dealer creation with license key, credit top-ups, all-clients table, revenue & 7-day analytics, audit log, PIN rotation.
+- **Security:** HMAC-SHA256 signed `/s/<token>` playback links with short expiry (default 15 min), constant-time verification, per-account connection fingerprint caps, opaque links (no credentials in URLs), SHA-256 hashed license keys, rate limited order/trial/PIN endpoints, server-only `/panel` RTDB node.
+
+### API surface (`/api/panel`)
+
+| Action | Auth | Purpose |
+| --- | --- | --- |
+| `config` / `plans` | public | Plans, prices, payment guide, feature matrix |
+| `order` | public | Create order (Rs 200 / Rs 100 pricing enforced server-side) |
+| `order-status` | public | Track an order by ID |
+| `trial` | public | Claim the free 1-day PRO trial (abuse-guarded) |
+| `resolve` | signed | Resolve `/s/<token>` → signed stream redirect |
+| `reseller/login`, `reseller/stats`, `reseller/clients` | dealer key | Dealer dashboard data |
+| `reseller/client-create`, `client-renew`, `client-suspend`, `secure-link` | dealer key | Manage clients (credits enforced) |
+| `admin/analytics`, `admin/orders`, `admin/order-review` | admin | Revenue, order approval + provisioning |
+| `admin/resellers`, `admin/reseller-create`, `admin/credits-topup` | admin | Dealer & credit management |
+| `admin/clients`, `admin/client-create/renew/suspend`, `admin/audit` | admin | Full client + audit access |
+| `admin/pin-login`, `admin/pin-set` | PIN / admin | Owner PIN session (12h HMAC) & rotation |
+
+### Admin login (three ways — fixes "admin login not working")
+
+1. **Owner PIN** (recommended fallback): `/admin.html` → *Unlock with Owner PIN*. Bootstrap PIN is **`03062015326`**; change it immediately in **`/reseller` → Admin Control → Security** or by setting `BARAKATWAVE_ADMIN_PIN` in Vercel.
+2. **Firebase Google / Email+Password** — requires the exact domain in Firebase → Authentication → Settings → **Authorized domains** (`barakatwave.vercel.app`, plus any `*.vercel.app` preview domain you use).
+3. **Preview Owner Mode** — automatically shown on temporary preview hosts (e.g. sandbox URLs) where Firebase cannot authorize the domain.
+
+> If Google popup says `auth/unauthorized-domain`, the Owner PIN path always works because it is verified server-side, not by Firebase.
+
+---
+
+## 🧩 Required env vars for the panel
+
+```bash
+FIREBASE_DATABASE_SECRET=...        # so serverless functions can write /panel, /xtreamAccounts
+BARAKATWAVE_SIGNING_SECRET=...      # HMAC secret for signed links + PIN sessions (openssl rand -hex 32)
+BARAKATWAVE_ADMIN_PIN=...           # owner PIN override (bootstrap default: 03062015326)
+BW_LINK_TTL_SEC=900                 # signed playback link lifetime
+BARAKATWAVE_ADMIN_TOKEN=...         # optional script/CI admin token
+```
+
+Without `FIREBASE_DATABASE_SECRET` the panel still functions on the in-process/local mirror, but orders/dealers/clients may not persist across serverless invocations.
 
 ---
 

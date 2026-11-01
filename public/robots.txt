@@ -36,6 +36,10 @@ User-agent: Applebot-Extended
 Allow: /
 
 Sitemap: https://barakatwave.vercel.app/sitemap.xml
+# Pricing & Packages: https://barakatwave.vercel.app/pricing
+# IPTV Reseller Panel: https://barakatwave.vercel.app/reseller
+# Legal & Policies: https://barakatwave.vercel.app/legal
+# Founder profile (Muaaz Iqbal): https://barakatwave.vercel.app/about-founder
 # RSS Feed: https://barakatwave.vercel.app/rss.xml
 # AI Knowledge Base: https://barakatwave.vercel.app/llms.txt
 # Full AI Corpus: https://barakatwave.vercel.app/llms-full.txt

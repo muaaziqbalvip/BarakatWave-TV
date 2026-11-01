@@ -390,6 +390,13 @@ code {
   font-family: inherit;
 }
 
+a.nav-tab {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .nav-tab:hover {
   color: var(--text);
   background: var(--bg-hover);
@@ -1380,6 +1387,17 @@ select.input-field {
   cursor: pointer;
   font-family: inherit;
   transition: all 0.16s ease;
+}
+
+a.admin-nav-btn {
+  text-decoration: none;
+}
+
+a.admin-nav-btn::after {
+  content: "↗";
+  margin-left: auto;
+  font-size: 0.72rem;
+  opacity: 0.6;
 }
 
 .admin-nav-btn:hover {
@@ -2611,3 +2629,117 @@ tr.drag-over-row td {
 
 
 
+
+/* ==========================================================================
+   Homepage IPTV Pricing / Reseller / Founder Band (Mizanora Projects)
+   ========================================================================== */
+.pricing-band {
+  padding: 34px 16px 10px;
+}
+
+.pricing-band-head {
+  display: flex;
+  gap: 18px;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.pricing-band-head h2 {
+  font-size: clamp(1.25rem, 2.6vw, 1.75rem);
+  margin: 8px 0 8px;
+  line-height: 1.25;
+}
+
+.pricing-band-head p {
+  max-width: 62ch;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.pricing-band .hl {
+  color: var(--gold);
+}
+
+.pricing-band-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pricing-band-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(206px, 1fr));
+  gap: 12px;
+}
+
+.pb-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.16s ease, border-color 0.16s ease;
+}
+
+.pb-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary);
+}
+
+.pb-card.pb-hot {
+  border-color: var(--gold);
+  box-shadow: var(--shadow);
+}
+
+.pb-card h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.pb-price {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: var(--primary);
+}
+
+.pb-price small {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-left: 3px;
+}
+
+.pb-card .btn {
+  margin-top: auto;
+}
+
+.founder-band {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 18px;
+  margin: 16px 0 0;
+  flex-wrap: wrap;
+}
+
+.founder-band img {
+  width: 96px;
+  height: 96px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 2px solid var(--gold);
+  flex: 0 0 auto;
+}
+
+@media (max-width: 620px) {
+  .founder-band img {
+    width: 72px;
+    height: 72px;
+  }
+}
