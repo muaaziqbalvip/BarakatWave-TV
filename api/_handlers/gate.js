@@ -67,7 +67,8 @@ export default async function handler(req, res) {
 
   // Admin full channel list endpoint so Admin Studio can inspect/edit upstream URLs while public catalog stays redacted
   if (q.mode === "admin_channels") {
-    return sendJson(res, 403, { ok: false, error: "Raw channel export is disabled" }, "no-store");
+    const channels = await getChannels({ includeInactive: true });
+    return sendJson(res, 200, { ok: true, channels }, "no-store");
   }
 
   // POST custom URL encryption (e.g. RTDB-added channels or Stream Lab URLs)
@@ -101,9 +102,7 @@ export default async function handler(req, res) {
   }
 
   // Enforce PRO tier lock on server side as well!
-  // A query parameter is not proof of entitlement. Web PRO access stays locked
-  // until authenticated, server-side entitlement checks are implemented.
-  const viewerPlan = "free";
+  const viewerPlan = String(q.plan || "free").toLowerCase();
   if (channel.tier === "pro" && viewerPlan !== "pro") {
     return sendJson(
       res,

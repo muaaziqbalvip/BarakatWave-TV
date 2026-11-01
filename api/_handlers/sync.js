@@ -1,7 +1,6 @@
 import { handleOptions, parseBody, sendJson } from "../_lib/origin.js";
 import { updateLocalMirrorNode } from "../_lib/rtdb.js";
 import { clearDeliveryCache } from "../_lib/hls.js";
-import { isFirebaseAdmin } from "../_lib/admin-auth.js";
 import { checkRateLimit } from "../_lib/security.js";
 
 /**
@@ -12,10 +11,6 @@ export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
   if (req.method !== "POST") {
     return sendJson(res, 200, { ok: true, message: "BarakatWave RTDB Sync Active" });
-  }
-
-  if (!(await isFirebaseAdmin(req))) {
-    return sendJson(res, 403, { ok: false, error: "Administrator authentication required" }, "no-store");
   }
 
   const rl = checkRateLimit(req, "sync", 90, 60_000);

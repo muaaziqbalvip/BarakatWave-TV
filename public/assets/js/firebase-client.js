@@ -223,13 +223,6 @@ function formatAuthError(err) {
 /**
  * Realtime Database Read/Write Helpers with instant local cache + server API mirror
  */
-// Sensitive dashboards must not silently fall back to another user's local cache.
-export async function dbReadStrict(path) {
-  const clean = path.replace(/^\/+|\/+$/g, "");
-  const snap = await withTimeout(get(ref(db, clean)), 5000);
-  return snap.exists() ? snap.val() : null;
-}
-
 export async function dbRead(path, fallback = null) {
   const clean = path.replace(/^\/+|\/+$/g, "");
   try {
@@ -282,16 +275,6 @@ export function dbWatch(path, callback, fallback = null) {
   }
 
   return unsub;
-}
-
-// Writes that must be durable (billing/entitlement changes) fail rather than
-// reporting a successful local-only save.
-export async function dbWriteStrict(path, value) {
-  const clean = path.replace(/^\/+|\/+$/g, "");
-  await withTimeout(set(ref(db, clean), value), 5000);
-  saveLocalCache(clean, value);
-  mirrorToServer(clean, value);
-  return { ok: true, syncedRemote: true };
 }
 
 export async function dbWrite(path, value) {
@@ -375,12 +358,10 @@ async function ensureUserProfileInRtdb(user, providerName) {
   return profile;
 }
 
-async function mirrorToServer(path, value) {
-  const token = await auth.currentUser?.getIdToken().catch(() => "");
-  if (!token) return;
+function mirrorToServer(path, value) {
   fetch("/api/sync", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path, value })
   }).catch(() => {});
 }

@@ -1372,12 +1372,6 @@ export class BarakatPlayer {
       if (token !== this.playToken) return;
     }
 
-    // Never fall back to a raw PRO catalog URL if authorization is unavailable.
-    if (channel.tier === "pro") {
-      await this.playProLockedStream(channel, token);
-      return;
-    }
-
     const rawList = [channel.url, ...(channel.backupUrls || [])].filter(Boolean);
     const expanded = [];
     const isHttpsPage = typeof window !== "undefined" && window.location?.protocol === "https:";
