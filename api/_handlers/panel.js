@@ -49,7 +49,7 @@ import {
   updateOrder,
   updateReseller
 } from "../_lib/panelstore.js";
-import { getChannels, getPlaylistById, getMovies, getSeries, rtdbGet } from "../_lib/rtdb.js";
+import { getChannels, getPlaylistById, getMovies, getSeries, rtdbGet, rtdbSet } from "../_lib/rtdb.js";
 import { PLANS, PANEL, PAYMENT, FEATURE_MATRIX, RESELLER_TIERS, SELF_SERVE, KEYWORDS, priceForPlan } from "../../data/panel.js";
 import { BRAND } from "../../data/catalog.js";
 import { getAnalyticsDashboardSnapshot, listClientErrors } from "../_lib/tracker.js";
@@ -1077,6 +1077,115 @@ export default async function handler(req, res) {
         }
         const movies = await getMovies();
         return sendJson(res, 200, { ok: true, count: movies.length, movies });
+      }
+
+      /* ---------------------- ADMIN: CHANNEL CREATE ---------------------- */
+      if (action === "admin/channel/create" && isPost) {
+        const ch = body;
+        if (!ch.name || !ch.url) {
+          return sendJson(res, 400, { ok: false, error: "Channel name and stream URL are required." });
+        }
+        const key = String(ch.id || `ch_${Date.now().toString(36)}`);
+        const record = {
+          id: key,
+          name: ch.name,
+          category: ch.category || "📺 Live TV",
+          xtreamGroup: ch.xtreamGroup || ch.category || "📺 Live TV",
+          country: ch.country || "PK",
+          language: ch.language || "Urdu",
+          tier: ch.tier || "free",
+          order: Number(ch.order) || 9999,
+          pinned: Boolean(ch.pinned),
+          status: ch.status || "active",
+          url: ch.url,
+          backupUrls: Array.isArray(ch.backupUrls) ? ch.backupUrls : [],
+          logo: ch.logo || "",
+          streamId: ch.streamId || 0,
+          slug: ch.slug || key,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        await rtdbSet(`channels/${key}`, record);
+        clearPanelCache();
+        return sendJson(res, 200, { ok: true, channel: record });
+      }
+
+      /* ---------------------- ADMIN: CHANNEL UPDATE ---------------------- */
+      if (action === "admin/channel/update" && isPost) {
+        const key = String(body.id || "");
+        if (!key) return sendJson(res, 400, { ok: false, error: "Channel id required." });
+        const existing = await rtdbGet(`channels/${key}`, { ttlMs: 1000 });
+        if (!existing) return sendJson(res, 404, { ok: false, error: "Channel not found." });
+        const record = { ...existing, ...body, id: key, updatedAt: new Date().toISOString() };
+        await rtdbSet(`channels/${key}`, record);
+        clearPanelCache();
+        return sendJson(res, 200, { ok: true, channel: record });
+      }
+
+      /* ---------------------- ADMIN: CHANNEL DELETE ---------------------- */
+      if (action === "admin/channel/delete" && isPost) {
+        const key = String(body.id || "");
+        if (!key) return sendJson(res, 400, { ok: false, error: "Channel id required." });
+        await rtdbSet(`channels/${key}`, null);
+        clearPanelCache();
+        return sendJson(res, 200, { ok: true, deleted: key });
+      }
+
+      /* ---------------------- ADMIN: PLAYLIST CREATE ---------------------- */
+      if (action === "admin/playlist/create" && isPost) {
+        const pl = body;
+        if (!pl.name) return sendJson(res, 400, { ok: false, error: "Playlist name required." });
+        const key = String(pl.id || `pl_${Date.now().toString(36)}`);
+        const record = {
+          id: key,
+          name: pl.name,
+          channelIds: Array.isArray(pl.channelIds) ? pl.channelIds : [],
+          customStreams: Array.isArray(pl.customStreams) ? pl.customStreams : [],
+          uid: pl.uid || "admin",
+          updatedAt: new Date().toISOString()
+        };
+        await rtdbSet(`playlists/${key}`, record);
+        clearPanelCache();
+        return sendJson(res, 200, { ok: true, playlist: record });
+      }
+
+      /* ---------------------- ADMIN: PLAYLIST DELETE ---------------------- */
+      if (action === "admin/playlist/delete" && isPost) {
+        const key = String(body.id || "");
+        if (!key) return sendJson(res, 400, { ok: false, error: "Playlist id required." });
+        await rtdbSet(`playlists/${key}`, null);
+        clearPanelCache();
+        return sendJson(res, 200, { ok: true, deleted: key });
+      }
+
+      /* ---------------------- ADMIN: XTREAM ACCOUNT CREATE ---------------------- */
+      if (action === "admin/xtream/create" && isPost) {
+        const xt = body;
+        if (!xt.username) return sendJson(res, 400, { ok: false, error: "Username required." });
+        const key = String(xt.username).replace(/[.#$[]]/g, "").replace(/[\/]/g, "");
+        const record = {
+          username: key,
+          password: xt.password || `BW${Math.floor(1000 + Math.random() * 9000)}`,
+          plan: xt.plan || "free",
+          maxConnections: Number(xt.maxConnections) || 1,
+          email: xt.email || "",
+          status: xt.status || "Active",
+          expDate: xt.expDate ? Math.floor(new Date(xt.expDate).getTime() / 1000) : 0,
+          createdAt: new Date().toISOString(),
+          uid: xt.uid || "admin"
+        };
+        await rtdbSet(`xtreamAccounts/${key}`, record);
+        clearPanelCache();
+        return sendJson(res, 200, { ok: true, xtream: record });
+      }
+
+      /* ---------------------- ADMIN: XTREAM ACCOUNT DELETE ---------------------- */
+      if (action === "admin/xtream/delete" && isPost) {
+        const key = String(body.username || body.id || "").replace(/[.#$[]]/g, "").replace(/[\/]/g, "");
+        if (!key) return sendJson(res, 400, { ok: false, error: "Username required." });
+        await rtdbSet(`xtreamAccounts/${key}`, null);
+        clearPanelCache();
+        return sendJson(res, 200, { ok: true, deleted: key });
       }
 
       if (action === "admin/secure-link") {

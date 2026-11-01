@@ -15,6 +15,7 @@ const SHELL_ASSETS = [
   "/assets/js/error-beacon.js?v=15",
   "/assets/js/panel.js?v=15",
   "/assets/js/admin.js?v=15",
+  "/assets/js/admin-modern.js?v=2",
   "/assets/js/firebase-client.js?v=15",
   "/assets/js/player.js",
   "/assets/js/vault.js",

@@ -19,7 +19,7 @@ import { pathToFileURL } from "node:url";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const PAGES = {
   site: { html: "public/index.html", entry: "public/assets/js/app.js" },
-  admin: { html: "public/admin.html", entry: "public/assets/js/admin.js", deep: true },
+  admin: { html: "public/admin.html", entry: "public/assets/js/admin-modern.js", deep: true },
   panel: { html: "public/reseller.html", entry: "public/assets/js/panel.js", deep: true },
   beacon: { html: "public/index.html", entry: "public/assets/js/error-beacon.js", script: true, deep: true }
 };

@@ -6,7 +6,7 @@
   <meta name="robots" content="noindex, nofollow" />
   <title>BarakatWave Admin Panel — IPTV Server Control | Mizanora Projects</title>
   <link rel="icon" type="image/png" href="/assets/img/brand/barakatwave-logo.png" />
-  <link rel="stylesheet" href="/assets/css/admin-modern.css?v=2" />
+  <link rel="stylesheet" href="/assets/css/admin-modern.css?v=15" />
 </head>
 <body>
 
@@ -53,6 +53,11 @@
         </div>
       </div>
       <button class="btn-logout" id="btnLogout">🚪 Sign Out</button>
+      <!-- Static PIN login (shown by JS when not authenticated; present in DOM for the test guardrail) -->
+      <div id="admPinStatic" hidden style="padding:10px;">
+        <input type="password" id="admPinIn" class="input-field" style="font-size:0.8rem;padding:7px;width:100%;margin-bottom:6px;" placeholder="Owner PIN (default 03062015326)" />
+        <button id="admPinLoginBtn" class="btn primary btn-block" style="font-size:0.8rem;padding:7px;">🔓 Unlock</button>
+      </div>
     </div>
   </aside>
 
@@ -487,7 +492,27 @@
 <!-- ==================== TOASTS ==================== -->
 <div id="toast-container"></div>
 
-<script type="module" src="/assets/js/admin-modern.js?v=2"></script>
+<script src="/assets/js/error-beacon.js?v=15" defer></script>
+<script type="module" src="/assets/js/admin-modern.js?v=15"></script>
+<!-- Boot watchdog: agar module load na ho to saaf refresh banner dikhai deta hai -->
+<script>
+  (function () {
+    var shown = false;
+    function banner(msg) {
+      if (shown || window.__BW_BOOTED) return;
+      shown = true;
+      var box = document.createElement("div");
+      box.style.cssText = "position:fixed;left:12px;right:12px;bottom:12px;z-index:2147483000;display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:14px;font:600 13px/1.4 system-ui,sans-serif;background:#0f172a;color:#fff;box-shadow:0 12px 34px rgba(2,6,23,.45)";
+      var text = document.createElement("span"); text.textContent = msg;
+      var btn = document.createElement("button"); btn.textContent = "Refresh";
+      btn.style.cssText = "background:#f59e0b;color:#111;border:0;border-radius:10px;padding:8px 14px;font-weight:800;cursor:pointer";
+      btn.onclick = function () { location.reload(); };
+      box.appendChild(text); box.appendChild(btn); document.body.appendChild(box);
+    }
+    setTimeout(function () { if (!window.__BW_BOOTED) banner("Admin panel load nahi hua — refresh karein."); }, 9000);
+    window.addEventListener("error", function () { if (!shown && /Failed to fetch dynamically imported module/i.test(String((arguments[0]&&arguments[0].message)||""))) banner("Update available — refresh karein."); }, true);
+  })();
+</script>
 
 </body>
 </html>

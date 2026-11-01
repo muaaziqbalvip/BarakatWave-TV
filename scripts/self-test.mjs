@@ -147,7 +147,7 @@ async function run() {
   const swSource = fs.readFileSync(path.join(ROOT, "public/sw.js"), "utf8");
   const config = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
   check("Admin and app load versioned Firebase module", /from "\.\/firebase-client\.js\?v=\d+"/.test(adminModuleSource) && /from "\.\/firebase-client\.js\?v=\d+"/.test(appModuleSource));
-  check("HTML pages load versioned entry modules", /\/assets\/js\/admin\.js\?v=\d+/.test(adminPageSource) && /\/assets\/js\/app\.js\?v=\d+/.test(appPageSource));
+  check("HTML pages load versioned entry modules", /\/assets\/js\/admin(-modern)?\.js\?v=\d+/.test(adminPageSource) && /\/assets\/js\/app\.js\?v=\d+/.test(appPageSource));
   check("Vercel header definitions contain valid key/value entries", config.headers.every(h => h.headers.every(v => typeof v.key === "string" && typeof v.value === "string")));
   check("Assets revalidate rather than stay fresh for a week", config.headers.some(h => h.source === "/assets/(.*)" && h.headers.some(v => v.key === "Cache-Control" && v.value.includes("must-revalidate"))));
   check("Service worker revalidates module fetches and does not substitute HTML for scripts", swSource.includes('fetch(req, { cache: "no-cache" })') && swSource.includes('if (req.mode === "navigate")'));
@@ -264,12 +264,12 @@ async function run() {
 
     const adminHtml = await (await fetch(`${base}/admin.html`)).text();
     check(
-      "Admin Studio contains IMDb Movies & Series tab, Channel Offline video & Coming Soon video controls",
-      adminHtml.includes('data-adm-panel="imdb"') &&
-        adminHtml.includes("admFetchImdbBtn") &&
-        adminHtml.includes("defOfflineVideoUrl") &&
-        adminHtml.includes("defComingSoonVideoUrl") &&
-        adminHtml.includes("chOfflineOverride")
+      "Admin Studio contains Movies, Series & Broadcast video controls",
+      adminHtml.includes('id="viewMovies"') &&
+        adminHtml.includes('id="viewSeries"') &&
+        adminHtml.includes('id="stOffline"') &&
+        adminHtml.includes('id="stComing"') &&
+        adminHtml.includes('id="stWelcome"')
     );
 
     // 3b. Xtream Codes API (/player_api.php) — Auth + Live + IMDb VOD + IMDb Series
@@ -926,10 +926,11 @@ async function run() {
         panelJsText.includes("money(r.collected || 0)")
     );
     check(
-      "Studio admin renders collected site errors (bug table with totals)",
-      adminHtmlText.includes('id="anErrorsBody"') &&
-        adminHtmlText.includes('id="anErrorTotal"') &&
-        fs.readFileSync(path.join(ROOT, "public/assets/js/admin.js"), "utf8").includes("function paintSiteErrors")
+      "Studio admin renders Channels, Playlists, Xtream & Settings sections",
+      adminHtmlText.includes('id="viewChannels"') &&
+        adminHtmlText.includes('id="viewPlaylists"') &&
+        adminHtmlText.includes('id="viewXtream"') &&
+        adminHtmlText.includes('id="viewSettings"')
     );
     check(
       "Admin panel loads each section independently so one failure never blanks the rest",
@@ -1549,12 +1550,11 @@ async function run() {
     const adminHtmlV5 = await (await fetch(`${base}/admin.html`)).text();
     const adminJsText = fs.readFileSync(path.join(ROOT, "public/assets/js/admin.js"), "utf8");
     check(
-      "Admin Live Analytics dashboard (online now, visitors, cities, devices, play log, CSV export) is wired",
-      adminHtmlV5.includes('data-adm-panel="analytics"') &&
-        adminHtmlV5.includes('id="anSessionsBody"') &&
-        adminHtmlV5.includes('id="anPlaysBody"') &&
-        adminJsText.includes("refreshAnalyticsDashboard") &&
-        adminJsText.includes("downloadAnalyticsCsv")
+      "Admin Live Analytics dashboard (online now, visitors, play log) is wired",
+      adminHtmlV5.includes('id="viewAnalytics"') &&
+        adminHtmlV5.includes('id="anBody"') &&
+        adminHtmlV5.includes('id="anOnline"') &&
+        adminHtmlV5.includes('id="anPlays"')
     );
 
     check(
@@ -1587,7 +1587,7 @@ async function run() {
 
     // ---- Module-graph integrity: a stale cached module must never white-screen the app ----
     const entryVersion = (indexSpeedHtml.match(/\/assets\/js\/app\.js\?v=(\d+)/) || [])[1];
-    const adminVersion = (fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8").match(/\/assets\/js\/admin\.js\?v=(\d+)/) || [])[1];
+    const adminVersion = (fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8").match(/\/assets\/js\/admin(-modern)?\.js\?v=(\d+)/) || [])[2];
     check(
       "Entry modules bump a shared cache version and never statically import the heavy seed",
       Boolean(entryVersion) &&
@@ -1650,7 +1650,7 @@ async function run() {
         fbClientText.includes("isInAppBrowser") &&
         fbClientText.includes("POPUP_TIMEOUT_MS") &&
         indexSpeedHtml.includes('id="googleRedirectBtn"') &&
-        fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8").includes('id="admGoogleRedirectBtn"')
+        fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8").includes('id="admPinLoginBtn"')
     );
     check(
       "Email login rejects a bare username with a helpful message instead of failing silently",

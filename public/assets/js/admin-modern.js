@@ -16,9 +16,8 @@ import {
   dbRead,
   dbWatch,
   dbWrite,
-  dbRemove,
-  getCurrentUserSnapshot,
-  dbDelete
+  dbDelete,
+  getCurrentUserSnapshot
 } from "/assets/js/firebase-client.js?v=2";
 
 const STATE = {
@@ -66,47 +65,97 @@ function fmtDate(ts) {
 
 /* ==================== Auth gate ==================== */
 async function ensureAdmin() {
+  // 1) Firebase user
   const snap = getCurrentUserSnapshot();
   if (snap && !snap.isPreviewSession) {
     STATE.user = snap;
     paintUser();
     return true;
   }
-  // Not signed in -> show a simple inline login right in the sidebar area
+  // 2) Stored PIN session token (bw_admin_session)
+  const t = adminToken();
+  if (t) {
+    STATE.user = { displayName: "Owner (PIN)", email: "owner@barakatwave.tv", uid: "owner_pin" };
+    paintUser();
+    return true;
+  }
+  // Not signed in -> show static PIN login block in sidebar
+  const pinWrap = $("admPinStatic");
+  if (pinWrap) pinWrap.hidden = false;
   const uChip = $("userChip");
-  if (uChip) uChip.innerHTML = `
-    <div style="padding:12px;color:var(--text-dim);font-size:0.82rem;">
-      <div style="font-weight:700;color:#fff;">Sign in to Admin</div>
-      <div style="margin-top:8px;">Owner PIN or Google / Gmail</div>
-    </div>
-  `;
+  if (uChip) {
+    uChip.innerHTML = `<div style="padding:10px;color:var(--text-dim);font-size:0.82rem;"><div style="font-weight:700;color:#fff;margin-bottom:4px;">🔐 Sign in to Admin</div><div style="font-size:0.7rem;color:var(--primary);">Use the PIN block below (works on any domain)</div></div>`;
+  }
   const btn = $("btnLogout");
   if (btn) btn.textContent = "🔓 Sign In";
   return false;
 }
 
+async function adminLoginWithPin() {
+  const pin = $("admPinIn")?.value.trim();
+  if (!pin) return toast("Enter the Owner PIN.", "error");
+  try {
+    const res = await apiPost("admin/pin-login", { pin });
+    if (!res.ok) return toast(res.error || "Invalid PIN", "error");
+    localStorage.setItem(
+      "bw_admin_session",
+      JSON.stringify({ token: res.token, exp: Math.floor(Date.now() / 1000) + (res.expiresIn || 43200) - 60 })
+    );
+    STATE.user = { displayName: "Owner (PIN)", email: "owner@barakatwave.tv", uid: "owner_pin" };
+    paintUser();
+    toast("Owner access granted");
+    await loadAll();
+  } catch (err) { toast(err.message, "error"); }
+}
+
 function paintUser() {
   const u = STATE.user;
   if (!u) return;
+  const pinWrap = $("admPinStatic");
+  if (pinWrap) pinWrap.hidden = true;
   $("userName").textContent = u.displayName || u.email || "Admin";
   $("userRole").textContent = u.email ? (u.email.includes("muaaziqbal") ? "Super Admin" : "Admin") : "Admin";
   $("userAvatar").textContent = (u.displayName || u.email || "A").slice(0, 2).toUpperCase();
   const btn = $("btnLogout");
-  if (btn) { btn.textContent = "🚪 Sign Out"; btn.onclick = async () => { await logoutUser(); location.reload(); }; }
+  if (btn) {
+    btn.textContent = "🚪 Sign Out";
+    btn.onclick = async () => {
+      try { await logoutUser(); } catch {}
+      localStorage.removeItem("bw_admin_session");
+      location.reload();
+    };
+  }
 }
 
 /* ==================== API / RTDB ==================== */
+function adminToken() {
+  try {
+    const s = localStorage.getItem("bw_admin_session");
+    if (s) {
+      const p = JSON.parse(s);
+      if (p.token && (!p.exp || p.exp > Date.now() / 1000)) return p.token;
+    }
+  } catch {}
+  return "";
+}
+
 async function apiGet(action, params = {}) {
   const qs = new URLSearchParams({ action, ...params }).toString();
-  const res = await fetch(`/api/panel?${qs}`, { headers: { Accept: "application/json" } });
+  const headers = { Accept: "application/json" };
+  const t = adminToken();
+  if (t) headers["x-admin-token"] = t;
+  const res = await fetch(`/api/panel?${qs}`, { headers });
   if (!res.ok) throw new Error(`API ${action} failed (${res.status})`);
   return res.json();
 }
 
 async function apiPost(action, payload) {
+  const headers = { "Content-Type": "application/json" };
+  const t = adminToken();
+  if (t) headers["x-admin-token"] = t;
   const res = await fetch("/api/panel", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ action, ...payload })
   });
   if (!res.ok) throw new Error(`API ${action} failed (${res.status})`);
@@ -639,6 +688,7 @@ window.app = {
     const btn = $("chSaveBtn");
     const id = $("chEditId").value.trim();
     const payload = {
+      id,
       name: $("chName").value.trim(),
       category: $("chCategory").value.trim(),
       xtreamGroup: $("chCategory").value.trim(),
@@ -656,9 +706,8 @@ window.app = {
     if (!payload.url) return toast("Stream URL is required", "error");
     btn.disabled = true; btn.textContent = "Saving…";
     try {
-      const key = id || `ch_${Date.now().toString(36)}`;
-      if (!id) payload.id = key;
-      await rtdbWrite(`channels/${key}`, payload);
+      const action = id ? "admin/channel/update" : "admin/channel/create";
+      await apiPost(action, payload);
       toast(id ? "Channel updated" : "Channel created");
       hide($("chModal"));
       await loadChannels();
@@ -673,10 +722,11 @@ window.app = {
 
   async deleteChannel(id, name) {
     if (!confirm(`Delete channel "${name}"?`)) return;
-    if (await rtdbRemove(`channels/${id}`)) {
+    try {
+      await apiPost("admin/channel/delete", { id });
       toast("Channel deleted");
       await loadChannels();
-    }
+    } catch (err) { toast(err.message, "error"); }
   },
 
   async testStream(url) {
@@ -695,10 +745,11 @@ window.app = {
     if (!name) return;
     const id = `pl_${Date.now().toString(36)}`;
     const payload = { id, name, channelIds: [], customStreams: [], uid: STATE.user?.uid || "admin", updatedAt: new Date().toISOString() };
-    if (await rtdbWrite(`playlists/${id}`, payload)) {
+    try {
+      await apiPost("admin/playlist/create", payload);
       toast("Playlist created");
       await loadPlaylists();
-    }
+    } catch (err) { toast(err.message, "error"); }
   },
 
   async editPlaylist(id) {
@@ -708,18 +759,20 @@ window.app = {
     if (chosen === null) return;
     const ids = chosen.split(",").map(s => s.trim()).filter(Boolean);
     const payload = { ...p, channelIds: ids, updatedAt: new Date().toISOString() };
-    if (await rtdbWrite(`playlists/${id}`, payload)) {
+    try {
+      await apiPost("admin/playlist/create", payload); // create endpoint upserts by id
       toast("Playlist updated");
       await loadPlaylists();
-    }
+    } catch (err) { toast(err.message, "error"); }
   },
 
   async deletePlaylist(id, name) {
     if (!confirm(`Delete playlist "${name}"?`)) return;
-    if (await rtdbRemove(`playlists/${id}`)) {
+    try {
+      await apiPost("admin/playlist/delete", { id });
       toast("Playlist deleted");
       await loadPlaylists();
-    }
+    } catch (err) { toast(err.message, "error"); }
   },
 
   /* ==================== Xtream CRUD ==================== */
@@ -760,7 +813,7 @@ window.app = {
     if (!username) return toast("Username required", "error");
     btn.disabled = true;
     try {
-      await rtdbWrite(`xtreamAccounts/${username}`, payload);
+      await apiPost("admin/xtream/create", payload);
       toast("Xtream account saved");
       hide($("xtModal"));
       await loadXtream();
@@ -770,10 +823,11 @@ window.app = {
 
   async deleteXtream(username, label) {
     if (!confirm(`Delete Xtream user "${label}"?`)) return;
-    if (await rtdbRemove(`xtreamAccounts/${username}`)) {
+    try {
+      await apiPost("admin/xtream/delete", { username });
       toast("Xtream user deleted");
       await loadXtream();
-    }
+    } catch (err) { toast(err.message, "error"); }
   },
 
   /* ==================== Movies / Series CRUD (stubs -> RTDB) ==================== */
@@ -830,6 +884,11 @@ window.app = {
     $("stSave")?.addEventListener("click", (e) => { e.preventDefault(); this.saveSettings(); });
     // Refresh
     $("btnRefresh")?.addEventListener("click", async () => { $("btnRefresh").disabled = true; await loadAll(); toast("Data refreshed"); $("btnRefresh").disabled = false; });
+    // PIN login (delegated, since sidebar HTML is dynamic)
+    document.addEventListener("click", (e) => {
+      if (e.target.id === "admPinLoginBtn") adminLoginWithPin();
+    });
+    $("admPinIn")?.addEventListener("keydown", (e) => { if (e.key === "Enter") adminLoginWithPin(); });
     // Theme
     $("btnTheme")?.addEventListener("click", () => {
       const cur = document.documentElement.getAttribute("data-theme") || "dark";
@@ -838,8 +897,13 @@ window.app = {
       localStorage.setItem("bw_theme", next);
       $("btnTheme").textContent = next === "dark" ? "🌙" : "☀️";
     });
-    // Real-time loop
-    STATE.timer = setInterval(() => { loadChannels(); loadXtream(); loadAnalytics(); }, STATE.refreshMs);
+    // Real-time Firebase listeners — instant updates, no polling
+    dbWatch("channels", () => loadChannels(), null);
+    dbWatch("playlists", () => loadPlaylists(), null);
+    dbWatch("xtreamAccounts", () => loadXtream(), null);
+    // Analytics is external tracking data — refresh every 10s
+    STATE.timer = setInterval(() => loadAnalytics(), 10000);
+    window.__BW_BOOTED = true;
   }
 };
 
