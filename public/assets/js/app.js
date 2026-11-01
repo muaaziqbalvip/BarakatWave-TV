@@ -38,7 +38,7 @@ import {
   dbWriteStrict,
   dbMerge,
   dbPushItem
-} from "./firebase-client.js?v=13";
+} from "./firebase-client.js?v=14";
 import { ledgerRows } from "./reseller-ledger.js";
 import { effectiveMembershipPlan } from "./membership.js";
 import { BarakatPlayer } from "./player.js";
@@ -90,7 +90,8 @@ const state = {
     channelIds: [],
     customStreams: []
   },
-  authMode: "login"
+  authMode: "login",
+  rechargeContact: null
 };
 
 let player = null;
@@ -490,6 +491,8 @@ function playChannel(channel, { skipWelcome = false } = {}) {
   });
 
   renderChannelGuide();
+  // Recharge strip: instant support paint + reseller number when known.
+  refreshRechargeBar();
 }
 
 function stepChannel(delta) {
@@ -835,6 +838,127 @@ function toggleFavorite(chId) {
 }
 
 /* ==================== AUTHENTICATION (GOOGLE + GMAIL/PASSWORD) ==================== */
+/* ==================== LIVE RECHARGE / RENEW STRIP ==================== */
+/**
+ * Har live channel par "Recharge / Renew" strip dikhti hai.
+ *  - Agar client kisi reseller ke through aaya hai -> us reseller ka number.
+ *  - Warna BarakatWave official support number.
+ * Result 10 minute ke liye cache hota hai, is liye channel badalne par koi
+ * extra network call nahi hoti (instant UI).
+ */
+const RECHARGE_CACHE_KEY = "bw_recharge_contact_v1";
+const RECHARGE_TTL_MS = 10 * 60 * 1000;
+
+function readRechargeCache() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECHARGE_CACHE_KEY) || "null");
+    if (!raw || Date.now() - raw.ts > RECHARGE_TTL_MS) return null;
+    return raw.value;
+  } catch {
+    return null;
+  }
+}
+
+function writeRechargeCache(value) {
+  try {
+    localStorage.setItem(RECHARGE_CACHE_KEY, JSON.stringify({ ts: Date.now(), value }));
+  } catch {
+    // storage full / private mode — strip still works, just uncached
+  }
+}
+
+async function fetchRechargeContact() {
+  const username =
+    state.userProfile?.xtreamUsername ||
+    state.xtreamAccount?.username ||
+    "";
+  const mac =
+    state.userProfile?.mac ||
+    state.xtreamAccount?.mac ||
+    "";
+  if (!username && !mac) return null;
+
+  const key = `${username}|${mac}`;
+  const cached = readRechargeCache();
+  if (cached && cached.key === key) return cached.value;
+
+  try {
+    const qs = username ? `username=${encodeURIComponent(username)}` : `mac=${encodeURIComponent(mac)}`;
+    const res = await fetch(`/api/panel?action=recharge/contact&${qs}`, { headers: { Accept: "application/json" } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data?.ok) return null;
+    writeRechargeCache({ key, value: data });
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function paintRechargeBar(contact) {
+  const bar = document.getElementById("rechargeBar");
+  if (!bar) return;
+  const title = document.getElementById("rechargeTitle");
+  const line = document.getElementById("rechargeLine");
+  const waBtn = document.getElementById("rechargeWaBtn");
+  const callBtn = document.getElementById("rechargeCallBtn");
+
+  const supportNumber = contact?.supportPhone || "0306-2015326";
+  const supportWa = contact?.supportWhatsapp || "https://wa.me/923062015326";
+
+  if (contact?.reseller) {
+    const r = contact.reseller;
+    const price = r.pricing?.monthly ? `Rs ${r.pricing.monthly}/month` : "";
+    const fee = r.pricing?.connectionFee ? ` + Rs ${r.pricing.connectionFee} connection` : "";
+    bar.classList.add("is-reseller");
+    if (title) title.textContent = `📲 Recharge / Renew — ${r.brandName || r.name}`;
+    if (line) {
+      line.textContent = `Aap ke reseller ka number: ${r.phone || "—"}${price ? ` · ${price}${fee}` : ""}`;
+    }
+    if (waBtn) {
+      const text = encodeURIComponent(
+        `Assalam-o-Alaikum ${r.brandName || r.name}, mujhe IPTV recharge karna hai (username: ${
+          contact.client?.username || state.userProfile?.xtreamUsername || ""
+        }).`
+      );
+      waBtn.href = `${r.whatsapp || supportWa}?text=${text}`;
+      waBtn.textContent = "💬 Reseller se Recharge";
+    }
+    if (callBtn) {
+      callBtn.href = `tel:${String(r.phone || supportNumber).replace(/[^\d+]/g, "")}`;
+      callBtn.textContent = `📞 ${r.phone || supportNumber}`;
+    }
+  } else {
+    bar.classList.remove("is-reseller");
+    if (title) title.textContent = "📲 Barakat IPTV Recharge";
+    if (line) {
+      line.textContent = `Direct subscription renew karein — WhatsApp ${supportNumber} (Muaaz Iqbal).`;
+    }
+    if (waBtn) {
+      const text = encodeURIComponent("Assalam-o-Alaikum, mujhe BarakatWave IPTV recharge karna hai.");
+      waBtn.href = `${supportWa}?text=${text}`;
+      waBtn.textContent = "💬 Barakat Recharge";
+    }
+    if (callBtn) {
+      callBtn.href = `tel:${supportNumber.replace(/[^\d+]/g, "")}`;
+      callBtn.textContent = `📞 ${supportNumber}`;
+    }
+  }
+
+  bar.hidden = false;
+}
+
+async function refreshRechargeBar() {
+  // Paint the official support strip immediately, then upgrade it to the
+  // reseller's number once the lookup returns (never blocks the player).
+  if (!state.rechargeContact) paintRechargeBar(null);
+  const contact = await fetchRechargeContact();
+  if (contact) {
+    state.rechargeContact = contact;
+    paintRechargeBar(contact);
+  }
+}
+
 function bindAuthModal() {
   const modal = document.getElementById("authModal");
   const openBtn = document.getElementById("openAuthBtn");
@@ -1054,6 +1178,8 @@ async function onUserChanged(user) {
       };
     }
   }
+
+  scheduleIdle(() => refreshRechargeBar(), 1500);
 
   const effectivePlan = getEffectiveUserPlan();
   if (planBadge) {
@@ -1599,7 +1725,7 @@ async function hydrateFullImdbCatalog() {
   // 1) Full 1,570+ catalog from the lazily-imported local bundle (works offline,
   //    zero extra network round-trip) — swapped in without touching the DOM state.
   try {
-    const { loadFullCatalog } = await import("./imdb-seed.js?v=13");
+    const { loadFullCatalog } = await import("./imdb-seed.js?v=14");
     const local = await loadFullCatalog();
     if (local.movies?.length) state.baseCatalogMovies = local.movies;
     if (local.series?.length) state.baseCatalogSeries = local.series;

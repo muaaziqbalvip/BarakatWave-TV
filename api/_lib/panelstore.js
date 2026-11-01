@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { rtdbGet, rtdbSet } from "./rtdb.js";
-import { PANEL, PLANS, getPlan } from "../../data/panel.js";
+import { PANEL, PLANS, SELF_SERVE, getPlan } from "../../data/panel.js";
 import {
   generateLicenseKey,
   generateResellerApiKey,
@@ -146,12 +146,14 @@ export async function getResellerByApiKey(apiKey) {
 export async function createReseller(input = {}) {
   const code = "RS-" + crypto.randomBytes(3).toString("hex").toUpperCase();
   const credits = Math.max(0, Number(input.credits) || 0);
+  const password = String(input.password || "").trim();
   const reseller = {
     code,
     name: String(input.name || "New Dealer").trim().slice(0, 80),
     email: String(input.email || "").trim().toLowerCase().slice(0, 120),
     whatsapp: String(input.whatsapp || "").trim().slice(0, 30),
     city: String(input.city || "").trim().slice(0, 60),
+    brandName: String(input.brandName || "").trim().slice(0, 60),
     tier: String(input.tier || "starter"),
     credits,
     creditsUsed: 0,
@@ -161,13 +163,101 @@ export async function createReseller(input = {}) {
     licenseKey: generateLicenseKey("RS"),
     licenseHash: "",
     customDomain: String(input.customDomain || "").trim().slice(0, 80),
+    selfServe: Boolean(input.selfServe),
+    pricing: normalizePricing(input.pricing),
+    contactWhatsapp: String(input.contactWhatsapp || input.whatsapp || "").trim().slice(0, 30),
+    contactPhone: String(input.contactPhone || input.whatsapp || "").trim().slice(0, 30),
+    collectedTotal: 0,
+    paymentsCount: 0,
     createdAt: nowIso(),
     lastLoginAt: ""
   };
   reseller.licenseHash = hashLicenseKey(reseller.licenseKey);
+
+  if (password) {
+    const salt = crypto.randomBytes(12).toString("hex");
+    reseller.passwordSalt = salt;
+    reseller.passwordHash = hashPassword(password, salt);
+  }
+
   await writeNode(`resellers/${code}`, reseller);
-  await pushAudit("reseller.created", { code, name: reseller.name, credits });
+  await pushAudit("reseller.created", { code, name: reseller.name, credits, selfServe: reseller.selfServe });
   return reseller;
+}
+
+/* --------------------------- reseller credentials --------------------------- */
+
+function hashPassword(password, salt) {
+  return sha256(`${salt}:${String(password || "")}`);
+}
+
+export function normalizePricing(pricing = {}) {
+  const pick = (v, fallback) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n) : fallback;
+  };
+  return {
+    connectionFee: pick(pricing.connectionFee, SELF_SERVE.connectionFeeDefault),
+    monthly: pick(pricing.monthly, SELF_SERVE.monthlyDefault),
+    quarterly: pick(pricing.quarterly, SELF_SERVE.quarterlyDefault),
+    yearly: pick(pricing.yearly, SELF_SERVE.yearlyDefault)
+  };
+}
+
+export function setResellerPassword(reseller, password) {
+  if (!reseller) return reseller;
+  const salt = crypto.randomBytes(12).toString("hex");
+  reseller.passwordSalt = salt;
+  reseller.passwordHash = hashPassword(password, salt);
+  return reseller;
+}
+
+export function verifyResellerPassword(reseller, password) {
+  if (!reseller || !reseller.passwordHash || !reseller.passwordSalt) return false;
+  const attempt = hashPassword(password, reseller.passwordSalt);
+  const a = Buffer.from(attempt);
+  const b = Buffer.from(reseller.passwordHash);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+export async function getResellerByEmail(email) {
+  const clean = String(email || "").trim().toLowerCase();
+  if (!clean) return null;
+  const all = await listResellers();
+  return all.find((r) => String(r.email || "").toLowerCase() === clean) || null;
+}
+
+/** Reseller khud register karta hai — koi owner approval nahi. */
+export async function selfRegisterReseller(input = {}) {
+  const existing = await getResellerByEmail(input.email);
+  if (existing) {
+    return { ok: false, status: 409, error: "This email is already registered. Please sign in instead." };
+  }
+  const created = await createReseller({
+    ...input,
+    credits: SELF_SERVE.signupCredits,
+    selfServe: true,
+    pricing: normalizePricing(input.pricing),
+    contactWhatsapp: input.whatsapp,
+    contactPhone: input.whatsapp
+  });
+  return { ok: true, reseller: created };
+}
+
+export async function setResellerPricing(code, patch = {}) {
+  const reseller = await getResellerByCode(code);
+  if (!reseller) return null;
+  const updated = {
+    ...reseller,
+    pricing: normalizePricing({ ...(reseller.pricing || {}), ...(patch.pricing || {}) }),
+    contactWhatsapp: String(patch.contactWhatsapp ?? reseller.contactWhatsapp ?? "").trim().slice(0, 30),
+    contactPhone: String(patch.contactPhone ?? reseller.contactPhone ?? "").trim().slice(0, 30),
+    brandName: String(patch.brandName ?? reseller.brandName ?? "").trim().slice(0, 60),
+    pricePerUser: Number(patch.pricePerUser) > 0 ? Number(patch.pricePerUser) : reseller.pricePerUser
+  };
+  await writeNode(`resellers/${reseller.code}`, updated);
+  await pushAudit("reseller.pricing", { code: reseller.code, pricing: updated.pricing });
+  return updated;
 }
 
 export async function updateReseller(code, patch = {}) {
@@ -320,6 +410,158 @@ export async function suspendClient(username, suspended = true) {
 }
 
 /* ================================ TRIALS ================================ */
+
+/* ============================ CLIENT PAYMENTS ============================ */
+/**
+ * Reseller apne client se paisa leta hai (cash / JazzCash / EasyPaisa).
+ * Ye record ledger me jata hai aur client ki expiry barha deta hai —
+ * "1 mahina chal gaya, ab paisa do; na do to block" wala model.
+ */
+export async function recordClientPayment(input = {}) {
+  const username = String(input.username || "").trim().toLowerCase();
+  const client = await getClient(username);
+  if (!client) return { ok: false, status: 404, error: "Client not found." };
+
+  // months = 0 means "connection / setup fee only" (no expiry change)
+  const months = Math.max(0, Math.min(24, Number(input.months) === 0 ? 0 : Number(input.months) || 1));
+  const days = months * 30;
+  const nowTs = Math.floor(Date.now() / 1000);
+  const base = Math.max(Number(client.expDate || 0), nowTs);
+  const amount = Math.max(0, Math.round(Number(input.amount) || 0));
+
+  const updated = await updateClient(username, {
+    ...(months > 0 ? { expDate: base + days * 86400, status: "active" } : {}),
+    lastPaidAt: nowIso(),
+    lastPaymentAmount: amount,
+    paymentsCount: Number(client.paymentsCount || 0) + 1
+  });
+
+  const payment = {
+    id: "pay_" + Date.now().toString(36) + crypto.randomBytes(2).toString("hex"),
+    username,
+    resellerCode: client.resellerCode || String(input.resellerCode || "").toUpperCase(),
+    amount,
+    months,
+    days,
+    via: String(input.via || "cash").slice(0, 24),
+    note: String(input.note || "").slice(0, 200),
+    recordedBy: String(input.recordedBy || "reseller").slice(0, 40),
+    createdAt: nowIso()
+  };
+  await writeNode(`payments/${payment.id}`, payment);
+
+  // Reseller ka collection counter (profit dashboard ke liye)
+  if (payment.resellerCode) {
+    const reseller = await getResellerByCode(payment.resellerCode);
+    if (reseller) {
+      await updateReseller(reseller.code, {
+        collectedTotal: Number(reseller.collectedTotal || 0) + amount,
+        paymentsCount: Number(reseller.paymentsCount || 0) + 1,
+        lastPaymentAt: payment.createdAt
+      });
+    }
+  }
+
+  await pushAudit("client.payment", { username, amount, months, resellerCode: payment.resellerCode });
+  return { ok: true, payment, client: updated, expiresAt: updated.expDate };
+}
+
+export async function listPayments(filter = {}) {
+  const all = sortByCreated(asList(await readNode("payments", 600)));
+  let out = all;
+  if (filter.resellerCode) out = out.filter((p) => p.resellerCode === String(filter.resellerCode).toUpperCase());
+  if (filter.username) out = out.filter((p) => p.username === String(filter.username).toLowerCase());
+  return out.slice(0, Math.max(1, Number(filter.limit) || 100));
+}
+
+/** Reseller ka profit: kitna collect kiya, kitna kharcha (credits), kitna bacha. */
+export async function resellerFinance(code) {
+  const reseller = await getResellerByCode(code);
+  if (!reseller) return null;
+  const [clients, payments] = await Promise.all([
+    listClients({ resellerCode: reseller.code }),
+    listPayments({ resellerCode: reseller.code, limit: 500 })
+  ]);
+  const unitCost = Number(SELF_SERVE.unitCost) || PANEL.resellerPerUserMonthly;
+  const revenue = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const cost = Number(reseller.creditsUsed || 0) * unitCost;
+  const monthStart = Date.now() - 30 * 86400 * 1000;
+  const revenue30d = payments
+    .filter((p) => new Date(p.createdAt || 0).getTime() >= monthStart)
+    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+  return {
+    revenue,
+    revenue30d,
+    cost,
+    profit: revenue - cost,
+    payments: payments.length,
+    clients: clients.length,
+    active: clients.filter((c) => c.status === "active").length,
+    expiringSoon: clients.filter((c) => c.status === "active" && c.daysLeft <= 3).length,
+    unpaid: clients.filter((c) => c.status === "expired").length,
+    pricing: normalizePricing(reseller.pricing || {})
+  };
+}
+
+/**
+ * Public recharge lookup: channel par "Recharge / Renew" dabaane par client ko
+ * uske reseller ka number dikhta hai (secrets kabhi expose nahi hote).
+ */
+export async function rechargeContactFor({ username = "", mac = "" } = {}) {
+  const cleanUser = String(username || "").trim().toLowerCase();
+  const cleanMac = String(mac || "").trim().toUpperCase();
+  let client = null;
+
+  if (cleanUser) {
+    client = await getClient(cleanUser);
+  }
+  if (!client && cleanMac) {
+    const all = await listClients();
+    client = all.find((c) => String(c.mac || "").toUpperCase() === cleanMac) || null;
+  }
+
+  const fallback = {
+    brand: PANEL.brand,
+    founder: PANEL.founder,
+    supportPhone: PANEL.supportPhoneDisplay,
+    supportWhatsapp: PANEL.supportWhatsapp,
+    source: "barakatwave",
+    reseller: null
+  };
+
+  if (!client || !client.resellerCode) return { ok: true, ...fallback, client: client ? { username: client.username, expDate: client.expDate, daysLeft: client.daysLeft, status: client.status } : null };
+
+  const reseller = await getResellerByCode(client.resellerCode);
+  if (!reseller) return { ok: true, ...fallback, client: { username: client.username, expDate: client.expDate, daysLeft: client.daysLeft, status: client.status } };
+
+  const number = reseller.contactWhatsapp || reseller.whatsapp || "";
+  const digits = String(number).replace(/\D/g, "");
+  const wa = digits ? `https://wa.me/${digits.startsWith("0") ? "92" + digits.slice(1) : digits}` : PANEL.supportWhatsapp;
+
+  return {
+    ok: true,
+    brand: reseller.brandName || reseller.name || PANEL.brand,
+    founder: PANEL.founder,
+    supportPhone: PANEL.supportPhoneDisplay,
+    supportWhatsapp: PANEL.supportWhatsapp,
+    source: "reseller",
+    reseller: {
+      code: reseller.code,
+      name: reseller.name,
+      brandName: reseller.brandName || "",
+      phone: reseller.contactPhone || reseller.whatsapp || "",
+      whatsapp: wa,
+      pricing: normalizePricing(reseller.pricing || {})
+    },
+    client: {
+      username: client.username,
+      status: client.status,
+      expDate: client.expDate,
+      daysLeft: client.daysLeft
+    }
+  };
+}
 
 export async function claimTrial({ email = "", deviceId = "", whatsapp = "" } = {}) {
   const cleanEmail = String(email || "").trim().toLowerCase();

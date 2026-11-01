@@ -25,6 +25,7 @@ import {
   getClient,
   getOrder,
   getResellerByApiKey,
+  getResellerByEmail,
   getResellerByCode,
   listAudit,
   listClients,
@@ -33,12 +34,21 @@ import {
   listTrials,
   normalizeClient,
   renewClient,
+  recordClientPayment,
+  resellerFinance,
+  rechargeContactFor,
+  selfRegisterReseller,
+  setResellerPassword,
+  setResellerPricing,
+  listPayments,
+  pushAudit,
+  verifyResellerPassword,
   suspendClient,
   topUpCredits,
   updateOrder,
   updateReseller
 } from "../_lib/panelstore.js";
-import { PLANS, PANEL, PAYMENT, FEATURE_MATRIX, RESELLER_TIERS, KEYWORDS, priceForPlan } from "../../data/panel.js";
+import { PLANS, PANEL, PAYMENT, FEATURE_MATRIX, RESELLER_TIERS, SELF_SERVE, KEYWORDS, priceForPlan } from "../../data/panel.js";
 import { BRAND } from "../../data/catalog.js";
 
 /**
@@ -61,7 +71,10 @@ const PUBLIC_ACTIONS = new Set([
   "trial",
   "health",
   "ping",
-  "admin/pin-login"
+  "admin/pin-login",
+  "reseller/register",
+  "reseller/login-password",
+  "recharge/contact"
 ]);
 
 const ADMIN_ACTIONS = new Set([
@@ -81,7 +94,8 @@ const ADMIN_ACTIONS = new Set([
   "admin/secure-link",
   "admin/keys",
   "admin/pin-set",
-  "admin/trials"
+  "admin/trials",
+  "admin/payments"
 ]);
 
 const RESELLER_ACTIONS = new Set([
@@ -91,7 +105,13 @@ const RESELLER_ACTIONS = new Set([
   "reseller/client-create",
   "reseller/client-renew",
   "reseller/client-suspend",
-  "reseller/secure-link"
+  "reseller/client-block",
+  "reseller/secure-link",
+  "reseller/me",
+  "reseller/pricing-set",
+  "reseller/payment-record",
+  "reseller/ledger",
+  "reseller/finance"
 ]);
 
 function publicConfig(req) {
@@ -159,6 +179,43 @@ async function authorizeReseller(req, body) {
   return { ok: true, reseller };
 }
 
+/** Public-safe reseller view (never leaks password hash / license hash). */
+function resellerPublic(reseller) {
+  if (!reseller) return null;
+  return {
+    code: reseller.code,
+    name: reseller.name,
+    email: reseller.email,
+    whatsapp: reseller.whatsapp,
+    city: reseller.city || "",
+    brandName: reseller.brandName || "",
+    tier: reseller.tier,
+    credits: Number(reseller.credits || 0),
+    creditsUsed: Number(reseller.creditsUsed || 0),
+    pricePerUser: Number(reseller.pricePerUser || PANEL.resellerPerUserMonthly),
+    pricing: reseller.pricing || null,
+    contactWhatsapp: reseller.contactWhatsapp || reseller.whatsapp || "",
+    contactPhone: reseller.contactPhone || reseller.whatsapp || "",
+    status: reseller.status,
+    selfServe: Boolean(reseller.selfServe),
+    apiKey: reseller.apiKey,
+    licenseKey: reseller.selfServe ? reseller.licenseKey : reseller.licenseKey,
+    collectedTotal: Number(reseller.collectedTotal || 0),
+    createdAt: reseller.createdAt
+  };
+}
+
+function resellerStats(clients = []) {
+  const active = clients.filter((c) => c.status === "active");
+  return {
+    clients: clients.length,
+    active: active.length,
+    expired: clients.filter((c) => c.status === "expired").length,
+    suspended: clients.filter((c) => c.status === "suspended").length,
+    expiringSoon: active.filter((c) => c.daysLeft <= 3).length
+  };
+}
+
 function signStreamFor(baseUrl, username, file = "index.m3u8", kind = "live") {
   const signed = signPlayRequest({ username, kind, target: file });
   return {
@@ -198,6 +255,112 @@ export default async function handler(req, res) {
         admin: result.admin,
         note: "Store this token as localStorage bw_admin_session. Valid 12 hours."
       });
+    }
+
+    /* --------------------- SELF-SERVE RESELLER SIGNUP --------------------- */
+
+    if (action === "reseller/register") {
+      if (!isPost) return sendJson(res, 405, { ok: false, error: "Method not allowed" });
+      if (!SELF_SERVE.enabled) {
+        return sendJson(res, 403, { ok: false, error: "Self-serve reseller registration is closed. WhatsApp 0306-2015326." });
+      }
+      const rl = checkRateLimit(req, "panel_reseller_register", 6, 10 * 60_000);
+      if (!rl.allowed) {
+        return sendJson(res, 429, { ok: false, error: "Too many signup attempts. Try again after 10 minutes." });
+      }
+
+      const name = String(body.name || "").trim();
+      const email = String(body.email || "").trim().toLowerCase();
+      const whatsapp = String(body.whatsapp || "").trim();
+      const password = String(body.password || "");
+
+      if (name.length < 3) return sendJson(res, 400, { ok: false, error: "Enter your full name (3+ characters)." });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+        return sendJson(res, 400, { ok: false, error: "Enter a valid email address." });
+      }
+      if (!/^[0-9+\-\s]{9,17}$/.test(whatsapp)) {
+        return sendJson(res, 400, { ok: false, error: "Enter a valid WhatsApp number (e.g. 03001234567)." });
+      }
+      if (password.length < 6) {
+        return sendJson(res, 400, { ok: false, error: "Password must be at least 6 characters." });
+      }
+
+      const created = await selfRegisterReseller({
+        name,
+        email,
+        whatsapp,
+        password,
+        city: body.city,
+        brandName: body.brandName,
+        selfServe: true
+      });
+
+      if (!created.ok) return sendJson(res, created.status || 400, { ok: false, error: created.error });
+
+      const r = created.reseller;
+      await pushAudit("reseller.self-registered", { code: r.code, email: r.email });
+      clearPanelCache();
+      return sendJson(res, 201, {
+        ok: true,
+        message: `Welcome ${r.name}! Aapka reseller panel ready hai.`,
+        reseller: {
+          code: r.code,
+          name: r.name,
+          email: r.email,
+          whatsapp: r.whatsapp,
+          brandName: r.brandName,
+          credits: r.credits,
+          pricing: r.pricing,
+          apiKey: r.apiKey,
+          licenseKey: r.licenseKey,
+          selfServe: true
+        },
+        starterCredits: SELF_SERVE.signupCredits,
+        setup: {
+          xtreamHost: getRequestBaseUrl(req),
+          m3uTemplate: `${getRequestBaseUrl(req)}/get.php?username=USER&password=PASS&type=m3u_plus&output=m3u8`
+        },
+        next: [
+          "Apni selling price set karein (Settings tab) — connection fee + monthly.",
+          "Dashboard se client add karein (Xtream ya MAC/Stalker).",
+          "Client ko M3U / Xtream / MAC details WhatsApp kar dein.",
+          "Mahina poora hone par 'Payment Received' se renew karein."
+        ]
+      });
+    }
+
+    if (action === "reseller/login-password") {
+      if (!isPost) return sendJson(res, 405, { ok: false, error: "Method not allowed" });
+      const rl = checkRateLimit(req, "panel_reseller_login", 12, 5 * 60_000);
+      if (!rl.allowed) {
+        return sendJson(res, 429, { ok: false, error: "Too many login attempts. Wait 5 minutes." });
+      }
+      const email = String(body.email || "").trim().toLowerCase();
+      const password = String(body.password || "");
+      const reseller = await getResellerByEmail(email);
+      if (!reseller || !verifyResellerPassword(reseller, password)) {
+        return sendJson(res, 401, { ok: false, error: "Email or password is incorrect." });
+      }
+      if (reseller.status !== "active") {
+        return sendJson(res, 403, { ok: false, error: "Account suspended. Contact 0306-2015326." });
+      }
+      await updateReseller(reseller.code, { lastLoginAt: new Date().toISOString() });
+      const clients = await listClients({ resellerCode: reseller.code });
+      return sendJson(res, 200, {
+        ok: true,
+        reseller: resellerPublic(reseller),
+        clients: clients.map((c) => ({ ...c, password: undefined })),
+        stats: resellerStats(clients),
+        finance: await resellerFinance(reseller.code)
+      });
+    }
+
+    if (action === "recharge/contact") {
+      const result = await rechargeContactFor({
+        username: q.username || body.username,
+        mac: q.mac || body.mac
+      });
+      return sendJson(res, 200, result, "public, max-age=60");
     }
 
     if (action === "resolve") {
@@ -343,30 +506,25 @@ export default async function handler(req, res) {
       const reseller = auth.reseller;
       const base = getRequestBaseUrl(req);
 
-      if (action === "reseller/login" || action === "reseller/stats") {
+      if (action === "reseller/login" || action === "reseller/stats" || action === "reseller/me") {
+        await updateReseller(reseller.code, { lastLoginAt: new Date().toISOString() });
         const clients = await listClients({ resellerCode: reseller.code });
-        const active = clients.filter((c) => c.status === "active");
+        const stats = resellerStats(clients);
+        const pricing = reseller.pricing || {};
         return sendJson(res, 200, {
           ok: true,
-          reseller: {
-            code: reseller.code,
-            name: reseller.name,
-            email: reseller.email,
-            tier: reseller.tier,
-            credits: reseller.credits,
-            creditsUsed: reseller.creditsUsed || 0,
-            pricePerUser: reseller.pricePerUser,
-            status: reseller.status,
-            apiKey: reseller.apiKey,
-            createdAt: reseller.createdAt
-          },
+          reseller: resellerPublic(reseller),
           stats: {
-            clients: clients.length,
-            active: active.length,
-            expired: clients.filter((c) => c.status === "expired").length,
-            suspended: clients.filter((c) => c.status === "suspended").length,
-            expiringSoon: active.filter((c) => c.daysLeft <= 3).length,
-            retailValue: active.length * PANEL.directPerUserMonthly
+            ...stats,
+            retailValue: stats.active * (Number(pricing.monthly) || PANEL.directPerUserMonthly)
+          },
+          finance: await resellerFinance(reseller.code),
+          selfServe: {
+            enabled: SELF_SERVE.enabled,
+            signupCredits: SELF_SERVE.signupCredits,
+            unitCost: SELF_SERVE.unitCost,
+            pricePresets: SELF_SERVE.pricePresets,
+            allowMacClients: SELF_SERVE.allowMacClients
           },
           clients: clients.map((c) => ({ ...c, password: undefined })),
           xtream: {
@@ -374,6 +532,78 @@ export default async function handler(req, res) {
             m3uPlus: `${base}/get.php?username=USER&password=PASS&type=m3u_plus&output=m3u8`,
             epg: `${base}/xmltv.php?username=USER&password=PASS`
           }
+        });
+      }
+
+      if (action === "reseller/finance") {
+        return sendJson(res, 200, { ok: true, finance: await resellerFinance(reseller.code) });
+      }
+
+      if (action === "reseller/ledger") {
+        const payments = await listPayments({
+          resellerCode: reseller.code,
+          username: body.username || q.username || "",
+          limit: Number(body.limit) || 100
+        });
+        return sendJson(res, 200, {
+          ok: true,
+          count: payments.length,
+          payments,
+          finance: await resellerFinance(reseller.code)
+        });
+      }
+
+      if (action === "reseller/pricing-set") {
+        const updated = await setResellerPricing(reseller.code, {
+          pricing: body.pricing || body,
+          contactWhatsapp: body.contactWhatsapp,
+          contactPhone: body.contactPhone,
+          brandName: body.brandName,
+          pricePerUser: body.pricePerUser
+        });
+        return sendJson(res, 200, {
+          ok: true,
+          message: "Selling price + contact number update ho gaye.",
+          reseller: resellerPublic(updated)
+        });
+      }
+
+      if (action === "reseller/payment-record") {
+        const username = String(body.username || "").trim().toLowerCase();
+        const months = Math.max(1, Math.min(24, Number(body.months) || 1));
+        const target = await getClient(username);
+        if (!target || target.resellerCode !== reseller.code) {
+          return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
+        }
+        const credits = Number(reseller.credits || 0);
+        if (credits < months) {
+          return sendJson(res, 402, {
+            ok: false,
+            error: `Aapke paas ${credits} credit hain lekin ${months} mahine ke liye ${months} chahiye. Credits top-up karein (JazzCash 0306-2015326).`
+          });
+        }
+        const payment = await recordClientPayment({
+          username: target.username,
+          amount: body.amount,
+          months,
+          via: body.via || "cash",
+          note: body.note || "",
+          resellerCode: reseller.code,
+          recordedBy: "reseller"
+        });
+        if (!payment.ok) return sendJson(res, payment.status || 400, { ok: false, error: payment.error });
+        await updateReseller(reseller.code, {
+          credits: credits - months,
+          creditsUsed: Number(reseller.creditsUsed || 0) + months
+        });
+        clearPanelCache();
+        return sendJson(res, 200, {
+          ok: true,
+          message: `${target.username} ka ${months} mahina renew ho gaya — Rs ${payment.payment.amount} collect.`,
+          payment: payment.payment,
+          client: payment.client,
+          creditsLeft: credits - months,
+          finance: await resellerFinance(reseller.code)
         });
       }
 
@@ -387,27 +617,91 @@ export default async function handler(req, res) {
         if (credits < 1) {
           return sendJson(res, 402, {
             ok: false,
-            error: "No credits left. Send JazzCash to 0306-2015326 and WhatsApp the screenshot."
+            error: "Credits khatam. JazzCash 0306-2015326 par bhejein aur screenshot WhatsApp karein."
           });
         }
+
+        const rawMac = String(body.mac || "").trim();
+        let mac = "";
+        if (rawMac) {
+          if (!SELF_SERVE.allowMacClients) {
+            return sendJson(res, 403, { ok: false, error: "MAC/Stalker clients are disabled." });
+          }
+          mac = normalizeMac(rawMac);
+          if (!mac) {
+            return sendJson(res, 400, { ok: false, error: "Invalid MAC address (format 00:1A:79:XX:XX:XX)." });
+          }
+          const all = await listClients();
+          if (all.some((c) => String(c.mac || "").toUpperCase() === mac)) {
+            return sendJson(res, 409, { ok: false, error: "Ye MAC pehle se kisi client par registered hai." });
+          }
+        }
+
         const created = await createClient({
           ...body,
+          mac,
           resellerCode: reseller.code,
-          source: "reseller"
+          source: mac ? "reseller-mac" : "reseller"
         });
         await updateReseller(reseller.code, {
           credits: credits - 1,
           creditsUsed: Number(reseller.creditsUsed || 0) + 1
         });
+
+        // Optional: reseller ne is waqt connection fee bhi collect ki ho
+        const pricing = reseller.pricing || {};
+        const connectionFee = Math.max(0, Number(body.connectionFee ?? pricing.connectionFee ?? 0) || 0);
+        let feeRecord = null;
+        if (connectionFee > 0 && body.collectFee !== false) {
+          const recorded = await recordClientPayment({
+            username: created.username,
+            amount: connectionFee,
+            months: 0,
+            via: body.via || "cash",
+            note: "Connection fee",
+            resellerCode: reseller.code,
+            recordedBy: "reseller"
+          });
+          feeRecord = recorded.ok ? recorded.payment : null;
+        }
+
         clearPanelCache();
         return sendJson(res, 200, {
           ok: true,
           client: created,
           creditsLeft: credits - 1,
+          connectionFee: feeRecord,
+          finance: await resellerFinance(reseller.code),
+          mac: mac || undefined,
+          stalker: mac
+            ? {
+                portalUrl: `${base}/c/`,
+                mac,
+                note: "MAG / Stalker box me ye Portal URL aur MAC daalein."
+              }
+            : undefined,
+          sellPrice: {
+            monthly: Number(pricing.monthly) || SELF_SERVE.monthlyDefault,
+            connectionFee: Number(pricing.connectionFee) || SELF_SERVE.connectionFeeDefault
+          },
           links: {
             m3u: `${base}/get.php?username=${created.username}&password=${created.password}&type=m3u_plus&output=m3u8`,
-            epg: `${base}/xmltv.php?username=${created.username}&password=${created.password}`
+            epg: `${base}/xmltv.php?username=${created.username}&password=${created.password}`,
+            xtream: { host: base, port: 443, username: created.username, password: created.password }
           }
+        });
+      }
+
+      if (action === "reseller/client-block") {
+        const target = await getClient(body.username);
+        if (!target || target.resellerCode !== reseller.code) {
+          return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
+        }
+        const updated = await suspendClient(target.username, body.blocked !== false);
+        return sendJson(res, 200, {
+          ok: true,
+          client: updated,
+          message: body.blocked === false ? "Client unblocked." : "Client blocked — payment na aane par service band."
         });
       }
 
@@ -461,6 +755,12 @@ export default async function handler(req, res) {
           ok: true,
           admin: { uid: admin.uid, email: admin.email, role: admin.role, via: admin.via }
         });
+      }
+
+      if (action === "admin/payments") {
+        const payments = await listPayments({ limit: Number(body.limit) || 200 });
+        const total = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        return sendJson(res, 200, { ok: true, count: payments.length, total, payments });
       }
 
       if (action === "admin/analytics") {

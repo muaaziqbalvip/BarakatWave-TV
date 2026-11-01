@@ -358,6 +358,21 @@
               <button class="btn btn-sm btn-outline" id="theaterBtn" title="Theater Mode">▭ Theater</button>
               <button class="btn btn-sm btn-outline" id="shareChBtn" title="Copy Channel Link">🔗 Share</button>
             </div>
+
+            <!-- Live Recharge / Renew strip — har channel par dikhta hai.
+                 Client ke reseller ka number (agar hai) warna BarakatWave support. -->
+            <div class="recharge-bar" id="rechargeBar" hidden>
+              <div class="recharge-bar-copy">
+                <strong id="rechargeTitle">📲 Recharge / Renew</strong>
+                <span class="muted-sm" id="rechargeLine">Channel chal raha hai — subscription renew karwayein.</span>
+              </div>
+              <div class="recharge-bar-actions">
+                <a class="btn btn-sm btn-gold" id="rechargeWaBtn" href="https://wa.me/923062015326" target="_blank" rel="noopener">
+                  💬 WhatsApp Recharge
+                </a>
+                <a class="btn btn-sm btn-outline" id="rechargeCallBtn" href="tel:03062015326">📞 Call</a>
+              </div>
+            </div>
           </div>
 
           <!-- Inline Series Season & Episode Quick-Switcher (Appears Automatically When Watching Series!) -->
@@ -1169,7 +1184,7 @@
 
   <!-- Media engines are lazy-loaded on first playback (player.js ensure* helpers) so the
        first paint never waits on 620 KB of vendor JS. -->
-  <script type="module" src="/assets/js/app.js?v=13"></script>
+  <script type="module" src="/assets/js/app.js?v=14"></script>
   <!-- Boot watchdog: agar module graph purane cache ki wajah se fail ho jaye to
        blank page ke bajaye ek saaf "Update" banner dikhta hai (auto-refresh option). -->
   <script>

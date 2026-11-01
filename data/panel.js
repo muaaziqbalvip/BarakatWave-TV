@@ -35,6 +35,38 @@ export const PANEL = {
  * Subscription plans. `direct` = walk-in customer, `reseller` = dealer credit price.
  * Every plan unlocks the exact same PRO feature set (only duration differs).
  */
+/**
+ * SELF-SERVE RESELLER BUSINESS MODEL
+ * -----------------------------------------------------------------------
+ * Owner-approved rules (Nov 2026):
+ *   • Reseller khud register karta hai — owner ki permission ki zaroorat nahi.
+ *   • Registration par starter credits free milte hain (bar to testing).
+ *   • Reseller apni selling price khud set karta hai (connection fee + monthly),
+ *     is liye uska profit = uski price − BarakatWave dealer rate (Rs 100/user).
+ *   • Client 1 mahine ke baad pay karta hai; na de to reseller block kar deta hai
+ *     (ya auto-block on expiry), aur client ko recharge ke liye uske reseller ka
+ *     number dikhta hai — har live channel par.
+ *   • MAC / Stalker (MAG) clients bhi isi panel se create hote hain.
+ */
+export const SELF_SERVE = {
+  enabled: true,
+  signupCredits: 3,
+  unitCost: 100,
+  connectionFeeDefault: 50,
+  monthlyDefault: 300,
+  quarterlyDefault: 800,
+  yearlyDefault: 2800,
+  minTopUpCredits: 5,
+  autoBlockOnExpiry: true,
+  allowMacClients: true,
+  /** Reseller ke apne clients ke liye ready-made price presets (PKR). */
+  pricePresets: [
+    { id: "starter", connectionFee: 50, monthly: 300, quarterly: 800, yearly: 2800 },
+    { id: "value", connectionFee: 0, monthly: 250, quarterly: 700, yearly: 2400 },
+    { id: "premium", connectionFee: 100, monthly: 400, quarterly: 1100, yearly: 3800 }
+  ]
+};
+
 export const PLANS = [
   {
     id: "trial-1d",

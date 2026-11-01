@@ -90,6 +90,7 @@
     <nav class="panel-tabs" id="panelTabs">
       <button class="panel-tab active" data-panel-tab="order">🛒 Buy / Order</button>
       <button class="panel-tab" data-panel-tab="trial">🎁 Free Trial</button>
+      <button class="panel-tab" data-panel-tab="signup">🚀 Free Reseller Signup</button>
       <button class="panel-tab" data-panel-tab="login">🏪 Dealer Login</button>
       <button class="panel-tab" data-panel-tab="dashboard">📊 My Panel</button>
       <button class="panel-tab" data-panel-tab="admin">🛡 Admin Control</button>
@@ -224,11 +225,85 @@
     </section>
 
     <!-- ============================ DEALER LOGIN ============================ -->
+    <!-- ========================= SELF-SERVE SIGNUP ========================= -->
+    <section class="panel-pane" data-panel-pane="signup" hidden>
+      <div class="pane-grid">
+        <div class="glass-card pane-card">
+          <h2>🚀 Apna IPTV Reseller Business Shuru Karein</h2>
+          <p class="muted-sm">
+            Koi permission nahi, koi wait nahi — form bharein aur foran apna reseller panel use karein.
+            <strong>Free starter credits</strong> sath milte hain.
+          </p>
+          <form id="signupForm" class="form-stack">
+            <div class="field-row">
+              <label>Full name
+                <input type="text" id="suName" class="input-field" placeholder="Khashi Ahmed" required minlength="3" />
+              </label>
+              <label>City
+                <input type="text" id="suCity" class="input-field" placeholder="Kasur" />
+              </label>
+            </div>
+            <div class="field-row">
+              <label>Email (login)
+                <input type="email" id="suEmail" class="input-field" placeholder="you@email.com" required />
+              </label>
+              <label>WhatsApp (client recharge number)
+                <input type="tel" id="suWhatsapp" class="input-field" placeholder="03001234567" required />
+              </label>
+            </div>
+            <div class="field-row">
+              <label>Password (6+)
+                <input type="password" id="suPass" class="input-field" placeholder="Password" required minlength="6" />
+              </label>
+              <label>Business / brand name (optional)
+                <input type="text" id="suBrand" class="input-field" placeholder="Khashi IPTV" />
+              </label>
+            </div>
+            <button type="submit" class="btn btn-primary">🚀 Create My Reseller Panel (Free)</button>
+          </form>
+          <div id="signupResult" class="result-box" hidden></div>
+        </div>
+
+        <div class="glass-card pane-card">
+          <h2>💼 Aap kaise kamaayenge?</h2>
+          <ol class="num-list">
+            <li><strong>Register</strong> karein — free starter credits mil jate hain.</li>
+            <li><strong>Apni selling price</strong> set karein: connection fee (e.g. Rs 50) + monthly (e.g. Rs 300).</li>
+            <li><strong>Client add</strong> karein — Xtream login ya MAC/Stalker (MAG box) — links foran ban jate hain.</li>
+            <li>Client ko details WhatsApp karein — har channel par aapka <strong>recharge number</strong> dikhta hai.</li>
+            <li>1 mahine baad client se paisa lein aur <strong>Payment Received</strong> dabayen — service renew + profit record.</li>
+            <li>Na de to <strong>Block</strong> — service band, client wapas aaye to renew.</li>
+          </ol>
+          <div class="tip-box">
+            <strong>Profit = aapki price − Rs 100 per user/month (BarakatWave dealer rate).</strong><br />
+            Har credit ek client ka ek mahina hai. Credits JazzCash <strong>0306-2015326</strong> se top-up karein.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ DASHBOARD ============================ -->
     <section class="panel-pane" data-panel-pane="login" hidden>
       <div class="pane-grid">
         <div class="glass-card pane-card">
-          <h2>🏪 Dealer Login</h2>
-          <p class="muted-sm">Enter the dealer code and API key issued by BarakatWave admin.</p>
+          <h2>🔐 Reseller Login (Email + Password)</h2>
+          <p class="muted-sm">Self-serve account? Email aur password se login karein.</p>
+          <form id="dealerPassForm" class="form-stack">
+            <label>Email
+              <input type="email" id="dlEmail" class="input-field" placeholder="you@email.com" autocomplete="username" required />
+            </label>
+            <label>Password
+              <input type="password" id="dlPassword" class="input-field" placeholder="Password" autocomplete="current-password" required />
+            </label>
+            <button type="submit" class="btn btn-primary">🔓 Open My Panel</button>
+          </form>
+          <div id="dealerPassResult" class="result-box" hidden></div>
+          <p class="muted-sm" style="margin-top:12px;">Account nahi hai? <button type="button" class="mini-btn" data-goto-tab="signup">🚀 Free signup</button></p>
+        </div>
+
+        <div class="glass-card pane-card">
+          <h2>🏪 Dealer Login (Code + API key)</h2>
+          <p class="muted-sm">Admin-issued dealer code aur API key se login.</p>
           <form id="dealerForm" class="form-stack">
             <label>Dealer code
               <input type="text" id="dlCode" class="input-field" placeholder="RS-XXXXXX" required />
@@ -269,6 +344,47 @@
       <div id="dashBody" hidden>
         <div class="stat-grid" id="dashStats"></div>
 
+        <div class="pane-grid" style="margin-bottom:16px;">
+          <div class="glass-card pane-card">
+            <h2>💰 Earnings &amp; Profit</h2>
+            <div class="kv-list" id="financeKv"></div>
+            <p class="muted-sm" style="margin-top:8px;">Profit = collected − credits cost (Rs 100/user/month).</p>
+          </div>
+
+          <div class="glass-card pane-card">
+            <h2>⚙️ My Selling Price &amp; Recharge Number</h2>
+            <p class="muted-sm">Ye price aur number aapke clients ko dikhta hai (har live channel par).</p>
+            <form id="pricingForm" class="form-stack">
+              <div class="field-row">
+                <label>Connection fee (Rs)
+                  <input type="number" id="prConnection" class="input-field" min="0" step="10" value="50" />
+                </label>
+                <label>Monthly (Rs)
+                  <input type="number" id="prMonthly" class="input-field" min="100" step="10" value="300" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>3 months (Rs)
+                  <input type="number" id="prQuarterly" class="input-field" min="0" step="10" value="800" />
+                </label>
+                <label>12 months (Rs)
+                  <input type="number" id="prYearly" class="input-field" min="0" step="10" value="2800" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label>Recharge WhatsApp number
+                  <input type="tel" id="prWhatsapp" class="input-field" placeholder="03001234567" />
+                </label>
+                <label>Business name (optional)
+                  <input type="text" id="prBrand" class="input-field" placeholder="Khashi IPTV" />
+                </label>
+              </div>
+              <button type="submit" class="btn btn-primary">💾 Save Price &amp; Number</button>
+            </form>
+            <div id="pricingResult" class="result-box" hidden></div>
+          </div>
+        </div>
+
         <div class="pane-grid">
           <div class="glass-card pane-card">
             <h2>➕ Create new client</h2>
@@ -298,6 +414,19 @@
                   <input type="text" id="clMac" class="input-field" placeholder="00:1A:79:XX:XX:XX" />
                 </label>
               </div>
+              <div class="field-row">
+                <label>Connection fee to collect now (Rs)
+                  <input type="number" id="clFee" class="input-field" min="0" step="10" placeholder="50" />
+                </label>
+                <label>First period
+                  <select id="clMonths" class="input-field">
+                    <option value="1" selected>1 month</option>
+                    <option value="3">3 months</option>
+                    <option value="6">6 months</option>
+                    <option value="12">12 months (1 credit/month)</option>
+                  </select>
+                </label>
+              </div>
               <button type="submit" class="btn btn-primary">✨ Create Client &amp; Generate Links</button>
             </form>
             <div id="clientResult" class="result-box" hidden></div>
@@ -322,7 +451,7 @@
             <table class="data-table" id="clientsTable">
               <thead>
                 <tr>
-                  <th>Username</th><th>Password</th><th>Plan</th><th>Expiry</th><th>Days left</th><th>Status</th><th>Actions</th>
+                  <th>Client</th><th>Login</th><th>Plan</th><th>Expiry</th><th>Days left</th><th>Status</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody><tr><td colspan="7" class="muted-sm">No clients yet.</td></tr></tbody>
@@ -506,6 +635,6 @@
   </main>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script type="module" src="/assets/js/panel.js?v=13"></script>
+  <script type="module" src="/assets/js/panel.js?v=14"></script>
 </body>
 </html>

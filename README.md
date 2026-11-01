@@ -54,6 +54,12 @@ The flagship **IPTV Reseller Panel** lives at **`/reseller`**, with public prici
 3. WhatsApp the screenshot to **0306-2015326** with your username / dealer code.
 4. Admin approves the order → PRO or dealer credits are activated (usually < 30 min).
 
+### Self-serve reseller model (v4 — koi permission nahi chahiye)
+
+Resellers khud `/reseller` → **🚀 Free Reseller Signup** se account bana lete hain (email + password + WhatsApp), 3 starter credits ke saath. Wo apni selling price (connection fee + monthly) khud set karte hain, Xtream ya MAC/Stalker clients add karte hain, aur "💰 Payment" se paisa record kar ke renew karte hain. Non-payment par client expire hote hi Xtream/M3U/Stalker teeno band, aur client ko **uske reseller ka** recharge number dikhta hai — har live channel par.
+
+Poori detail: [`RESELLER-BUSINESS.md`](RESELLER-BUSINESS.md)
+
 ### Panel feature set
 
 - **Public:** plan cards, order creation with auto total (Rs 200 direct / Rs 100 reseller), order tracking by ID, free 1-day trial with auto-generated Xtream credentials, optional payment-screenshot upload.

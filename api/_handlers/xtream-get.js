@@ -5,7 +5,7 @@ import {
   sendText
 } from "../_lib/origin.js";
 import { checkRateLimit } from "../_lib/security.js";
-import { getChannels, getMovies, getSeries, verifyXtreamCredentials } from "../_lib/rtdb.js";
+import { getChannels, getMovies, getSeries, verifyXtreamCredentials, resellerContactForClient } from "../_lib/rtdb.js";
 import { BRAND } from "../../data/catalog.js";
 
 export default async function handler(req, res) {
@@ -27,6 +27,21 @@ export default async function handler(req, res) {
       res,
       401,
       `#EXTM3U\n#EXTINF:-1,Invalid Xtream Login - Visit ${BRAND.siteUrl}\n${baseUrl}/media/pro-unlock/index.m3u8\n`,
+      "audio/x-mpegurl; charset=utf-8",
+      "no-store",
+      req
+    );
+  }
+
+  // Expired subscription -> M3U playlist me sirf renewal notice (service band).
+  if (acct.expired) {
+    const reseller = await resellerContactForClient(acct.username).catch(() => null);
+    const contact = reseller?.phone || BRAND.proPhoneDisplay;
+    const who = reseller?.name || "BarakatWave TV";
+    return sendText(
+      res,
+      200,
+      `#EXTM3U\n#EXTINF:-1,Subscription Expired - Renew: ${who} ${contact}\n${baseUrl}/media/pro-unlock/index.m3u8\n`,
       "audio/x-mpegurl; charset=utf-8",
       "no-store",
       req

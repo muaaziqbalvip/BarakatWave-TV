@@ -3510,3 +3510,52 @@ a.btn {
   from { background-position: 100% 50%; }
   to { background-position: 0 50%; }
 }
+
+/* ==========================================================================
+   LIVE RECHARGE STRIP (reseller-branded) — every live channel
+   ========================================================================== */
+.recharge-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(247, 183, 49, 0.35);
+  background: linear-gradient(135deg, rgba(247, 183, 49, 0.12), rgba(0, 210, 255, 0.08));
+  content-visibility: auto;
+}
+
+.recharge-bar-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+}
+
+.recharge-bar-copy strong {
+  font-size: 0.9rem;
+}
+
+.recharge-bar-copy .muted-sm {
+  font-size: 0.76rem;
+}
+
+.recharge-bar-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.recharge-bar.is-reseller {
+  border-color: rgba(0, 210, 255, 0.4);
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.12), rgba(124, 92, 255, 0.1));
+}
+
+@media (max-width: 620px) {
+  .recharge-bar { padding: 10px; }
+  .recharge-bar-actions { width: 100%; }
+  .recharge-bar-actions .btn { flex: 1; text-align: center; }
+}

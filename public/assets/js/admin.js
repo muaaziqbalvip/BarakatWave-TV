@@ -46,7 +46,7 @@ import {
   dbWriteStrict,
   dbMerge,
   dbDelete
-} from "./firebase-client.js?v=13";
+} from "./firebase-client.js?v=14";
 import { ledgerRows, validLedgerKey, validBillingPeriod } from "./reseller-ledger.js";
 import { effectiveMembershipPlan, membershipUpdate } from "./membership.js";
 import { parseM3uPlaylist, exportChannelsToM3u, slugify } from "./m3u-parser.js";
@@ -664,7 +664,7 @@ async function loadAllAdminData() {
   if (!admState.catalogHydrated) {
     scheduleAdminIdle(async () => {
       try {
-        const { loadFullCatalog } = await import("./imdb-seed.js?v=13");
+        const { loadFullCatalog } = await import("./imdb-seed.js?v=14");
         const local = await loadFullCatalog();
         if (local.movies?.length) admState.movies = local.movies;
         if (local.series?.length) admState.series = local.series;

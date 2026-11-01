@@ -12,7 +12,8 @@ import {
   getSeries,
   getVodCategoriesList,
   getSeriesCategoriesList,
-  verifyXtreamCredentials
+  verifyXtreamCredentials,
+  resellerContactForClient
 } from "../_lib/rtdb.js";
 import { BRAND } from "../../data/catalog.js";
 import { checkRateLimit } from "../_lib/security.js";
@@ -59,6 +60,21 @@ export default async function handler(req, res) {
         auth: 0,
         status: "Disabled",
         message: `Invalid Xtream credentials. Claim your FREE server at ${BRAND.siteUrl} or contact PRO support: ${BRAND.proPhoneDisplay}`
+      },
+      server_info: serverInfo
+    });
+  }
+
+  // Expired / blocked client -> service band, aur renew ke liye reseller ka number.
+  if (acct.expired) {
+    const reseller = await resellerContactForClient(acct.username).catch(() => null);
+    const contact = reseller?.phone || BRAND.proPhoneDisplay;
+    const who = reseller?.name || "BarakatWave TV";
+    return sendJson(res, 200, {
+      user_info: {
+        auth: 0,
+        status: "Expired",
+        message: `Subscription khatam ho gaya. Renew karne ke liye ${who} se rabta karein: ${contact}`
       },
       server_info: serverInfo
     });
