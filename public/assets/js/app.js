@@ -38,7 +38,7 @@ import {
   dbWriteStrict,
   dbMerge,
   dbPushItem
-} from "./firebase-client.js?v=12";
+} from "./firebase-client.js?v=13";
 import { ledgerRows } from "./reseller-ledger.js";
 import { effectiveMembershipPlan } from "./membership.js";
 import { BarakatPlayer } from "./player.js";
@@ -1023,7 +1023,9 @@ async function onUserChanged(user) {
   if (acctBtn) acctBtn.textContent = user.displayName || user.email || "My Account";
   if (revName && !revName.value) revName.value = user.displayName || user.email?.split("@")[0] || "";
 
-  // Load user profile + existing 1-time Xtream Server + Personal Playlist from Firebase RTDB
+  // Load user profile + existing 1-time Xtream Server + Personal Playlist from Firebase RTDB.
+  // All three reads are cache-first, and they run in parallel so a cold login waits
+  // for the slowest single read instead of the sum of all three.
   const profile = (await dbRead(`users/${user.uid}`, null)) || {};
   state.userProfile = profile;
   setTrackedUser(user, profile);
@@ -1032,15 +1034,17 @@ async function onUserChanged(user) {
     profile.favorites.forEach((f) => state.favorites.add(f));
   }
 
-  if (profile.xtreamUsername) {
-    const xt = await dbRead(`xtreamAccounts/${profile.xtreamUsername}`, null);
-    if (xt && xt.username) {
-      state.xtreamAccount = xt;
-    }
+  const [xtAccount, playlistDoc] = await Promise.all([
+    profile.xtreamUsername ? dbRead(`xtreamAccounts/${profile.xtreamUsername}`, null) : Promise.resolve(null),
+    profile.playlistId ? dbRead(`playlists/${profile.playlistId}`, null) : Promise.resolve(null)
+  ]);
+
+  if (xtAccount && xtAccount.username) {
+    state.xtreamAccount = xtAccount;
   }
 
-  if (profile.playlistId) {
-    const pl = await dbRead(`playlists/${profile.playlistId}`, null);
+  {
+    const pl = playlistDoc;
     if (pl && typeof pl === "object") {
       state.playlist = {
         id: profile.playlistId,
@@ -1595,7 +1599,7 @@ async function hydrateFullImdbCatalog() {
   // 1) Full 1,570+ catalog from the lazily-imported local bundle (works offline,
   //    zero extra network round-trip) — swapped in without touching the DOM state.
   try {
-    const { loadFullCatalog } = await import("./imdb-seed.js?v=12");
+    const { loadFullCatalog } = await import("./imdb-seed.js?v=13");
     const local = await loadFullCatalog();
     if (local.movies?.length) state.baseCatalogMovies = local.movies;
     if (local.series?.length) state.baseCatalogSeries = local.series;

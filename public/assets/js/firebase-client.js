@@ -238,10 +238,10 @@ export async function registerWithEmailPassword(displayName, email, password) {
     if (cleanName) {
       await updateProfile(cred.user, { displayName: cleanName }).catch(() => {});
     }
-    await ensureUserProfileInRtdb(
+    void ensureUserProfileInRtdb(
       { ...cred.user, uid: cred.user.uid, email: cred.user.email, displayName: cleanName },
       "password"
-    );
+    ).catch(() => {});
     return { ok: true, user: cred.user };
   } catch (err) {
     return { ok: false, code: err?.code || "", error: formatAuthError(err) };
@@ -272,8 +272,15 @@ export async function loginWithEmailPassword(email, password) {
   email = check.value;
   if (!password) return { ok: false, code: "auth/missing-password", error: "Please enter your password." };
   try {
-    const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-    await ensureUserProfileInRtdb(cred.user, "password");
+    const cred = await withAuthWatchdog(
+      signInWithEmailAndPassword(auth, email.trim(), password),
+      30_000
+    );
+    if (cred && cred.ok === false) {
+      return { ok: false, code: cred.code || "auth/timeout", error: cred.error };
+    }
+    // Profile bootstrap runs in the background — the click completes instantly.
+    void ensureUserProfileInRtdb(cred.user, "password").catch(() => {});
     return { ok: true, user: cred.user };
   } catch (err) {
     return { ok: false, code: err?.code || "", error: formatAuthError(err) };
@@ -282,7 +289,7 @@ export async function loginWithEmailPassword(email, password) {
 
 export async function resetUserPassword(email) {
   try {
-    await sendPasswordResetEmail(auth, email.trim());
+    await withAuthWatchdog(sendPasswordResetEmail(auth, email.trim()), 30_000);
     return { ok: true };
   } catch (err) {
     return { ok: false, code: err?.code || "", error: formatAuthError(err) };

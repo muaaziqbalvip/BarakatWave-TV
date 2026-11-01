@@ -161,6 +161,17 @@ async function run() {
     path.join(ROOT, "data"),
     path.join(ROOT, "scripts")
   ];
+  // 1a-2. Named-export check: an import of a non-existent export white-screens the page.
+  const graphCheck = spawnSync(process.execPath, [path.join(ROOT, "scripts/check-module-exports.mjs")], {
+    encoding: "utf8",
+    cwd: ROOT
+  });
+  check(
+    "Every named import resolves to a real export (no white-screen module graph)",
+    graphCheck.status === 0,
+    graphCheck.status === 0 ? "" : graphCheck.stderr
+  );
+
   const brokenImports = [];
   let importCount = 0;
   for (const dir of moduleDirs) {
