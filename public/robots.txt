@@ -6,6 +6,9 @@ User-agent: *
 Allow: /
 Disallow: /api/github/
 Disallow: /api/sync
+Disallow: /api/gate
+Disallow: /api/proxy
+Disallow: /api/analytics
 
 # Explicit Welcome to Major Search Engines & AI Knowledge Assistants
 User-agent: Googlebot

@@ -20,6 +20,7 @@ import {
   getCategoryPriority
 } from "./default-data.js";
 import { fetchImdbTitle } from "./imdb-client.js";
+import { loadFullCatalog } from "./imdb-seed.js";
 import {
   subscribeAuth,
   loginWithGoogle,
@@ -29,14 +30,30 @@ import {
   startPreviewSession,
   logoutUser,
   isSandboxPreviewHost,
+  isInAppBrowser,
+  loginWithGoogleRedirect,
   dbRead,
+  dbReadStrict,
   dbWatch,
   dbWrite,
+  dbWriteStrict,
   dbMerge,
   dbPushItem
-} from "./firebase-client.js";
+} from "./firebase-client.js?v=11";
+import { ledgerRows } from "./reseller-ledger.js";
+import { effectiveMembershipPlan } from "./membership.js";
 import { BarakatPlayer } from "./player.js";
 import { exportChannelsToM3u } from "./m3u-parser.js";
+import { resolveChannelSources, sealCustomStreamUrl } from "./vault.js";
+import {
+  initAnalytics,
+  trackPlay,
+  trackStop,
+  trackView,
+  setTrackedUser,
+  analyticsSession
+} from "./analytics.js";
+import { mountImdbCinemaPlayer, normalizeImdbId } from "./cinema-player.js";
 
 const state = {
   user: null,
@@ -79,8 +96,22 @@ const state = {
 
 let player = null;
 
+/**
+ * Run low-priority work after the browser is idle (falls back to a short timer).
+ * Keeps the main thread free during the first interactive seconds.
+ */
+function scheduleIdle(fn, timeout = 1200) {
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(() => fn(), { timeout });
+  } else {
+    setTimeout(fn, 200);
+  }
+}
+
 function init() {
   renderThemeSwitcher();
+  initAnalytics();
+  bindHeaderScrollState();
   initPlayer();
   bindUniversalStreamLab();
   bindPwaInstaller();
@@ -117,11 +148,12 @@ function init() {
           .filter((c) => c.status !== "inactive")
           .map((c, idx) => {
             const meta = resolveCategoryMeta(c.category, c.name, c.country, false);
+            const safe = shieldChannelForClient(c);
             return {
-              ...c,
+              ...safe,
               category: meta.name,
               categoryId: meta.id,
-              order: typeof c.order === "number" ? c.order : idx + 1
+              order: typeof safe.order === "number" ? safe.order : idx + 1
             };
           })
           .sort((a, b) => {
@@ -173,8 +205,9 @@ function init() {
     renderCinemaHub();
   }, null);
 
-  // Hydrate full 1,570+ (2000–2026) IMDb Movies & Series catalog asynchronously (gzipped, non-blocking!)
-  hydrateFullImdbCatalog();
+  // Hydrate the 1,570+ IMDb catalog only when the browser is idle so clicks,
+  // scrolling and the first channel render stay instant.
+  scheduleIdle(() => hydrateFullImdbCatalog());
 
   // Initial immediate render using built-in curated data (0ms first meaningful UI)
   renderCategoryChips();
@@ -194,6 +227,31 @@ function init() {
     state.user = user;
     await onUserChanged(user);
   });
+}
+
+/**
+ * Stream Shield (client-side): strips every real upstream playback URL from a channel
+ * record before it ever reaches DOM, JS state, DevTools Network or the Elements tab.
+ * Remote sources become `shielded://vault` (resolved server-side by /api/gate).
+ */
+function shieldChannelForClient(channel) {
+  if (!channel || typeof channel !== "object") return channel;
+  const isLocal = (u) => typeof u === "string" && (u.startsWith("/") || u.startsWith("shielded://"));
+  return {
+    ...channel,
+    url: isLocal(channel.url) && channel.url !== "shielded://vault"
+      ? channel.url
+      : channel.url
+        ? "shielded://vault"
+        : "",
+    backupUrls: Array.isArray(channel.backupUrls)
+      ? channel.backupUrls.filter((u) => isLocal(u) && u !== "shielded://vault")
+      : [],
+    // DRM keys & custom headers are injected only by the server vault at play time
+    drmKey: "",
+    drmLicenseUrl: "",
+    headers: undefined
+  };
 }
 
 /* ==================== THEME ENGINE ==================== */
@@ -239,10 +297,51 @@ function renderThemeSwitcher() {
 }
 
 function applyDynamicSiteSettings() {
-  const ticker = document.getElementById("siteTicker");
-  if (ticker && state.settings.siteAnnouncement) {
-    ticker.textContent = `🌊 ${state.settings.siteAnnouncement}`;
+  // Live ticker text (keeps both marquee copies in sync)
+  const seqs = document.querySelectorAll("#siteTicker .ticker-seq");
+  if (seqs.length && state.settings.siteAnnouncement) {
+    const text = `🌊 ${state.settings.siteAnnouncement}`;
+    seqs.forEach((seq) => {
+      seq.innerHTML = `<span>${escHtml(text)}</span><span class="ticker-dot">•</span><span>PRO VIP WhatsApp: <strong>0306-2015326</strong></span><span class="ticker-dot">•</span><span>🎬 IMDb Movies &amp; Series 2000–2026</span>`;
+    });
   }
+
+  // Search Console / Bing verification meta tags from admin settings (instant indexing)
+  const gsc = String(state.settings.gscVerification || "").trim();
+  if (gsc && !document.querySelector('meta[name="google-site-verification"]')) {
+    const m = document.createElement("meta");
+    m.name = "google-site-verification";
+    m.content = gsc.replace(/^<meta[^>]*content=["']([^"']+)["'][^>]*>$/i, "$1").replace(/^content=["']?|["']$/g, "");
+    document.head.appendChild(m);
+  }
+  const bing = String(state.settings.bingVerification || "").trim();
+  if (bing && !document.querySelector('meta[name="msvalidate.01"]')) {
+    const m = document.createElement("meta");
+    m.name = "msvalidate.01";
+    m.content = bing;
+    document.head.appendChild(m);
+  }
+}
+
+/* Compact sticky header: add depth shadow after scrolling (no layout shift) */
+function bindHeaderScrollState() {
+  const header = document.getElementById("siteHeader");
+  if (!header) return;
+  let ticking = false;
+  const apply = () => {
+    header.classList.toggle("is-scrolled", window.scrollY > 8);
+    ticking = false;
+  };
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(apply);
+    },
+    { passive: true }
+  );
+  apply();
 }
 
 /* ==================== BROADCAST PLAYER ==================== */
@@ -260,13 +359,50 @@ function initPlayer() {
     skipIntroBtnEl: document.getElementById("skipIntroBtn"),
     proOverlayEl: document.getElementById("proUnlockOverlay"),
     onStepChannel: (delta) => stepChannel(delta),
+    sourceResolver: (channel, opts) =>
+      resolveChannelSources(channel, {
+        plan: getEffectiveUserPlan(),
+        sid: analyticsSession.sessionId,
+        userEmail: state.user?.email || ""
+      }),
     onStateChange: (mode, item) => {
+      if (mode === "playing" && item) {
+        trackPlay({
+          title: item.name || item.title || "Live Channel",
+          itemId: item.id || "",
+          contentType: "Live TV",
+          category: item.category || "",
+          engine: player?.activeEngine ? String(player.activeEngine).toUpperCase() : "HLS",
+          surface: "Web 3D Studio"
+        });
+      } else if (mode === "vod_playing" && item) {
+        trackPlay({
+          title: item.title || item.name || "Cinema",
+          itemId: item.id || "",
+          imdbId: item.imdbId || "",
+          contentType: Array.isArray(item.episodes) ? "Series" : "Movie",
+          category: item.category || "IMDb Cinema",
+          engine: player?.activeEngine ? String(player.activeEngine).toUpperCase() : "MP4",
+          surface: "Web Cinema Player"
+        });
+      }
+
       const subEl = document.getElementById("nowPlayingSub");
       if (!subEl) return;
       if (mode === "offline_standby") {
         subEl.textContent = `📡 ${item?.name || "Channel"} • Signal Restoring — Broadcast Standby Active`;
       } else if (mode === "coming_soon") {
         subEl.textContent = `🎬 ${item?.title || item?.name || "Cinema VOD"} • Service Is Building — Coming Soon!`;
+        if (item) {
+          trackPlay({
+            title: item.title || item.name || "Cinema",
+            itemId: item.id || "",
+            imdbId: item.imdbId || "",
+            contentType: "Cinema Broadcast",
+            engine: "COMING-SOON",
+            surface: "Web Cinema Player"
+          });
+        }
       }
     }
   });
@@ -320,6 +456,7 @@ function selectInitialChannel() {
 }
 
 function playChannel(channel, { skipWelcome = false } = {}) {
+  trackStop();
   state.currentChannel = channel;
   state.activeSeriesItem = null;
   const epTray = document.getElementById("activeSeriesEpisodeTray");
@@ -365,9 +502,8 @@ function stepChannel(delta) {
 }
 
 function getEffectiveUserPlan() {
-  if (state.xtreamAccount && String(state.xtreamAccount.plan).toLowerCase() === "pro") return "pro";
-  if (state.userProfile && String(state.userProfile.plan).toLowerCase() === "pro") return "pro";
-  return "free";
+  return effectiveMembershipPlan(state.xtreamAccount);
+
 }
 
 /* ==================== NAVIGATION ==================== */
@@ -381,8 +517,10 @@ function bindNavigation() {
 }
 
 function switchView(viewName) {
-  const valid = ["live", "cinema", "xtream", "playlist", "pro", "blogs", "support"];
+  const valid = ["live", "cinema", "xtream", "playlist", "pro", "reseller", "blogs", "support"];
   const target = valid.includes(viewName) ? viewName : "live";
+  trackView(target);
+  if (target === "reseller") renderResellerViewer();
   valid.forEach((v) => {
     const sec = document.getElementById(`view-${v}`);
     if (sec) sec.hidden = v !== target;
@@ -399,9 +537,12 @@ function switchView(viewName) {
 }
 
 function handleInitialUrlRouting() {
+  // Support #cinema, ?view=cinema (PWA shortcuts & sitemap deep links) and ?channel=slug
   const hash = (window.location.hash || "").replace(/^#/, "").toLowerCase();
-  if (["cinema", "xtream", "playlist", "pro", "blogs", "support"].includes(hash)) {
-    switchView(hash);
+  const qView = (new URLSearchParams(window.location.search).get("view") || "").toLowerCase();
+  const wants = qView || hash;
+  if (["cinema", "xtream", "playlist", "pro", "reseller", "blogs", "support"].includes(wants)) {
+    switchView(wants);
   }
 }
 
@@ -752,20 +893,41 @@ function bindAuthModal() {
 
   googleBtn?.addEventListener("click", async () => {
     setAuthError("");
+    const originalLabel = googleBtn.textContent;
     googleBtn.disabled = true;
+    googleBtn.textContent = "Opening Google…";
+    const redirectWrap = document.getElementById("googleRedirectWrap");
+    if (redirectWrap) redirectWrap.hidden = true;
+
     const res = await loginWithGoogle();
     googleBtn.disabled = false;
+    googleBtn.textContent = originalLabel;
+
     if (res.ok) {
       if (!res.redirecting) {
         closeModal();
         showToast("Signed in with Google! Welcome to BarakatWave TV");
       }
-    } else {
-      setAuthError(res.error);
-      if (res.code === "auth/unauthorized-domain" && previewBox) {
-        previewBox.hidden = false;
-      }
+      return;
     }
+
+    setAuthError(res.error);
+    // Popup blocked (in-app browser, strict Safari, ad-blocker) -> offer redirect
+    if (res.suggestRedirect || /pop-?up|browser|environment/i.test(res.error || "")) {
+      if (redirectWrap) redirectWrap.hidden = false;
+    }
+    // Domain not whitelisted in Firebase -> show the always-works fallbacks
+    if (res.suggestOwnerPin || res.code === "auth/unauthorized-domain") {
+      if (previewBox) previewBox.hidden = false;
+      showToast("Tip: use Gmail + Password below, or ask owner to add this domain in Firebase.");
+    }
+  });
+
+  document.getElementById("googleRedirectBtn")?.addEventListener("click", async () => {
+    setAuthError("");
+    showToast("Redirecting to Google sign-in…");
+    const res = await loginWithGoogleRedirect();
+    if (!res.ok) setAuthError(res.error);
   });
 
   form?.addEventListener("submit", async (e) => {
@@ -775,14 +937,21 @@ function bindAuthModal() {
     const email = document.getElementById("authEmailInput")?.value || "";
     const pass = document.getElementById("authPassInput")?.value || "";
     const btn = document.getElementById("emailAuthSubmitBtn");
-    if (btn) btn.disabled = true;
+    const btnLabel = btn ? btn.textContent : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = state.authMode === "reset" ? "Sending link…" : "Signing in…";
+    }
 
     let res;
     if (state.authMode === "register") {
       res = await registerWithEmailPassword(name, email, pass);
     } else if (state.authMode === "reset") {
       res = await resetUserPassword(email);
-      if (btn) btn.disabled = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = btnLabel || "Send Password Reset Link";
+      }
       if (res.ok) {
         showToast("Password reset email sent! Check your Gmail inbox.");
       } else {
@@ -793,7 +962,10 @@ function bindAuthModal() {
       res = await loginWithEmailPassword(email, pass);
     }
 
-    if (btn) btn.disabled = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = btnLabel || "Sign In with Email";
+    }
     if (res.ok) {
       closeModal();
       showToast("Welcome to BarakatWave Live TV!");
@@ -828,6 +1000,8 @@ function setAuthError(msg) {
 }
 
 async function onUserChanged(user) {
+  const resellerViewer = document.getElementById("resellerViewer");
+  if (resellerViewer) resellerViewer.textContent = "Sign in to view your reseller account.";
   const openBtn = document.getElementById("openAuthBtn");
   const chipWrap = document.getElementById("userChipWrap");
   const acctBtn = document.getElementById("userAccountBtn");
@@ -839,6 +1013,7 @@ async function onUserChanged(user) {
     state.xtreamAccount = null;
     if (openBtn) openBtn.hidden = false;
     if (chipWrap) chipWrap.hidden = true;
+    setTrackedUser(null, null);
     renderXtreamPanelState();
     renderUserTickets();
     return;
@@ -852,6 +1027,7 @@ async function onUserChanged(user) {
   // Load user profile + existing 1-time Xtream Server + Personal Playlist from Firebase RTDB
   const profile = (await dbRead(`users/${user.uid}`, null)) || {};
   state.userProfile = profile;
+  setTrackedUser(user, profile);
 
   if (Array.isArray(profile.favorites) && profile.favorites.length) {
     profile.favorites.forEach((f) => state.favorites.add(f));
@@ -889,8 +1065,28 @@ async function onUserChanged(user) {
   renderUserTickets();
 
   // If currently viewing a locked PRO channel and user IS PRO, immediately unlock live playback!
+  if (!document.getElementById("view-reseller")?.hidden) renderResellerViewer();
   if (state.currentChannel?.tier === "pro" && effectivePlan === "pro") {
     playChannel(state.currentChannel, { skipWelcome: true });
+  }
+}
+
+async function renderResellerViewer() {
+  const box = document.getElementById("resellerViewer");
+  if (!box) return;
+  const uid = state.user?.uid;
+  if (!uid) { box.textContent = "Sign in to view your reseller account."; return; }
+  box.textContent = "Loading reseller account…";
+  try {
+    const data = await dbReadStrict(`resellers/${uid}`);
+    if (state.user?.uid !== uid) return;
+    const uidText = `<p>Your Firebase UID: <code>${escHtml(uid)}</code></p>`;
+    if (!data?.name) { box.innerHTML = `${uidText}<p>No reseller access yet. Share this UID with support.</p>`; return; }
+    const items = ledgerRows(data.charges);
+    const due = items.filter((item) => item.status === "due").reduce((sum, item) => sum + item.amount, 0);
+    box.innerHTML = `${uidText}<h3>${escHtml(data.name)}</h3><p>Recorded unpaid total: <strong>Rs ${due}</strong></p><div class="table-wrap"><table class="data-table"><thead><tr><th>Period</th><th>Username</th><th>Amount</th><th>Status</th></tr></thead><tbody>${items.length ? items.map((x) => `<tr><td>${escHtml(x.period)}</td><td>${escHtml(x.username)}</td><td>Rs ${x.amount}</td><td>${escHtml(x.status)}</td></tr>`).join("") : '<tr><td colspan="4">No charges recorded.</td></tr>'}</tbody></table></div>`;
+  } catch {
+    if (state.user?.uid === uid) box.textContent = "Unable to load your ledger. Check your connection or contact support.";
   }
 }
 
@@ -1001,7 +1197,7 @@ function renderXtreamPanelState() {
   if (vault) vault.hidden = false;
 
   const xt = state.xtreamAccount;
-  const isPro = String(xt.plan || "free").toLowerCase() === "pro";
+  const isPro = effectiveMembershipPlan(xt) === "pro";
 
   const planBadge = document.getElementById("xtVaultPlanBadge");
   if (planBadge) {
@@ -1214,7 +1410,7 @@ async function saveCloudPlaylist() {
   }
   const plId =
     state.playlist.id ||
-    `pl_${state.user.uid.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10)}_${Math.floor(100 + Math.random() * 900)}`;
+    `pl_${crypto.randomUUID().replace(/-/g, "")}`;
 
   const payload = {
     id: plId,
@@ -1222,13 +1418,17 @@ async function saveCloudPlaylist() {
     name: document.getElementById("plNameInput")?.value.trim() || "My BarakatWave Playlist",
     channelIds: state.playlist.channelIds,
     customStreams: state.playlist.customStreams,
-    xtreamUsername: state.xtreamAccount?.username || "",
-    xtreamPassword: state.xtreamAccount?.password || "",
     updatedAt: new Date().toISOString()
   };
 
-  await dbWrite(`playlists/${plId}`, payload);
-  await dbMerge(`users/${state.user.uid}`, { playlistId: plId });
+  try {
+    await dbWriteStrict(`playlists/${plId}`, payload);
+    const profile = await dbReadStrict(`users/${state.user.uid}`) || {};
+    await dbWriteStrict(`users/${state.user.uid}`, { ...profile, playlistId: plId });
+  } catch {
+    showToast("Could not save the playlist to Firebase. Please try again.");
+    return;
+  }
   state.playlist.id = plId;
   updatePlaylistPreview();
   showToast("✅ Personal Cloud M3U8 Playlist Saved!");
@@ -1393,6 +1593,22 @@ function renderFaqs() {
 
 /* ==================== IMDb MOVIES & SERIES CINEMA HUB (2000–2026) ==================== */
 async function hydrateFullImdbCatalog() {
+  // 1) Full 1,570+ catalog from the lazily-imported local bundle (works offline,
+  //    zero extra network round-trip) — swapped in without touching the DOM state.
+  try {
+    const local = await loadFullCatalog();
+    if (local.movies?.length) state.baseCatalogMovies = local.movies;
+    if (local.series?.length) state.baseCatalogSeries = local.series;
+    if (local.movies?.length || local.series?.length) {
+      recomputeMergedCinemaState();
+      populateCinemaYearSelect();
+      renderCinemaHub();
+    }
+  } catch {
+    // core seed stays in place
+  }
+
+  // 2) Optional server-side overrides (kept last so the UI is already usable).
   try {
     const res = await fetch("/api/imdb?action=catalog");
     if (!res.ok) return;
@@ -1705,8 +1921,18 @@ function openCinemaDetailModal(item) {
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
             <button type="button" class="btn btn-primary" id="cinWatchMainBtn">
-              ▶ ${item.streamUrl ? "Watch Now in HD" : "Preview Broadcast (Service Building — Coming Soon)"}
+              ▶ ${item.streamUrl ? "Watch Now in HD" : "Play in IMDb Cinema Player"}
             </button>
+            ${
+              item.imdbId
+                ? `<button type="button" class="btn btn-gold" id="cinImdbBtn">🎬 IMDb ID Player (${escHtml(item.imdbId)})</button>`
+                : ""
+            }
+            ${
+              !item.streamUrl
+                ? `<button type="button" class="btn btn-outline" id="cinComingSoonBtn" style="color:#fff;border-color:rgba(255,255,255,0.3);">📺 Coming Soon Broadcast</button>`
+                : ""
+            }
             <a href="https://www.imdb.com/title/${escAttr(item.imdbId || "")}/" target="_blank" rel="noopener" class="btn btn-outline" style="color:#fff;border-color:rgba(255,255,255,0.3);">
               🌟 View on IMDb (${escHtml(item.imdbId || "")})
             </a>
@@ -1740,6 +1966,21 @@ function openCinemaDetailModal(item) {
   `;
 
   modal.hidden = false;
+
+  document.getElementById("cinImdbBtn")?.addEventListener("click", () => {
+    modal.hidden = true;
+    openImdbCinemaPlayer(item, isSeries ? "series" : "movie");
+  });
+
+  // Keep the classic Coming Soon broadcast available for titles without a custom stream
+  document.getElementById("cinComingSoonBtn")?.addEventListener("click", () => {
+    modal.hidden = true;
+    switchView("live");
+    state.activeSeriesItem = isSeries ? item : null;
+    setText("nowPlayingTitle", item.title || "Cinema");
+    setText("nowPlayingSub", `${item.category || "IMDb Cinema"} • Coming Soon Broadcast`);
+    player?.loadVod({ ...item, streamUrl: "" }, { settings: state.settings, userPlan: getEffectiveUserPlan() });
+  });
 
   document.getElementById("cinWatchMainBtn")?.addEventListener("click", () => {
     modal.hidden = true;
@@ -1798,7 +2039,7 @@ function renderCinemaFeaturedSpotlight(item) {
           ${escHtml(item.plot || "")}
         </p>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button type="button" class="btn btn-primary" id="heroSpotPlayBtn">▶ Play in 3D Studio Player</button>
+          <button type="button" class="btn btn-primary" id="heroSpotPlayBtn">▶ Play Now</button>
           <button type="button" class="btn btn-outline" id="heroSpotInfoBtn" style="color:#fff;border-color:rgba(255,255,255,0.3);">ℹ️ Details${isSeries ? " & Episodes" : ""}</button>
           <button type="button" class="btn btn-outline" id="heroSpotWlBtn" style="color:#fff;border-color:rgba(255,255,255,0.3);">${inWl ? "❤️ Saved in My List" : "🤍 Add to My List"}</button>
         </div>
@@ -1835,7 +2076,54 @@ function toggleWatchlist(wlKey) {
   renderCinemaHub();
 }
 
+/**
+ * IMDb Cinema Player — plays any Movie or Series straight from its IMDb ID.
+ * Uses the multi-server IMDb engine in `cinema-player.js`.
+ */
+function openImdbCinemaPlayer(item, type = "movie") {
+  const host = document.getElementById("imdbCinemaPlayerModal");
+  if (!host || !item) return;
+  switchView("cinema");
+  if (normalizeImdbId(item.imdbId || item.id || "")) {
+    trackPlay({
+      title: item.title || "Cinema",
+      itemId: item.id || "",
+      imdbId: normalizeImdbId(item.imdbId || item.id || ""),
+      contentType: type === "series" ? "Series" : "Movie",
+      category: item.category || "IMDb Cinema",
+      engine: "IMDB-EMBED",
+      surface: "IMDb Cinema Player"
+    });
+  }
+  mountImdbCinemaPlayer({
+    container: host,
+    item,
+    type,
+    onClose: () => {
+      host.hidden = true;
+      host.innerHTML = "";
+    }
+  });
+  setTimeout(() => {
+    try {
+      host.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    } catch {
+      // ignore unsupported scrollIntoView
+    }
+  }, 60);
+}
+
 function playVodInStudio(vodItem, seriesParent = null, epIdx = 0) {
+  // Titles without a custom HD stream but WITH an IMDb ID play instantly in the IMDb Cinema Player!
+  const hasStream = Boolean(String(vodItem.streamUrl || "").trim());
+  if (!hasStream && normalizeImdbId(vodItem.imdbId || vodItem.id || "")) {
+    const isSeries = Boolean(seriesParent) || Array.isArray(vodItem.episodes);
+    state.activeSeriesItem = seriesParent || (Array.isArray(vodItem.episodes) ? vodItem : null);
+    state.activeEpisodeIdx = epIdx;
+    openImdbCinemaPlayer(vodItem, isSeries ? "series" : "movie");
+    return;
+  }
+
   switchView("live");
   state.activeSeriesItem = seriesParent || (Array.isArray(vodItem.episodes) ? vodItem : null);
   state.activeEpisodeIdx = epIdx;
@@ -1983,8 +2271,22 @@ function bindUniversalStreamLab() {
       tierEl.textContent = /\.mpd(\?|$)/i.test(url) || format === "dash" ? "DASH .MPD" : "UNIVERSAL";
     }
 
+    // Seal remote links through the AES-256-GCM vault so the raw URL never sits in the DOM
+    let playbackUrl = url;
+    if (/^https?:\/\//i.test(url)) {
+      const sealed = await sealCustomStreamUrl(url, format);
+      if (sealed?.url) playbackUrl = sealed.url;
+    }
+
+    trackPlay({
+      title: `Universal Stream (${shortHost})`,
+      contentType: "Custom Stream",
+      engine: (format === "auto" ? "AUTO" : format).toUpperCase(),
+      surface: "Universal Stream Lab"
+    });
+
     await player?.playCustomStream({
-      url,
+      url: playbackUrl,
       title: `Universal Stream (${shortHost})`,
       format,
       drmKey: isLicenseUrl ? "" : drmRaw,
@@ -2083,11 +2385,9 @@ function getEffectiveServerOrigin() {
 
 function generateCleanPassword(len = 10) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  let out = "BW";
-  for (let i = 0; i < len - 2; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return out;
+  const bytes = new Uint8Array(len - 2);
+  crypto.getRandomValues(bytes);
+  return "BW" + Array.from(bytes, (value) => chars[value % chars.length]).join("");
 }
 
 function copyText(text, msg = "Copied!") {

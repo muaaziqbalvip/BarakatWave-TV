@@ -13,6 +13,7 @@ import {
   verifyXtreamCredentials
 } from "../_lib/rtdb.js";
 import { classifyChannelDelivery } from "../_lib/hls.js";
+import { recordStreamPlay } from "../_lib/tracker.js";
 
 /**
  * Universal Live, Movie (VOD) & Series Stream Entrypoint:
@@ -145,6 +146,18 @@ export default async function handler(req, res) {
   //  - Channel Offline Standby Video when all candidate URLs are genuinely 404 / 5xx / dead!
   //  - 3-Phase Televizo Intro -> Live Channel Stitched HLS for public CDN & local broadcast streams!
   const delivery = await classifyChannelDelivery(channel, settings, { skipIntro });
+
+  // Track IPTV / Direct M3U8 Live Channel Play (IP, Geo, App, Username, Channel)
+  recordStreamPlay(req, {
+    title: channel.name,
+    itemId: channel.id,
+    contentType: "Live TV (IPTV)",
+    category: channel.category || "",
+    engine: ext === "ts" ? "XTREAM-TS" : "XTREAM-M3U8",
+    surface: username ? `Xtream IPTV (${username})` : "Clean M3U8 Link",
+    xtreamUser: username || "public-m3u8",
+    userPlan: effectivePlan
+  }).catch(() => {});
 
   if (delivery.mode === "direct" && delivery.url) {
     return redirect302(res, delivery.url);

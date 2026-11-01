@@ -51,9 +51,6 @@ export default async function handler(req, res) {
     (ch) => selectedIds.has(ch.id) || selectedIds.has(String(ch.streamId)) || selectedIds.has(ch.slug)
   );
 
-  const xtUser = pl.xtreamUsername || "";
-  const xtPass = pl.xtreamPassword || "";
-
   const lines = [
     `#EXTM3U x-tvg-url="${baseUrl}/xmltv.php"`,
     `#PLAYLIST:${(pl.name || "My BarakatWave Playlist").replace(/\r|\n/g, " ")} - BarakatWave TV`
@@ -64,13 +61,8 @@ export default async function handler(req, res) {
     lines.push(
       `#EXTINF:-1 tvg-id="${ch.epgId}" tvg-logo="${ch.logo || BRAND.logoPrimary}" group-title="${grp}",${ch.name}`
     );
-    if (xtUser && xtPass) {
-      lines.push(
-        `${baseUrl}/live/${encodeURIComponent(xtUser)}/${encodeURIComponent(xtPass)}/${ch.streamId}.m3u8`
-      );
-    } else {
-      lines.push(`${baseUrl}/ch/${ch.slug}.m3u8`);
-    }
+    // Cloud playlist links are shareable; never expose saved Xtream credentials.
+    lines.push(`${baseUrl}/ch/${ch.slug}.m3u8`);
   }
 
   for (const custom of customStreams) {

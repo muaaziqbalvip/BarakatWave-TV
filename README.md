@@ -1,3 +1,5 @@
+> **Production warning:** This branch is a work in progress, not a production-ready paid IPTV platform. Manual reseller charges and Xtream expiry controls are available, but payment verification, full reseller provisioning and secure web PRO access are incomplete. Existing stream URLs and credentials may be exposed. See [Deployment safety and current scope](#deployment-safety-and-current-scope) before deploying, publishing Firebase rules or accepting payments. Some older feature descriptions below predate this warning and should not be treated as guarantees.
+
 <div align="center">
 
 <img src="public/assets/img/brand/barakatwave-logo.png" alt="Barakat Wave Streaming Network Logo" width="200px" />
@@ -146,3 +148,25 @@ npm run dev
 - **Founder, Lead Developer & Innovator:** **Muaaz Iqbal** (Kasur, Punjab, Pakistan)
 - **Ecosystem:** **Mizanora Projects** ([mizanora.vercel.app](https://mizanora.vercel.app))
 - **PRO VIP Membership & Support:** `0306-2015326` ([WhatsApp Direct](https://wa.me/923062015326))
+
+## Deployment safety and current scope
+
+The PRO page describes **manual** WhatsApp/JazzCash requests. Payment verification, automated billing and self-service reseller provisioning are **not implemented**. A basic manually maintained reseller ledger is available. The admin Xtream table supports manual one-day trial issuance and 30-day paid extensions; Xtream playback checks expiry and falls back to free access. Trials are tracked per account, not per person, and concurrent issuance is not transactionally protected. Do not accept payments or offer paid streams until these are built and independently reviewed. Confirm content distribution rights and obtain legal review of `public/policies.html` before using it as a final policy.
+
+Security work in this branch rejects anonymous mirror writes, GitHub publishing and analytics dashboard access, disables the raw channel export, and ignores the untrusted web `plan` parameter. Until verified web entitlements are implemented, **web PRO playback remains locked even for paid users**. Admin API operations require a verified Firebase ID token, Firebase Identity Toolkit access and the admin database rules. The analytics ingestion endpoint remains public and is not authoritative billing data.
+
+Important unresolved risks: public channel records can contain upstream URLs; several other playback paths can expose stream URLs; Xtream passwords are stored in plaintext; the stream signing secret has a known fallback; rate limiting is per instance; and other routes and Firebase rules need a full security audit. Treat existing credentials and stream URLs as exposed and rotate them. No streaming system can prevent a viewer from capturing content. Test and publish `firebase/database.rules.json` to the actual Firebase database: the revised rules require verified owner email, restrict Xtream records to their owner/admin, and remove open first-admin bootstrap. **Set `FIREBASE_DATABASE_SECRET` securely on the server before publishing those rules**, or server-side Xtream authentication will fail. Provision and test verified administrator access and backups first. The local mirror is not a durable production database.
+
+The supplied photos are stored in `public/assets/muaaz/` and the supplied logo in `public/assets/brand/`. Search ranking and image indexing cannot be guaranteed; only publish images with the subject's permission.
+
+### Manual Xtream membership operations
+
+After verifying payment outside the app, an administrator can open **Xtream & PRO Users** and choose **1-day trial**, **Add 30 days**, or **Set free** for an existing account. The first two actions store an expiry in seconds; renewals extend an unexpired subscription. A trial cannot be applied twice to the same account record. Admin membership changes require a successful Firebase write and the updated database rules. Legacy PRO records with no expiry remain active until the operator sets a duration or downgrades them. This is not automatic payment review, per-person trial enforcement, or an enforced simultaneous-connection limit.
+
+### Manual reseller ledger
+
+A reseller signs in, opens **Resellers** (or the PRO page's Open ledger button) and shares the displayed Firebase UID with an admin. In **Admin → Reseller Ledger**, load that UID, save the reseller name, and record Rs 100 charges for existing Xtream usernames and billing-period labels. An admin can mark each charge paid only after manual review; the reseller can read only their own ledger. Charges do not create, renew, or activate accounts, and the period is a label rather than an automated billing cycle. This ledger is not a payment processor, invoice system, or self-service reseller management panel. Duplicate checks are not transactional: avoid concurrent edits and reconcile records manually. Publish and test the updated Firebase rules before use; no Firebase emulator integration tests are included.
+
+### Playlist migration and security
+
+Cloud playlist output no longer includes Xtream credentials and new playlist IDs are randomly generated. Publishing the updated Firebase rules also restricts direct database reads to the owner/admin (the server needs `FIREBASE_DATABASE_SECRET` to serve shared playlist links). Legacy records may still contain plaintext passwords; remove those fields from existing records and rotate exposed Xtream passwords. Existing playlist URLs remain bearer links, may be guessable, and can reveal custom stream URLs. Replace old links where privacy matters. Cloud playlist links now use free channel routes; use authenticated Xtream player credentials separately for PRO.

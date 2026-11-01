@@ -2,67 +2,90 @@
   "rules": {
     "channels": {
       ".read": true,
-      ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')"
+      ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))"
     },
     "movies": {
       ".read": true,
-      ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')"
+      ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))"
     },
     "series": {
       ".read": true,
-      ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')"
+      ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))"
     },
     "settings": {
       "defaults": {
         ".read": true,
-        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')"
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))"
       },
       "private": {
-        ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')",
-        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')"
+        ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))",
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))"
       }
     },
     "users": {
-      ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')",
+      ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))",
       "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')",
-        ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')"
+        ".read": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))",
+        ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))",
+        "plan": {
+          ".validate": "(auth != null && (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))) || (newData.val() === 'free' && !data.exists()) || newData.val() === data.val()"
+        }
       }
     },
     "xtreamAccounts": {
-      ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')",
+      ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))",
       "$username": {
-        ".read": true,
-        ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid && newData.child('plan').val() === 'free') || (data.exists() && data.child('uid').val() === auth.uid && newData.child('plan').val() === data.child('plan').val()) || root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')"
+        ".read": "auth != null && (data.child('uid').val() === auth.uid || (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true)))",
+        ".write": "auth != null && ((root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true)) || (!data.exists() && newData.child('uid').val() === auth.uid && newData.child('username').val() === $username && newData.child('plan').val() === 'free' && !newData.child('trialUsedAt').exists()) || (data.exists() && newData.exists() && data.child('uid').val() === auth.uid && newData.child('uid').val() === data.child('uid').val() && newData.child('username').val() === data.child('username').val() && newData.child('plan').val() === data.child('plan').val() && newData.child('status').val() === data.child('status').val() && newData.child('expDate').val() === data.child('expDate').val() && newData.child('maxConnections').val() === data.child('maxConnections').val() && newData.child('trialUsedAt').val() === data.child('trialUsedAt').val()))"
       }
     },
     "playlists": {
       "$playlistId": {
-        ".read": true,
-        ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid) || (data.exists() && data.child('uid').val() === auth.uid) || root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')"
+        ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))",
+        ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid) || (data.exists() && data.child('uid').val() === auth.uid) || root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))"
       }
     },
     "blogs": {
       ".read": true,
-      ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')"
+      ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))"
     },
     "reviews": {
       ".read": true,
       "$reviewId": {
-        ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid) || (data.exists() && data.child('uid').val() === auth.uid) || root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')"
+        ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid) || (data.exists() && data.child('uid').val() === auth.uid) || root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))"
       }
     },
     "tickets": {
-      ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')",
+      ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))",
       "$ticketId": {
-        ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')",
-        ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid) || (data.exists() && data.child('uid').val() === auth.uid) || root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')"
+        ".read": "auth != null && (data.child('uid').val() === auth.uid || root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))",
+        ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid) || (data.exists() && data.child('uid').val() === auth.uid) || root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))"
       }
     },
     "admins": {
       ".read": "auth != null",
       "$uid": {
-        ".write": "auth != null && ((!root.child('admins').exists() && auth.uid === $uid) || root.child('admins').child(auth.uid).val() === true || auth.token.email === 'muaaziqbal.vip@gmail.com')"
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))"
+      }
+    },
+    "analytics": {
+      ".read": "auth != null",
+      "sessions": {
+        "$sid": {
+          ".write": "auth != null"
+        }
+      },
+      "plays": {
+        "$pid": {
+          ".write": "auth != null"
+        }
+      }
+    },
+    "resellers": {
+      ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))",
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (auth.token.email === 'muaaziqbal.vip@gmail.com' && auth.token.email_verified === true))"
       }
     },
     "panel": {

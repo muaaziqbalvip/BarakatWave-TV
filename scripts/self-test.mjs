@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ledgerRows, validLedgerKey, validBillingPeriod } from "../public/assets/js/reseller-ledger.js";
+import { effectiveMembershipPlan, membershipUpdate } from "../public/assets/js/membership.js";
+import { getAnalyticsDashboardSnapshot } from "../api/_lib/tracker.js";
+import { updateLocalMirrorNode } from "../api/_lib/rtdb.js";
+import { clearDeliveryCache } from "../api/_lib/hls.js";
 import { createAppServer } from "./dev-server.mjs";
 import { parseM3uPlaylist, exportChannelsToM3u } from "../public/assets/js/m3u-parser.js";
 import {
@@ -14,6 +20,13 @@ import { DEFAULT_MOVIES, DEFAULT_SERIES } from "../data/imdb-seed.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
+
+// Seed integration fixtures directly, not through the privileged HTTP endpoint.
+async function testSync(options) {
+  const { path, value } = JSON.parse(options.body);
+  updateLocalMirrorNode(path, value);
+  clearDeliveryCache();
+}
 
 let passed = 0;
 function check(name, cond) {
@@ -37,6 +50,23 @@ async function run() {
     fs.unlinkSync("/tmp/barakatwave-rtdb-mirror.json");
   }
   console.log("🌊 Running BarakatWave Live TV + Televizo HLS + IMDb VOD/Series Verification Suite...\n");
+
+  check("Reseller keys reject database path injection", validLedgerKey("uid_123") && !validLedgerKey("uid/other") && !validLedgerKey("a.b"));
+  check("Reseller periods validate year and month", validBillingPeriod("2026-11") && !validBillingPeriod("2026-13"));
+  const ledger = ledgerRows({"2026-11": {"viewer": {amount: 100, status: "due"}, "paid_user": {amount: 100, status: "paid"}}});
+  check("Reseller ledger separates due and paid records", ledger.length === 2 && ledger.filter((x) => x.status === "due").reduce((sum, x) => sum + x.amount, 0) === 100);
+  const rules = JSON.parse(fs.readFileSync(path.join(ROOT, "firebase/database.rules.json"), "utf8"));
+  check("Reseller rules restrict writes to admin and read to owner/admin", rules.rules.resellers.$uid[".write"].includes("admins") && rules.rules.resellers.$uid[".read"].includes("auth.uid === $uid"));
+
+  const memberStart = 1700000000;
+  const trial = membershipUpdate({ plan: "free", status: "Active" }, "trial", memberStart);
+  check("Trial expires exactly 24 hours after activation", trial.expDate === memberStart + 86400 && effectiveMembershipPlan(trial, trial.expDate - 1) === "pro" && effectiveMembershipPlan(trial, trial.expDate) === "free");
+  check("A trial cannot be issued twice to the same record", (() => { try { membershipUpdate(trial, "trial", trial.expDate); return false; } catch { return true; } })());
+  const paid = membershipUpdate(trial, "month", memberStart);
+  check("Paid 30-day renewal extends an active entitlement", paid.expDate === trial.expDate + 30 * 86400);
+  check("Malformed expiry fails closed", effectiveMembershipPlan({plan: "pro", expDate: "not-a-date"}, memberStart) === "free");
+  check("Suspended accounts cannot have PRO entitlement", effectiveMembershipPlan({plan: "pro", status: "suspended"}, memberStart) === "free");
+  check("Downgrade retains the trial-used marker", membershipUpdate(trial, "free", memberStart).trialUsedAt === memberStart);
 
   // 1. Verify Core Assets, Vercel Hobby Limits & Zero TypeScript-Extension Collisions
   const requiredFiles = [
@@ -65,6 +95,17 @@ async function run() {
     "public/media/demo-live/index.m3u8",
     "data/imdb-seed.js",
     "public/assets/js/imdb-seed.js",
+    "public/assets/js/imdb-catalog-2000.js",
+    "public/assets/js/vault.js",
+    "public/assets/js/analytics.js",
+    "public/assets/js/cinema-player.js",
+    "public/assets/vendor/mux.min.js",
+    "public/media/demo-dash/video-init.mp4",
+    "public/media/demo-dash/video-seg1.m4s",
+    "api/_lib/tracker.js",
+    "api/_handlers/gate.js",
+    "api/_handlers/analytics.js",
+    "scripts/build-dash-demo.mjs",
     "public/assets/js/imdb-client.js",
     "data/streams/master-all.m3u8"
   ];
@@ -92,6 +133,59 @@ async function run() {
   const allYearsCovered = Array.from({ length: 27 }, (_, i) => 2000 + i).every((yr) => movieYears.has(yr));
   check("IMDb 2000–2026 Auto-Catalog covers every single release year from 2000 through 2026", allYearsCovered);
   check("SEO Knowledge Base includes 16 professional blogs", DEFAULT_BLOGS.length >= 16);
+
+  const browserLinkTest = spawnSync(process.execPath, ["--no-warnings", "--experimental-vm-modules", path.join(ROOT, "scripts/check-browser-modules.mjs")], { encoding: "utf8", cwd: ROOT });
+  check(`Admin and app browser module graphs link successfully${browserLinkTest.status === 0 ? "" : `: ${browserLinkTest.stderr}`}`, browserLinkTest.status === 0);
+
+  // Check actual exports, not just whether the referenced file exists.
+  const firebaseModule = await import("../public/assets/js/firebase-client.js?v=10");
+  check("Firebase client exports strict admin data helpers", typeof firebaseModule.dbReadStrict === "function" && typeof firebaseModule.dbWriteStrict === "function");
+  const adminModuleSource = fs.readFileSync(path.join(ROOT, "public/assets/js/admin.js"), "utf8");
+  const appModuleSource = fs.readFileSync(path.join(ROOT, "public/assets/js/app.js"), "utf8");
+  const adminPageSource = fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8");
+  const appPageSource = fs.readFileSync(path.join(ROOT, "public/index.html"), "utf8");
+  const swSource = fs.readFileSync(path.join(ROOT, "public/sw.js"), "utf8");
+  const config = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
+  check("Admin and app load versioned Firebase module", /from "\.\/firebase-client\.js\?v=\d+"/.test(adminModuleSource) && /from "\.\/firebase-client\.js\?v=\d+"/.test(appModuleSource));
+  check("HTML pages load versioned entry modules", /\/assets\/js\/admin\.js\?v=\d+/.test(adminPageSource) && /\/assets\/js\/app\.js\?v=\d+/.test(appPageSource));
+  check("Vercel header definitions contain valid key/value entries", config.headers.every(h => h.headers.every(v => typeof v.key === "string" && typeof v.value === "string")));
+  check("Assets revalidate rather than stay fresh for a week", config.headers.some(h => h.source === "/assets/(.*)" && h.headers.some(v => v.key === "Cache-Control" && v.value.includes("must-revalidate"))));
+  check("Service worker revalidates module fetches and does not substitute HTML for scripts", swSource.includes('fetch(req, { cache: "no-cache" })') && swSource.includes('if (req.mode === "navigate")'));
+
+  // 1b. EVERY relative ES-module import must resolve on disk (a single missing file kills the whole web app!)
+  const moduleDirs = [
+    path.join(ROOT, "public/assets/js"),
+    path.join(ROOT, "api"),
+    path.join(ROOT, "api/_lib"),
+    path.join(ROOT, "api/_handlers"),
+    path.join(ROOT, "data"),
+    path.join(ROOT, "scripts")
+  ];
+  const brokenImports = [];
+  let importCount = 0;
+  for (const dir of moduleDirs) {
+    if (!fs.existsSync(dir)) continue;
+    for (const file of fs.readdirSync(dir)) {
+      if (!/\.(m?js)$/.test(file)) continue;
+      const full = path.join(dir, file);
+      const src = fs.readFileSync(full, "utf8");
+      for (const m of src.matchAll(/(?:^|\n)\s*(?:import|export)\s+(?:[^"';]*?)\s*from\s*["'](\.{1,2}\/[^"']+)["']/g)) {
+        importCount++;
+        const target = path.resolve(dir, m[1].split(/[?#]/)[0]);
+        if (!fs.existsSync(target)) brokenImports.push(`${path.relative(ROOT, full)} -> ${m[1]}`);
+      }
+      for (const m of src.matchAll(/import\(\s*["'](\.{1,2}\/[^"']+)["']\s*\)/g)) {
+        importCount++;
+        const target = path.resolve(dir, m[1].split(/[?#]/)[0]);
+        if (!fs.existsSync(target)) brokenImports.push(`${path.relative(ROOT, full)} -> ${m[1]}`);
+      }
+    }
+  }
+  check(
+    `All ${importCount} relative ES-module imports resolve on disk (no dead browser module graph)`,
+    importCount > 20 && brokenImports.length === 0
+  );
+  if (brokenImports.length) console.log("   broken:", brokenImports);
 
   // 2. Verify M3U Parser & Exporter
   const sampleM3u = `#EXTM3U\n#EXTINF:-1 tvg-id="ptv.pk" tvg-logo="https://img/logo.png" group-title="Pakistan",PTV Home HD\nhttps://example.com/ptv.m3u8\n`;
@@ -151,7 +245,11 @@ async function run() {
         homeHtml.includes("view-cinema") &&
         homeHtml.includes("cinemaDetailModal")
     );
-    check("Home page contains PRO VIP contact 0306-2015326 & official logo", homeHtml.includes("0306-2015326") && homeHtml.includes("Barakat-Wave-Streaming-Network-Logo.png"));
+    check(
+      "Home page contains PRO VIP contact 0306-2015326 & repo-hosted official logo",
+      homeHtml.includes("0306-2015326") &&
+        (homeHtml.includes("/assets/img/brand/barakatwave-logo.png") || homeHtml.includes("/assets/brand/barakatwave-logo.png"))
+    );
 
     const adminHtml = await (await fetch(`${base}/admin.html`)).text();
     check(
@@ -309,7 +407,7 @@ async function run() {
     );
 
     // Non-destructive RTDB override merge check: adding 1 custom movie MUST preserve all 1,100+ built-in movies!
-    await fetch(`${base}/api/sync`, {
+    await testSync({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -335,7 +433,7 @@ async function run() {
       mergedVodAfterSync.length >= DEFAULT_MOVIES.length + 1 &&
         mergedVodAfterSync.some((m) => m.imdb_id === "tt9999991")
     );
-    await fetch(`${base}/api/sync`, {
+    await testSync({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path: "movies", value: null })
@@ -406,7 +504,7 @@ async function run() {
     }
 
     // 3g-ext. External Custom-Port / Panel .m3u8 Regression Fix (https://live.nowiretv.com:5789/live/auto/3383.m3u8)
-    await fetch(`${base}/api/sync`, {
+    await testSync({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -443,7 +541,7 @@ async function run() {
       directOfflineHls.includes("/media/channel-offline/seg") && !directOfflineHls.includes("#EXT-X-ENDLIST")
     );
 
-    await fetch(`${base}/api/sync`, {
+    await testSync({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -470,7 +568,7 @@ async function run() {
       "Broken/offline channel automatically fails over to Channel Offline Standby Video (zero dead black screen)",
       deadFallbackHls.includes("/media/channel-offline/seg") && !deadFallbackHls.includes("#EXT-X-ENDLIST")
     );
-    await fetch(`${base}/api/sync`, {
+    await testSync({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path: "channels", value: null })
@@ -513,7 +611,7 @@ async function run() {
     );
 
     // 3i. Upgraded PRO VIP Xtream User unlocks PRO Channel 2001 immediately!
-    await fetch(`${base}/api/sync`, {
+    await testSync({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -537,7 +635,7 @@ async function run() {
     );
 
     // Also verify stitchable PRO channel serves mode=live 3-phase Intro -> Live stream for PRO VIP user!
-    await fetch(`${base}/api/sync`, {
+    await testSync({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -558,7 +656,7 @@ async function run() {
       "Upgraded PRO VIP user gets stitched mode=live HLS master playlist on stitchable PRO channel",
       unlockedStitchMaster.includes("mode=live") && !unlockedStitchMaster.includes("mode=pro_lock")
     );
-    await fetch(`${base}/api/sync`, {
+    await testSync({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path: "channels", value: null })
@@ -605,6 +703,11 @@ async function run() {
     ).json();
     check("GitHub M3U8 Publisher generates per-channel .m3u8 files + master playlists", ghPrev.ok && ghPrev.fileCount >= 17);
 
+    await testSync({ body: JSON.stringify({ path: "playlists/security_test", value: { name: "Test", channelIds: ["ch_bw_promo"], xtreamUsername: "legacy_user", xtreamPassword: "legacy_secret" } }) });
+    const legacyPlaylist = await (await fetch(`${base}/playlist/security_test.m3u8`)).text();
+    check("Shareable playlists do not reveal legacy Xtream credentials", !legacyPlaylist.includes("legacy_secret") && !legacyPlaylist.includes("legacy_user") && legacyPlaylist.includes("/ch/"));
+    check("Playlist database records are restricted to owner or admin", rules.rules.playlists.$playlistId[".read"].includes("data.child('uid').val() === auth.uid"));
+
     const plFree = await (await fetch(`${base}/playlist/free.m3u8`)).text();
     check("/playlist/free.m3u8 serves valid M3U8 playlist", plFree.startsWith("#EXTM3U") && plFree.includes("/ch/"));
 
@@ -643,7 +746,7 @@ async function run() {
       dashLocalRes.status === 200 &&
         (dashLocalRes.headers.get("content-type") || "").includes("application/dash+xml") &&
         dashLocalXml.includes("<MPD") &&
-        dashLocalXml.includes("<SegmentURL")
+        (dashLocalXml.includes("<SegmentTemplate") || dashLocalXml.includes("<SegmentURL"))
     );
 
     const shakaRes = await fetch(`${base}/assets/vendor/shaka-player.min.js`);
@@ -692,14 +795,14 @@ async function run() {
     const appleIconRes = await fetch(`${base}/assets/icons/apple-touch-icon.png`);
     const swJsText = await (await fetch(`${base}/sw.js`)).text();
     check(
-      "Installable Mobile & Desktop PWA serves same-origin PNG 192/512/maskable/apple-touch icons + v4 Service Worker",
+      "Installable Mobile & Desktop PWA serves same-origin PNG 192/512/maskable/apple-touch icons + versioned Service Worker",
       Array.isArray(manifestJson.icons) &&
         manifestJson.icons.some((i) => i.src === "/assets/icons/icon-512.png") &&
         icon192Res.status === 200 &&
         icon512Res.status === 200 &&
         iconMaskRes.status === 200 &&
         appleIconRes.status === 200 &&
-        swJsText.includes("barakatwave-tv-3d-v4")
+        /barakatwave-tv-3d-v\d+/.test(swJsText)
     );
 
     const homeHtml3d = await (await fetch(`${base}/`)).text();
@@ -1016,6 +1119,191 @@ async function run() {
 
     const idxNow = await (await fetch(`${base}/api/seo/indexnow`)).json();
     check("/api/seo/indexnow returns >= 18 candidate URLs for search indexing", idxNow.ok && idxNow.indexedCandidateCount >= 18);
+
+    // ==================== v5: STREAM VAULT, ANALYTICS & IMDb PLAYER ====================
+    const securityLib = fs.readFileSync(path.join(ROOT, "api/_lib/security.js"), "utf8");
+    const trackerLib = fs.readFileSync(path.join(ROOT, "api/_lib/tracker.js"), "utf8");
+    check(
+      "AES-256-GCM Stream Vault (encryptStreamUrl / decryptStreamUrl / anti-hotlink gate) implemented",
+      securityLib.includes("export function encryptStreamUrl") &&
+        securityLib.includes("export function decryptStreamUrl") &&
+        securityLib.includes("aes-256-gcm") &&
+        securityLib.includes("export function isAllowedWebStreamRequest")
+    );
+
+    const gateRes = await fetch(`${base}/api/gate?cid=ch_bw_promo&plan=free`);
+    const gateJson = await gateRes.json();
+    check(
+      "/api/gate returns sealed server-side sources (no upstream URL exposure) for a channel",
+      gateRes.status === 200 &&
+        gateJson.ok === true &&
+        Array.isArray(gateJson.sources) &&
+        gateJson.sources.length > 0 &&
+        gateJson.sources.every((src) => !/^https?:\/\//.test(src.url))
+    );
+
+    const deniedSync = await fetch(`${base}/api/sync`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({path: "channels", value: {}}) });
+    check("Unauthenticated sync writes are rejected", deniedSync.status === 403);
+    const deniedPublish = await fetch(`${base}/api/github/push`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({previewOnly: false}) });
+    check("Unauthenticated GitHub publishing is rejected", deniedPublish.status === 403);
+    const rawGate = await fetch(`${base}/api/gate?mode=admin_channels`);
+    check("Raw channel export is not public", rawGate.status === 403);
+    const forgedPlan = await (await fetch(`${base}/api/gate?cid=ch_pro_pk_gold&plan=pro`)).json();
+    check("Forged PRO plan does not unlock web streams", forgedPlan.lockedPro === true);
+    const gatePro = await (await fetch(`${base}/api/gate?cid=ch_pro_pk_gold&plan=free`)).json();
+    check(
+      "/api/gate enforces PRO VIP tier lock server-side for free viewers",
+      gatePro.ok === true && gatePro.lockedPro === true
+    );
+
+    const gateSeal = await (
+      await fetch(`${base}/api/gate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: "https://secret.example.com/live/index.mpd", format: "dash" })
+      })
+    ).json();
+    check(
+      "POST /api/gate seals custom Stream Lab URLs into encrypted /api/proxy?e= tokens",
+      gateSeal.ok === true &&
+        String(gateSeal.source?.url || "").startsWith("/api/proxy?e=") &&
+        !JSON.stringify(gateSeal).includes("secret.example.com")
+    );
+
+    const catalogBrowser = fs.readFileSync(path.join(ROOT, "public/assets/js/catalog-browser.js"), "utf8");
+    check(
+      "Public browser catalog ships ZERO real upstream stream URLs (shielded://vault placeholders)",
+      catalogBrowser.includes('shielded://vault') &&
+        !/\b(?:url|backupUrls)\s*:\s*\[?\s*"https?:\/\//i.test(catalogBrowser)
+    );
+
+    const analyticsPost = await fetch(`${base}/api/analytics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "BarakatWaveSelfTest/5.0" },
+      body: JSON.stringify({
+        type: "play",
+        sid: "s_selftest",
+        playId: "p_selftest",
+        title: "Selftest Channel HD",
+        contentType: "Live TV",
+        engine: "HLS",
+        surface: "Web 3D Studio"
+      })
+    });
+    const analyticsDenied = await fetch(`${base}/api/analytics`);
+    check("Anonymous analytics dashboard access is rejected", analyticsDenied.status === 403);
+    const analyticsGet = await getAnalyticsDashboardSnapshot();
+    check(
+      "Real-time Visitor & Playback Analyzer records plays with IP/geo/device and returns dashboard snapshot",
+      analyticsPost.status === 200 &&
+        analyticsGet.ok === true &&
+        analyticsGet.summary.totalPlays >= 1 &&
+        Array.isArray(analyticsGet.plays) &&
+        analyticsGet.plays.some((p) => p.title === "Selftest Channel HD") &&
+        typeof analyticsGet.plays[0].ip === "string" &&
+        trackerLib.includes("recordVisitorSession") &&
+        trackerLib.includes("x-vercel-ip-country") &&
+        trackerLib.includes("formatPktTime")
+    );
+
+    const analyticsRoute = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).rewrites.find(
+      (r) => r.source === "/api/analytics"
+    );
+    check(
+      "Vercel routes /api/gate + /api/analytics to the 4 routers within Hobby limits",
+      Boolean(analyticsRoute) &&
+        analyticsRoute.destination === "/api/admin?ep=analytics" &&
+        JSON.stringify(JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).rewrites).includes(
+          '"/api/media?ep=gate"'
+        )
+    );
+
+    const dashMpd = fs.readFileSync(path.join(ROOT, "public/media/demo-dash/index.mpd"), "utf8");
+    const dashInit = path.join(ROOT, "public/media/demo-dash/video-init.mp4");
+    const dashSeg = path.join(ROOT, "public/media/demo-dash/video-seg1.m4s");
+    check(
+      "Built-in DASH channel serves a real playable fMP4 manifest (init + m4s + SegmentTemplate tokens)",
+      dashMpd.includes("mimeType=\"video/mp4\"") &&
+        dashMpd.includes("initialization=\"video-init.mp4\"") &&
+        dashMpd.includes("media=\"video-seg$Number$.m4s\"") &&
+        dashMpd.includes("codecs=\"avc1.") &&
+        fs.existsSync(dashInit) &&
+        fs.existsSync(dashSeg)
+    );
+
+    const dashHead = await fetch(`${base}/media/demo-dash/index.mpd`);
+    const segHead = await fetch(`${base}/media/demo-dash/video-seg1.m4s`);
+    check(
+      "Local DASH manifest + fMP4 segment are served with correct MIME types",
+      dashHead.status === 200 &&
+        (dashHead.headers.get("content-type") || "").includes("dash+xml") &&
+        segHead.status === 200
+    );
+
+    const homeHtmlV5 = await (await fetch(`${base}/`)).text();
+    const appJsText = fs.readFileSync(path.join(ROOT, "public/assets/js/app.js"), "utf8");
+    const cinemaPlayerJs = fs.readFileSync(path.join(ROOT, "public/assets/js/cinema-player.js"), "utf8");
+    check(
+      "IMDb ID Cinema Player (multi-server embed + seasons/episodes) wired into Movies & Series",
+      homeHtmlV5.includes('id="imdbCinemaPlayerModal"') &&
+        cinemaPlayerJs.includes("buildImdbPlayUrl") &&
+        cinemaPlayerJs.includes("vidsrc") &&
+        appJsText.includes("openImdbCinemaPlayer") &&
+        appJsText.includes("mountImdbCinemaPlayer") &&
+        stylesCssText.includes(".imdb-player-shell")
+    );
+
+    const vaultJs = fs.readFileSync(path.join(ROOT, "public/assets/js/vault.js"), "utf8");
+    const analyticsJs = fs.readFileSync(path.join(ROOT, "public/assets/js/analytics.js"), "utf8");
+    check(
+      "Client Stream Vault + privacy-first analyzer modules are bundled and imported",
+      vaultJs.includes("resolveChannelSources") &&
+        vaultJs.includes("/api/gate") &&
+        analyticsJs.includes("initAnalytics") &&
+        analyticsJs.includes("sendBeacon") &&
+        appJsText.includes('from "./vault.js"') &&
+        appJsText.includes('from "./analytics.js"')
+    );
+
+    const adminHtmlV5 = await (await fetch(`${base}/admin.html`)).text();
+    const adminJsText = fs.readFileSync(path.join(ROOT, "public/assets/js/admin.js"), "utf8");
+    check(
+      "Admin Live Analytics dashboard (online now, visitors, cities, devices, play log, CSV export) is wired",
+      adminHtmlV5.includes('data-adm-panel="analytics"') &&
+        adminHtmlV5.includes('id="anSessionsBody"') &&
+        adminHtmlV5.includes('id="anPlaysBody"') &&
+        adminJsText.includes("refreshAnalyticsDashboard") &&
+        adminJsText.includes("downloadAnalyticsCsv")
+    );
+
+    check(
+      "Compact responsive header, slim marquee ticker & 3D motion design tokens shipped",
+      homeHtmlV5.includes('id="siteHeader"') &&
+        homeHtmlV5.includes('class="ticker-track"') &&
+        homeHtmlV5.includes('class="brand-text"') &&
+        stylesCssText.includes(".ticker-seq") &&
+        stylesCssText.includes("grid-template-areas") &&
+        stylesCssText.includes("prefers-reduced-motion")
+    );
+
+    check(
+      "Search-Console rocket: FAQ rich-result schema, keyword meta, GSC/Bing verification meta + HTML file route",
+      homeHtmlV5.includes('"@type": "FAQPage"') &&
+        homeHtmlV5.includes("free Xtream Codes server 2026") &&
+        appJsText.includes("google-site-verification") &&
+        fs.readFileSync(path.join(ROOT, "api/seo.js"), "utf8").includes("gsc_file") &&
+        JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8")).rewrites.some(
+          (r) => r.source === "/google:code.html"
+        )
+    );
+
+    const rulesJson = JSON.parse(fs.readFileSync(path.join(ROOT, "firebase/database.rules.json"), "utf8"));
+    check(
+      "Firebase ruleset allows authenticated analytics writes but keeps them owner-readable",
+      rulesJson.rules.analytics &&
+        rulesJson.rules.analytics[".read"] === "auth != null" &&
+        rulesJson.rules.analytics.sessions["$sid"][".write"] === "auth != null"
+    );
   } finally {
     if (fs.existsSync("/tmp/barakatwave-rtdb-mirror.json")) {
       fs.unlinkSync("/tmp/barakatwave-rtdb-mirror.json");
