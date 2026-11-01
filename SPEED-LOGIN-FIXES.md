@@ -63,3 +63,28 @@ barakatwave.vercel.app
 ```
 
 (Aur agar Vercel preview domain use karte hain to wo bhi.) Is ke baad Google popup + redirect dono chalenge.
+
+---
+
+## 7. Admin panel boot error (screenshot wala) — FIXED
+
+Console:
+```
+Uncaught SyntaxError: The requested module './imdb-seed.js' does not provide an export named 'loadFullCatalog' (at admin.js?v=11:50)
+```
+
+**Wajah:** `admin.js` ne `loadFullCatalog` ko static import kiya tha, lekin browser cache se **purana `imdb-seed.js`** serve ho raha tha (URL same, content purana) → poora module graph fail → admin panel boot hi nahi hua, is liye Google/PIN/password kuch bhi login nahi kar raha tha.
+
+**Fix (PR #19 + #20):**
+- Static import hata diya — catalog ab `await import("./imdb-seed.js?v=13")` se, sirf idle hydration ke andar.
+- Cache version **v13** (entry modules, `sw.js` shell + cache name, lazy catalog modules) — purana module kabhi naya code nahi tor sakta.
+- **Boot watchdog:** 9s me boot na ho ya "does not provide an export" error aaye to blank page ke bajaye banner + cache-clear refresh button.
+- `npm test` me naya guard `scripts/check-module-exports.mjs`: har named import ko asli export se match karta hai → ye bug dobara ship nahi ho sakta.
+
+> Agar aapke browser me abhi bhi purana page khula hai to ek dafa **hard refresh** kar lein (PC: `Ctrl+Shift+R`, phone: Settings → Site data → Clear). Uske baad sab `?v=13` URLs se fresh aayega.
+
+## 8. PR #14 conflicts ka asli maamla
+
+- PR #14 ka head branch `arena/0c5df4c9-barakatwave-tv` (commit `6f96920`) **`main` ka ancestor** hai — yani uska pura kaam pehle hi PR #15 se merge ho chuka tha.
+- GitHub ka `CONFLICTING` badge us closed PR par **stale** tha. Usko dobara merge karne se naya kaam revert ho jata.
+- Is liye PR #14 par explanation comment chhora gaya aur kaam naye PRs (#15–#20) se main me gaya — sab **merged + production deployed**.
