@@ -415,8 +415,19 @@
                 </label>
               </div>
               <div class="field-row">
-                <label>Connection fee to collect now (Rs)
+                <label>Client se kitne rupay liye? (Rs) — connection + plan
+                  <input type="number" id="clSale" class="input-field" min="0" step="10" placeholder="350" />
+                </label>
+                <label>Sirf connection fee (Rs)
                   <input type="number" id="clFee" class="input-field" min="0" step="10" placeholder="50" />
+                </label>
+                <label>Payment mila kaise?
+                  <select id="clVia" class="input-field">
+                    <option value="jazzcash" selected>JazzCash</option>
+                    <option value="easypaisa">Easypaisa</option>
+                    <option value="bank">Bank transfer</option>
+                    <option value="cash">Cash</option>
+                  </select>
                 </label>
                 <label>First period
                   <select id="clMonths" class="input-field">
@@ -484,6 +495,21 @@
       <div id="adminBody" hidden>
         <div class="stat-grid" id="adminStats"></div>
 
+        <div class="pane-grid" style="margin-bottom:16px;">
+          <div class="glass-card pane-card">
+            <h2>🔴 Live Visitors &amp; Streams</h2>
+            <div class="stat-grid" id="liveStatsMini"></div>
+            <div class="kv-list" id="liveKv"></div>
+            <p class="muted-sm" id="liveUpdated">—</p>
+          </div>
+          <div class="glass-card pane-card">
+            <h2>🐞 Website Errors (auto-collected)</h2>
+            <p class="muted-sm">Site / admin / panel ke JS errors khud yahan aate hain — kuch karne ki zaroorat nahi.</p>
+            <div class="kv-list" id="errorKv"></div>
+            <ul class="audit-list" id="errorList"><li class="muted-sm">Koi error nahi — sab theek.</li></ul>
+          </div>
+        </div>
+
         <div class="pane-grid">
           <div class="glass-card pane-card">
             <h2>🧾 Pending orders</h2>
@@ -510,11 +536,37 @@
             </form>
             <div class="table-wrap">
               <table class="data-table" id="resellersTable">
-                <thead><tr><th>Code</th><th>Dealer</th><th>Credits</th><th>Clients</th><th>Top-up</th></tr></thead>
-                <tbody><tr><td colspan="5" class="muted-sm">Loading…</td></tr></tbody>
+                <thead>
+                  <tr>
+                    <th>Code / API key</th><th>Dealer</th><th>Bana (date)</th><th>Credits</th>
+                    <th>Clients (active / MAC)</th><th>Collected</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody><tr><td colspan="7" class="muted-sm">Loading…</td></tr></tbody>
               </table>
             </div>
           </div>
+        </div>
+
+        <!-- Reseller detail drawer: click any dealer row -->
+        <div class="glass-card pane-card" id="resellerDetailCard" style="margin-top:16px;" hidden>
+          <div class="pane-head-row">
+            <h2 style="margin:0;" id="rdTitle">Reseller detail</h2>
+            <button type="button" class="mini-btn" id="rdCloseBtn">✕ Close</button>
+          </div>
+          <div class="kv-list" id="rdInfo"></div>
+          <div class="stat-grid" id="rdStats" style="margin-top:10px;"></div>
+          <h3 style="margin-top:16px;">Clients — M3U / Xtream / MAC / Portal</h3>
+          <div class="table-wrap">
+            <table class="data-table" id="rdClientsTable">
+              <thead>
+                <tr><th>Client</th><th>Login</th><th>MAC / Portal</th><th>Expiry</th><th>Status</th><th>Copy</th></tr>
+              </thead>
+              <tbody><tr><td colspan="6" class="muted-sm">—</td></tr></tbody>
+            </table>
+          </div>
+          <h3 style="margin-top:16px;">Payments received</h3>
+          <ul class="audit-list" id="rdPayments"><li class="muted-sm">—</li></ul>
         </div>
 
         <div class="pane-grid" style="margin-top:16px;">
@@ -635,6 +687,7 @@
   </main>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script type="module" src="/assets/js/panel.js?v=14"></script>
+    <script src="/assets/js/error-beacon.js?v=15" defer></script>
+  <script type="module" src="/assets/js/panel.js?v=15"></script>
 </body>
 </html>

@@ -878,6 +878,102 @@ async function run() {
       expiredM3u.includes("Subscription Expired") && !expiredM3u.includes("tvg-id=")
     );
 
+    // 2z. Error collection, admin visibility & reseller detail (3-hour audit round)
+    const panelJsText = fs.readFileSync(path.join(ROOT, "public/assets/js/panel.js"), "utf8");
+    const adminHtmlText = fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8");
+    const resellerHtmlText = fs.readFileSync(path.join(ROOT, "public/reseller.html"), "utf8");
+    const beaconText = fs.readFileSync(path.join(ROOT, "public/assets/js/error-beacon.js"), "utf8");
+    const trackerText = fs.readFileSync(path.join(ROOT, "api/_lib/tracker.js"), "utf8");
+    const panelApiText = fs.readFileSync(path.join(ROOT, "api/_handlers/panel.js"), "utf8");
+
+    check(
+      "Client errors are captured sitewide and posted to /api/analytics",
+      beaconText.includes("unhandledrejection") &&
+        beaconText.includes('type: "error"') &&
+        beaconText.includes("sendBeacon") &&
+        ["index.html", "admin.html", "reseller.html"].every((f) =>
+          fs.readFileSync(path.join(ROOT, "public", f), "utf8").includes("error-beacon.js?v=15")
+        )
+    );
+    check(
+      "Server stores, deduplicates and hydrates client error reports",
+      trackerText.includes("function recordClientError") &&
+        trackerText.includes("function listClientErrors") &&
+        trackerText.includes("errorList") &&
+        trackerText.includes("analytics/errors")
+    );
+    check(
+      "Admin analytics payload carries live traffic summary and error totals",
+      panelApiText.includes("live: live") &&
+        panelApiText.includes("live?.errors?.count") &&
+        panelApiText.includes("getAnalyticsDashboardSnapshot") &&
+        panelApiText.includes("listClientErrors")
+    );
+    check(
+      "Reseller panel admin can open a reseller detail drawer with M3U / Xtream / MAC links",
+      resellerHtmlText.includes('id="resellerDetailCard"') &&
+        resellerHtmlText.includes('id="rdClientsTable"') &&
+        panelJsText.includes("async function openResellerDetail") &&
+        panelJsText.includes('adminApi("admin/reseller-detail"') &&
+        panelJsText.includes('data-rd-copy="m3u"') &&
+        panelJsText.includes('data-rd-copy="xtream"')
+    );
+    check(
+      "Reseller list shows NEW badge, join date, last login, MAC clients and collected amount",
+      panelJsText.includes('${fresh ? \'<span class="badge badge-gold">NEW</span>\' : ""}') &&
+        panelJsText.includes("lastLoginAt") &&
+        panelJsText.includes("macClients") &&
+        panelJsText.includes("money(r.collected || 0)")
+    );
+    check(
+      "Studio admin renders collected site errors (bug table with totals)",
+      adminHtmlText.includes('id="anErrorsBody"') &&
+        adminHtmlText.includes('id="anErrorTotal"') &&
+        fs.readFileSync(path.join(ROOT, "public/assets/js/admin.js"), "utf8").includes("function paintSiteErrors")
+    );
+    check(
+      "Admin panel loads each section independently so one failure never blanks the rest",
+      panelJsText.includes("const settle = (p) =>") && /settle\(adminApi\("admin\/analytics"\)\)/.test(panelJsText)
+    );
+    check(
+      "Reseller panel reports a clear message when init fails instead of dying silently",
+      /init\(\)\.catch\(\(err\) => \{/.test(panelJsText)
+    );
+    check(
+      "Service worker pre-caches the error beacon and uses the v15 cache",
+      fs.readFileSync(path.join(ROOT, "public/sw.js"), "utf8").includes("error-beacon.js?v=15") &&
+        fs.readFileSync(path.join(ROOT, "public/sw.js"), "utf8").includes("barakatwave-tv-3d-v15")
+    );
+
+    check(
+      "MAG / Stalker boxes work on every /c/ path they probe (portal + load.php)",
+      (() => {
+        const v = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
+        const sources = (v.rewrites || []).map((r) => r.source);
+        return [
+          "/portal.php",
+          "/server/load.php",
+          "/c/portal.php",
+          "/c/server/load.php",
+          "/c/load.php"
+        ].every((s) => sources.includes(s));
+      })()
+    );
+    check(
+      "Reseller client-create records the real sale amount so collected/profit is accurate",
+      panelApiText.includes("collectAmount") &&
+        panelApiText.includes("Client sale (connection + plan)") &&
+        panelJsText.includes('collectAmount: Number($("clSale")?.value) || 0')
+    );
+    check(
+      "MAC portal URL handed to resellers resolves (…/c/portal.php, not a bare folder)",
+      panelApiText.includes("portalUrl: `${base}/c/portal.php`") && panelApiText.includes("portalUrlShort")
+    );
+    check(
+      "Client creation response shows the MAC portal URL for MAG boxes",
+      panelJsText.includes("res.stalker") && panelJsText.includes("MAC Portal:")
+    );
+
     // 3k. GitHub M3U8 File Generator Preview, Probe, Clean Channel M3U8 & IndexNow
     const ghPrev = await (
       await fetch(`${base}/api/github/push`, {

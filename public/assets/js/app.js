@@ -38,7 +38,7 @@ import {
   dbWriteStrict,
   dbMerge,
   dbPushItem
-} from "./firebase-client.js?v=14";
+} from "./firebase-client.js?v=15";
 import { ledgerRows } from "./reseller-ledger.js";
 import { effectiveMembershipPlan } from "./membership.js";
 import { BarakatPlayer } from "./player.js";
@@ -1725,7 +1725,7 @@ async function hydrateFullImdbCatalog() {
   // 1) Full 1,570+ catalog from the lazily-imported local bundle (works offline,
   //    zero extra network round-trip) — swapped in without touching the DOM state.
   try {
-    const { loadFullCatalog } = await import("./imdb-seed.js?v=14");
+    const { loadFullCatalog } = await import("./imdb-seed.js?v=15");
     const local = await loadFullCatalog();
     if (local.movies?.length) state.baseCatalogMovies = local.movies;
     if (local.series?.length) state.baseCatalogSeries = local.series;

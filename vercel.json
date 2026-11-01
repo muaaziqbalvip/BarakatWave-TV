@@ -45,6 +45,18 @@
       "destination": "/api/xtream?ep=portal"
     },
     {
+      "source": "/c/server/load.php",
+      "destination": "/api/xtream?ep=portal"
+    },
+    {
+      "source": "/c/stalker_portal/server/load.php",
+      "destination": "/api/xtream?ep=portal"
+    },
+    {
+      "source": "/c/load.php",
+      "destination": "/api/xtream?ep=portal"
+    },
+    {
       "source": "/live/:user/:pass/:file",
       "destination": "/api/media?ep=live&kind=live&user=:user&pass=:pass&file=:file"
     },

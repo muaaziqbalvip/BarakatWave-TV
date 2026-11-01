@@ -7,7 +7,7 @@
  * Cast, Plots, Posters & Multi-Season Episodes.
  */
 
-import { COMPACT_MOVIES_CORE, COMPACT_SERIES_CORE } from "./imdb-catalog-core.js?v=14";
+import { COMPACT_MOVIES_CORE, COMPACT_SERIES_CORE } from "./imdb-catalog-core.js?v=15";
 
 export const VOD_CATEGORIES = [
   {
@@ -212,7 +212,7 @@ let fullCatalogPromise = null;
  */
 export function loadFullCatalog() {
   if (!fullCatalogPromise) {
-    fullCatalogPromise = import("./imdb-catalog-2000.js?v=14")
+    fullCatalogPromise = import("./imdb-catalog-2000.js?v=15")
       .then((mod) => ({
         movies: buildMovies(mod.COMPACT_MOVIES_2000 || []),
         series: buildSeries(mod.COMPACT_SERIES_2000 || [])

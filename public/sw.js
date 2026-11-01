@@ -1,4 +1,4 @@
-const CACHE_NAME = "barakatwave-tv-3d-v14";
+const CACHE_NAME = "barakatwave-tv-3d-v15";
 const SHELL_ASSETS = [
   "/",
   "/index.html",
@@ -11,10 +11,11 @@ const SHELL_ASSETS = [
   "/assets/icons/apple-touch-icon.png",
   // Media engines (hls / shaka / mpegts / mux ≈ 620 KB) are intentionally NOT
   // precached: player.js fetches them on demand on first playback.
-  "/assets/js/app.js?v=14",
-  "/assets/js/panel.js?v=14",
-  "/assets/js/admin.js?v=14",
-  "/assets/js/firebase-client.js?v=14",
+  "/assets/js/app.js?v=15",
+  "/assets/js/error-beacon.js?v=15",
+  "/assets/js/panel.js?v=15",
+  "/assets/js/admin.js?v=15",
+  "/assets/js/firebase-client.js?v=15",
   "/assets/js/player.js",
   "/assets/js/vault.js",
   "/assets/js/membership.js",

@@ -286,6 +286,36 @@
               </table>
             </div>
           </div>
+
+          <div class="glass-card" style="padding:16px;margin-top:16px;">
+            <h3 style="margin:0 0 4px;font-size:0.95rem;">🐞 Site Errors — Visitors ke asli bugs</h3>
+            <p class="muted-sm" style="margin:0 0 12px;">
+              Player, admin ya reseller panel me jo JS error ya failed API call hui, wo automatic yahan
+              jama hoti hai. <strong id="anErrorStamp">—</strong>
+            </p>
+            <div class="an-grid" style="margin-bottom:12px;">
+              <div class="an-tile">
+                <div class="an-label">📥 Total Reports</div>
+                <div class="an-value" id="anErrorTotal">0</div>
+                <div class="an-sub">client errors received</div>
+              </div>
+              <div class="an-tile">
+                <div class="an-label">🐞 Unique Bugs</div>
+                <div class="an-value" id="anErrorUnique">0</div>
+                <div class="an-sub">deduplicated by fingerprint</div>
+              </div>
+            </div>
+            <div class="an-table-wrap">
+              <table class="an-table">
+                <thead>
+                  <tr><th>Bug</th><th>Kahan</th><th>Device</th><th>Kitni dafa</th><th>Last seen</th></tr>
+                </thead>
+                <tbody id="anErrorsBody">
+                  <tr><td colspan="5" class="muted-sm">Loading error reports…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </section>
 
         <!-- TAB 2: CHANNELS & M3U8 MANAGER -->
@@ -995,7 +1025,8 @@
 
   <div class="toast-container" id="toastContainer"></div>
 
-  <script type="module" src="/assets/js/admin.js?v=14"></script>
+  <script src="/assets/js/error-beacon.js?v=15" defer></script>
+  <script type="module" src="/assets/js/admin.js?v=15"></script>
   <!-- Boot watchdog: agar module graph purane cache ki wajah se fail ho jaye to
        blank page ke bajaye ek saaf "Update" banner dikhta hai (auto-refresh option). -->
   <script>

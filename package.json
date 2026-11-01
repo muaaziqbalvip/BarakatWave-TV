@@ -1,9 +1,9 @@
 {
   "name": "barakatwave-tv",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
-  "description": "BarakatWave Live TV \u2014 Next-Gen HLS Streaming Network, Free Personal Xtream Codes Server, Custom M3U8 Playlist Builder & Admin Broadcast Engine. A Mizanora Project by Muaaz Iqbal.",
+  "description": "BarakatWave Live TV — Next-Gen HLS Streaming Network, Free Personal Xtream Codes Server, Custom M3U8 Playlist Builder & Admin Broadcast Engine. A Mizanora Project by Muaaz Iqbal.",
   "author": "Muaaz Iqbal <muaaziqbal.vip@gmail.com> (Mizanora Projects)",
   "homepage": "https://barakatwave.vercel.app",
   "repository": {
@@ -15,8 +15,9 @@
     "dev": "node scripts/dev-server.mjs",
     "start": "node scripts/dev-server.mjs",
     "generate:m3u": "node scripts/generate-streams.mjs",
-    "test": "node scripts/check-module-exports.mjs && node scripts/self-test.mjs",
+    "test": "node scripts/check-module-exports.mjs && node scripts/self-test.mjs && node scripts/smoke-dom.mjs",
     "check": "node scripts/self-test.mjs",
-    "check:modules": "node scripts/check-module-exports.mjs"
+    "check:modules": "node scripts/check-module-exports.mjs",
+    "check:dom": "node scripts/smoke-dom.mjs --experimental-vm-modules"
   }
 }
